@@ -1,14 +1,14 @@
-import { supabase } from '../src/lib/supabase';
+import Link from 'next/link';
 
-export default async function Home() {
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('*');
-
+export default function Home() {
   return (
     <main style={{ padding: '24px' }}>
-      <h1>Supabase 연결 테스트</h1>
-      <pre>{JSON.stringify({ data, error }, null, 2)}</pre>
+      <h1>홈</h1>
+
+      <ul>
+        <li><Link href="/calculator">낚시 계산기</Link></li>
+        <li><Link href="/profile">프로필</Link></li>
+      </ul>
     </main>
   );
 }

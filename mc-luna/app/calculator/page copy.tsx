@@ -1,43 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
 import { calculateFishing } from "../../src/lib/fishing/calc";
 import type {
   BaitType,
   GroundbaitType,
   PondState,
   TimeOfDay,
-  FishingCalculationInput,
-  FishingCalculationResult,
 } from "../../src/lib/fishing/types";
 
 /**
- * 미끼 선택 옵션
- * label: 화면에 보이는 이름
- * description: 선택 시 하단 안내 문구에 표시할 설명
+ * select 옵션용 데이터
+ * label은 화면 표시용
+ * value는 실제 계산용
  */
 const baitOptions: { value: BaitType; label: string; description: string }[] = [
   { value: "none", label: "없음", description: "미끼 미사용" },
-  {
-    value: "worm",
-    label: "지렁이 미끼",
-    description: "기척 -5%, 입질 -3%, 고급 +20, 희귀 +10",
-  },
-  {
-    value: "meal",
-    label: "어분 미끼",
-    description: "기척 -10%, 입질 -5%, 고급 +30, 희귀 +15",
-  },
-  {
-    value: "lure",
-    label: "루어 미끼",
-    description: "기척 -15%, 입질 -10%, 고급 +40, 희귀 +30",
-  },
+  { value: "worm", label: "지렁이 미끼", description: "기척 -5%, 입질 -3%, 고급 +20, 희귀 +10" },
+  { value: "meal", label: "어분 미끼", description: "기척 -10%, 입질 -5%, 고급 +30, 희귀 +15" },
+  { value: "lure", label: "루어 미끼", description: "기척 -15%, 입질 -10%, 고급 +40, 희귀 +30" },
 ];
 
-/**
- * 떡밥 선택 옵션
- */
 const groundbaitOptions: {
   value: GroundbaitType;
   label: string;
@@ -49,125 +33,38 @@ const groundbaitOptions: {
   { value: "rainbow", label: "무지개 떡밥", description: "기척 -5%, 입질 -5%" },
 ];
 
-/**
- * 초기 입력값
- * - 페이지 첫 진입 시 보여줄 기본값
- * - 이후 result의 초기 계산에도 동일하게 사용
- */
-const INITIAL_FORM = {
-  luck: 23,
-  sense: 0.5,
-
-  rumoredBait: 20,
-  lineTension: 10,
-  doubleHook: 0,
-  schoolFishing: 0,
-
-  timeOfDay: "night" as TimeOfDay,
-  pondState: "abundant" as PondState,
-
-  baitType: "none" as BaitType,
-  groundbaitType: "none" as GroundbaitType,
-  lureEnchantLevel: 3,
-
-  useDoubleHook: false,
-  useSchoolFishing: false,
-
-  normalPrice: 7,
-  advancedPrice: 14,
-  rarePrice: 26,
-};
-
-/**
- * 초기 result 계산용 입력 객체 생성 함수
- * 컴포넌트 바깥에 둬서 최초 useState 초기값에 안전하게 사용
- */
-function createInitialCalculationInput(): FishingCalculationInput {
-  return {
-    stats: {
-      luck: INITIAL_FORM.luck,
-      sense: INITIAL_FORM.sense,
-    },
-    skills: {
-      rumoredBait: INITIAL_FORM.rumoredBait,
-      lineTension: INITIAL_FORM.lineTension,
-      doubleHook: INITIAL_FORM.doubleHook,
-      schoolFishing: INITIAL_FORM.schoolFishing,
-    },
-    environment: {
-      timeOfDay: INITIAL_FORM.timeOfDay,
-      pondState: INITIAL_FORM.pondState,
-      baitType: INITIAL_FORM.baitType,
-      groundbaitType: INITIAL_FORM.groundbaitType,
-      lureEnchantLevel: INITIAL_FORM.lureEnchantLevel,
-      useDoubleHook: INITIAL_FORM.useDoubleHook,
-      useSchoolFishing: INITIAL_FORM.useSchoolFishing,
-    },
-    prices: {
-      normal: INITIAL_FORM.normalPrice,
-      advanced: INITIAL_FORM.advancedPrice,
-      rare: INITIAL_FORM.rarePrice,
-    },
-  };
-}
-
 export default function CalculatorPage() {
   /**
-   * =========================
-   * 입력 폼 state
-   * =========================
+   * 기본값은 네가 테스트하기 쉽게 적당한 예시로 넣어둠
+   * 실제로는 나중에 /profile에서 자동 주입 가능
    */
-  const [luck, setLuck] = useState(INITIAL_FORM.luck);
-  const [sense, setSense] = useState(INITIAL_FORM.sense);
+  const [luck, setLuck] = useState(23);
+  const [sense, setSense] = useState(0.5);
 
-  const [rumoredBait, setRumoredBait] = useState(INITIAL_FORM.rumoredBait);
-  const [lineTension, setLineTension] = useState(INITIAL_FORM.lineTension);
-  const [doubleHook, setDoubleHook] = useState(INITIAL_FORM.doubleHook);
-  const [schoolFishing, setSchoolFishing] = useState(INITIAL_FORM.schoolFishing);
+  const [rumoredBait, setRumoredBait] = useState(20);
+  const [lineTension, setLineTension] = useState(10);
+  const [doubleHook, setDoubleHook] = useState(0);
+  const [schoolFishing, setSchoolFishing] = useState(0);
 
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(INITIAL_FORM.timeOfDay);
-  const [pondState, setPondState] = useState<PondState>(INITIAL_FORM.pondState);
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>("day");
+  const [pondState, setPondState] = useState<PondState>("abundant");
 
-  const [baitType, setBaitType] = useState<BaitType>(INITIAL_FORM.baitType);
-  const [groundbaitType, setGroundbaitType] = useState<GroundbaitType>(
-    INITIAL_FORM.groundbaitType,
-  );
-  const [lureEnchantLevel, setLureEnchantLevel] = useState(
-    INITIAL_FORM.lureEnchantLevel,
-  );
+  const [baitType, setBaitType] = useState<BaitType>("none");
+  const [groundbaitType, setGroundbaitType] = useState<GroundbaitType>("none");
+  const [lureEnchantLevel, setLureEnchantLevel] = useState(0);
 
-  const [useDoubleHook, setUseDoubleHook] = useState(INITIAL_FORM.useDoubleHook);
-  const [useSchoolFishing, setUseSchoolFishing] = useState(
-    INITIAL_FORM.useSchoolFishing,
-  );
+  const [useDoubleHook, setUseDoubleHook] = useState(false);
+  const [useSchoolFishing, setUseSchoolFishing] = useState(false);
 
-  const [normalPrice, setNormalPrice] = useState(INITIAL_FORM.normalPrice);
-  const [advancedPrice, setAdvancedPrice] = useState(INITIAL_FORM.advancedPrice);
-  const [rarePrice, setRarePrice] = useState(INITIAL_FORM.rarePrice);
+  const [normalPrice, setNormalPrice] = useState(100);
+  const [advancedPrice, setAdvancedPrice] = useState(250);
+  const [rarePrice, setRarePrice] = useState(800);
 
   /**
-   * =========================
-   * 결과 state
-   * =========================
-   * 자동 계산(useMemo) 대신,
-   * 버튼 클릭 시에만 갱신되도록 별도 state로 관리
+   * 입력값이 바뀔 때마다 계산 결과 다시 생성
    */
-  const [result, setResult] = useState<FishingCalculationResult>(() =>
-    calculateFishing(createInitialCalculationInput()),
-  );
-
-  /**
-   * 사용자가 입력값을 바꿨지만 아직 "계산하기"를 누르지 않은 상태인지 표시
-   * true면 현재 결과가 최신 입력값과 다를 수 있다는 뜻
-   */
-  const [isDirty, setIsDirty] = useState(false);
-
-  /**
-   * 현재 폼 입력값을 계산기 입력 객체로 묶어주는 함수
-   * 버튼 클릭 시 이 함수 결과를 calculateFishing에 넣으면 됨
-   */
-  const buildCalculationInput = (): FishingCalculationInput => {
-    return {
+  const result = useMemo(() => {
+    return calculateFishing({
       stats: {
         luck,
         sense,
@@ -192,53 +89,26 @@ export default function CalculatorPage() {
         advanced: advancedPrice,
         rare: rarePrice,
       },
-    };
-  };
+    });
+  }, [
+    luck,
+    sense,
+    rumoredBait,
+    lineTension,
+    doubleHook,
+    schoolFishing,
+    timeOfDay,
+    pondState,
+    baitType,
+    groundbaitType,
+    lureEnchantLevel,
+    useDoubleHook,
+    useSchoolFishing,
+    normalPrice,
+    advancedPrice,
+    rarePrice,
+  ]);
 
-  /**
-   * 계산 버튼 클릭 시 실행
-   * 현재 입력값 기준으로 계산 후 결과 state 갱신
-   */
-  const handleCalculate = () => {
-    const nextResult = calculateFishing(buildCalculationInput());
-    setResult(nextResult);
-    setIsDirty(false);
-  };
-
-  /**
-   * 현재 입력값을 모두 초기값으로 되돌리는 버튼이 필요할 경우를 대비한 함수
-   * 지금 UI에 바로 쓰지는 않아도, 나중에 쉽게 추가 가능
-   */
-  const handleReset = () => {
-    setLuck(INITIAL_FORM.luck);
-    setSense(INITIAL_FORM.sense);
-
-    setRumoredBait(INITIAL_FORM.rumoredBait);
-    setLineTension(INITIAL_FORM.lineTension);
-    setDoubleHook(INITIAL_FORM.doubleHook);
-    setSchoolFishing(INITIAL_FORM.schoolFishing);
-
-    setTimeOfDay(INITIAL_FORM.timeOfDay);
-    setPondState(INITIAL_FORM.pondState);
-
-    setBaitType(INITIAL_FORM.baitType);
-    setGroundbaitType(INITIAL_FORM.groundbaitType);
-    setLureEnchantLevel(INITIAL_FORM.lureEnchantLevel);
-
-    setUseDoubleHook(INITIAL_FORM.useDoubleHook);
-    setUseSchoolFishing(INITIAL_FORM.useSchoolFishing);
-
-    setNormalPrice(INITIAL_FORM.normalPrice);
-    setAdvancedPrice(INITIAL_FORM.advancedPrice);
-    setRarePrice(INITIAL_FORM.rarePrice);
-
-    setResult(calculateFishing(createInitialCalculationInput()));
-    setIsDirty(false);
-  };
-
-  /**
-   * 현재 선택된 미끼/떡밥 설명 표시용
-   */
   const selectedBait = baitOptions.find((item) => item.value === baitType);
   const selectedGroundbait = groundbaitOptions.find(
     (item) => item.value === groundbaitType,
@@ -249,9 +119,7 @@ export default function CalculatorPage() {
       <h1 className="mb-8 text-3xl font-bold">낚시 예상 수익 계산기</h1>
 
       <div className="grid gap-8 lg:grid-cols-2">
-        {/* =========================
-            왼쪽: 입력 영역
-            ========================= */}
+        {/* 왼쪽: 입력 영역 */}
         <section className="space-y-6 rounded-2xl border p-6 shadow-sm">
           <h2 className="text-xl font-semibold">입력값</h2>
 
@@ -259,20 +127,14 @@ export default function CalculatorPage() {
             <NumberField
               label="행운"
               value={luck}
+              onChange={setLuck}
               step={0.1}
-              onChange={(value) => {
-                setLuck(value);
-                setIsDirty(true);
-              }}
             />
             <NumberField
               label="감각"
               value={sense}
+              onChange={setSense}
               step={0.1}
-              onChange={(value) => {
-                setSense(value);
-                setIsDirty(true);
-              }}
             />
           </div>
 
@@ -283,45 +145,30 @@ export default function CalculatorPage() {
               <NumberField
                 label="소문난 미끼 레벨"
                 value={rumoredBait}
+                onChange={setRumoredBait}
                 min={0}
                 max={30}
-                onChange={(value) => {
-                  setRumoredBait(value);
-                  setIsDirty(true);
-                }}
               />
-
               <NumberField
                 label="낚싯줄 장력 레벨"
                 value={lineTension}
+                onChange={setLineTension}
                 min={0}
                 max={30}
-                onChange={(value) => {
-                  setLineTension(value);
-                  setIsDirty(true);
-                }}
               />
-
               <NumberField
                 label="쌍걸이 레벨"
                 value={doubleHook}
+                onChange={setDoubleHook}
                 min={0}
                 max={30}
-                onChange={(value) => {
-                  setDoubleHook(value);
-                  setIsDirty(true);
-                }}
               />
-
               <NumberField
                 label="떼낚시 레벨"
                 value={schoolFishing}
+                onChange={setSchoolFishing}
                 min={0}
                 max={30}
-                onChange={(value) => {
-                  setSchoolFishing(value);
-                  setIsDirty(true);
-                }}
               />
             </div>
           </div>
@@ -333,10 +180,7 @@ export default function CalculatorPage() {
               <SelectField
                 label="시간대"
                 value={timeOfDay}
-                onChange={(value) => {
-                  setTimeOfDay(value as TimeOfDay);
-                  setIsDirty(true);
-                }}
+                onChange={(v) => setTimeOfDay(v as TimeOfDay)}
                 options={[
                   { value: "day", label: "낮" },
                   { value: "night", label: "밤" },
@@ -346,10 +190,7 @@ export default function CalculatorPage() {
               <SelectField
                 label="어장 상태"
                 value={pondState}
-                onChange={(value) => {
-                  setPondState(value as PondState);
-                  setIsDirty(true);
-                }}
+                onChange={(v) => setPondState(v as PondState)}
                 options={[
                   { value: "abundant", label: "풍부" },
                   { value: "normal", label: "보통" },
@@ -360,10 +201,7 @@ export default function CalculatorPage() {
               <SelectField
                 label="미끼 종류"
                 value={baitType}
-                onChange={(value) => {
-                  setBaitType(value as BaitType);
-                  setIsDirty(true);
-                }}
+                onChange={(v) => setBaitType(v as BaitType)}
                 options={baitOptions.map((item) => ({
                   value: item.value,
                   label: item.label,
@@ -373,10 +211,7 @@ export default function CalculatorPage() {
               <SelectField
                 label="떡밥 종류"
                 value={groundbaitType}
-                onChange={(value) => {
-                  setGroundbaitType(value as GroundbaitType);
-                  setIsDirty(true);
-                }}
+                onChange={(v) => setGroundbaitType(v as GroundbaitType)}
                 options={groundbaitOptions.map((item) => ({
                   value: item.value,
                   label: item.label,
@@ -386,12 +221,9 @@ export default function CalculatorPage() {
               <NumberField
                 label="미끼 인챈트 레벨 (Lure)"
                 value={lureEnchantLevel}
+                onChange={setLureEnchantLevel}
                 min={0}
                 max={3}
-                onChange={(value) => {
-                  setLureEnchantLevel(value);
-                  setIsDirty(true);
-                }}
               />
             </div>
 
@@ -414,19 +246,13 @@ export default function CalculatorPage() {
               <CheckboxField
                 label="쌍걸이 사용"
                 checked={useDoubleHook}
-                onChange={(value) => {
-                  setUseDoubleHook(value);
-                  setIsDirty(true);
-                }}
+                onChange={setUseDoubleHook}
               />
 
               <CheckboxField
                 label="떼낚시 사용"
                 checked={useSchoolFishing}
-                onChange={(value) => {
-                  setUseSchoolFishing(value);
-                  setIsDirty(true);
-                }}
+                onChange={setUseSchoolFishing}
               />
             </div>
           </div>
@@ -438,69 +264,26 @@ export default function CalculatorPage() {
               <NumberField
                 label="일반 가격"
                 value={normalPrice}
+                onChange={setNormalPrice}
                 min={0}
-                onChange={(value) => {
-                  setNormalPrice(value);
-                  setIsDirty(true);
-                }}
               />
-
               <NumberField
                 label="고급 가격"
                 value={advancedPrice}
+                onChange={setAdvancedPrice}
                 min={0}
-                onChange={(value) => {
-                  setAdvancedPrice(value);
-                  setIsDirty(true);
-                }}
               />
-
               <NumberField
                 label="희귀 가격"
                 value={rarePrice}
+                onChange={setRarePrice}
                 min={0}
-                onChange={(value) => {
-                  setRarePrice(value);
-                  setIsDirty(true);
-                }}
               />
             </div>
           </div>
-
-          {/* 입력값 변경 후 계산 버튼을 눌러야 반영된다는 안내 */}
-          <div className="rounded-xl border border-dashed p-4 text-sm text-neutral-400">
-            입력값을 수정한 뒤 <span className="font-semibold">계산하기</span> 버튼을 누르면
-            결과가 갱신됩니다.
-            {isDirty && (
-              <p className="mt-2 font-medium text-amber-400">
-                현재 입력값이 변경되었습니다. 아직 계산 결과에 반영되지 않았습니다.
-              </p>
-            )}
-          </div>
-
-          {/* 계산/초기화 버튼 */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={handleCalculate}
-              className="w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black transition hover:bg-neutral-200"
-            >
-              계산하기
-            </button>
-
-            <button
-              type="button"
-              onClick={handleReset}
-              className="w-full rounded-xl border px-4 py-3 text-sm font-semibold transition hover:bg-neutral-900"
-            >
-              초기값으로 되돌리기
-            </button>
-          </div>
         </section>
 
-        {/* =========================
-            오른쪽: 결과 영역
-            ========================= */}
+        {/* 오른쪽: 결과 영역 */}
         <section className="space-y-6 rounded-2xl border p-6 shadow-sm">
           <h2 className="text-xl font-semibold">계산 결과</h2>
 
@@ -520,10 +303,13 @@ export default function CalculatorPage() {
                 `${result.catchTime.finalNibbleSeconds.toFixed(2)}초 (${result.catchTime.finalNibbleTicks.toFixed(2)}틱)`,
               ],
               [
-                "실제 입질 시간",
+                "실제 입질 시간(인챈트 적용)",
                 `${result.catchTime.finalBiteSeconds.toFixed(2)}초 (${result.catchTime.finalBiteTicks.toFixed(2)}틱)`,
               ],
-              ["총 1회 시간", `${result.catchTime.totalCycleSeconds.toFixed(2)}초`],
+              [
+                "총 1회 시간",
+                `${result.catchTime.totalCycleSeconds.toFixed(2)}초`,
+              ],
             ]}
           />
 
@@ -549,24 +335,12 @@ export default function CalculatorPage() {
             title="기대 획득량"
             rows={[
               [
-                "평균 갈증",
-                `${result.catchExpectation.averageThirst.toFixed(0)}`,
+                "기본 획득량",
+                `${result.catchExpectation.baseFishPerCycle.toFixed(3)}개`,
               ],
               [
-                "더블 캐치 확률",
-                `${result.catchExpectation.doubleCatchChancePercent.toFixed(2)}%`,
-              ],
-              [
-                "2회 낚시 확률",
-                `${result.catchExpectation.doubleCastChancePercent.toFixed(2)}%`,
-              ],
-              [
-                "낚시 1회당 기대 물고기 수",
-                `${result.catchExpectation.fishPerCatch.toFixed(3)}개`,
-              ],
-              [
-                "1회 사이클당 기대 낚시 횟수",
-                `${result.catchExpectation.catchCountPerCycle.toFixed(3)}회`,
+                "소문난 미끼 반영 후",
+                `${result.catchExpectation.afterRumoredBaitFishPerCycle.toFixed(3)}개`,
               ],
               [
                 "최종 기대 획득량",
@@ -624,8 +398,6 @@ export default function CalculatorPage() {
 
 /**
  * 숫자 입력 컴포넌트
- * - 공통 스타일 재사용
- * - min/max/step은 선택값
  */
 function NumberField({
   label,
@@ -659,7 +431,7 @@ function NumberField({
 }
 
 /**
- * select 공통 컴포넌트
+ * select 입력 컴포넌트
  */
 function SelectField({
   label,
@@ -691,7 +463,7 @@ function SelectField({
 }
 
 /**
- * checkbox 공통 컴포넌트
+ * 체크박스 입력 컴포넌트
  */
 function CheckboxField({
   label,
@@ -715,8 +487,7 @@ function CheckboxField({
 }
 
 /**
- * 결과 카드 공통 컴포넌트
- * rows는 [왼쪽 제목, 오른쪽 값] 배열
+ * 결과 카드 컴포넌트
  */
 function ResultCard({
   title,
@@ -736,7 +507,7 @@ function ResultCard({
             className="flex items-center justify-between gap-4 text-sm"
           >
             <span className="text-neutral-500">{key}</span>
-            <span className="text-right font-medium">{value}</span>
+            <span className="font-medium">{value}</span>
           </div>
         ))}
       </div>
