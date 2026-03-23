@@ -17,6 +17,11 @@ export type FishGrade = "normal" | "advanced" | "rare";
 export type PondState = "abundant" | "normal" | "depleted";
 
 /**
+ * 갈증 최소치
+ */
+export type ThirstMin = 15 | 10 | 5 | 1;
+
+/**
  * 시간대
  * day   = 낮
  * night = 밤
@@ -70,6 +75,9 @@ export interface FishingSkills {
  * 계산기 환경값
  */
 export interface FishingEnvironment {
+  /** 주스를 마시기 전까지 허용하는 최소 갈증값 */
+  thirstMin: ThirstMin;
+
   /** 낮 / 밤 */
   timeOfDay: TimeOfDay;
 
@@ -87,7 +95,7 @@ export interface FishingEnvironment {
    * 0 ~ 3
    * 마인크래프트 기본 규칙 기준:
    * 레벨당 5초(100틱)씩 대기 시간 감소
-   * -> 루나 계산기에서는 "기척 시간"에만 반영
+   * -> 루나 계산기에서는 표시값(display)에는 반영하지 않고, 실제 체감용 최종 기척 시간(final)에만 반영한다.
    */
   lureEnchantLevel: number;
 
@@ -255,8 +263,18 @@ export interface GradeRatioResult {
  * 기대 획득량 결과
  */
 export interface CatchExpectationResult {
-  /** 갈증 평균값(15 고정) */
-  averageThirst: number;
+  /** 사용자가 드롭박스에서 선택한 최소 갈증값 */
+  selectedThirstMin: 15 | 10 | 5 | 1;
+
+  /**
+   * 최소 갈증값 기준으로 계산한 유효 갈증 계수
+   * 예:
+   * 15 -> 1
+   * 10 -> 0.8864...
+   * 5  -> 0.7656...
+   * 1  -> 0.6625
+   */
+  effectiveThirstMultiplier: number;
 
   /**
    * 더블 캐치 확률

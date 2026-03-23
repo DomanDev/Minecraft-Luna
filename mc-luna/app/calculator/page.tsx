@@ -7,6 +7,7 @@ import type {
   GroundbaitType,
   PondState,
   TimeOfDay,
+  ThirstMin,
   FishingCalculationInput,
   FishingCalculationResult,
 } from "../../src/lib/fishing/types";
@@ -56,26 +57,27 @@ const groundbaitOptions: {
  */
 const INITIAL_FORM = {
   luck: 23,
-  sense: 0.5,
+  sense: 26,
 
   rumoredBait: 20,
   lineTension: 10,
   doubleHook: 0,
   schoolFishing: 0,
 
-  timeOfDay: "night" as TimeOfDay,
+  timeOfDay: "day" as TimeOfDay,
   pondState: "abundant" as PondState,
 
   baitType: "none" as BaitType,
   groundbaitType: "none" as GroundbaitType,
   lureEnchantLevel: 3,
+  thirstMin: 10 as ThirstMin, // 기본값: 보통 10 이하에서 주스 마시는 플레이 기준
 
   useDoubleHook: false,
   useSchoolFishing: false,
 
-  normalPrice: 7,
-  advancedPrice: 14,
-  rarePrice: 26,
+  normalPrice: 8,
+  advancedPrice: 20,
+  rarePrice: 27,
 };
 
 /**
@@ -100,6 +102,7 @@ function createInitialCalculationInput(): FishingCalculationInput {
       baitType: INITIAL_FORM.baitType,
       groundbaitType: INITIAL_FORM.groundbaitType,
       lureEnchantLevel: INITIAL_FORM.lureEnchantLevel,
+      thirstMin: INITIAL_FORM.thirstMin,
       useDoubleHook: INITIAL_FORM.useDoubleHook,
       useSchoolFishing: INITIAL_FORM.useSchoolFishing,
     },
@@ -135,7 +138,7 @@ export default function CalculatorPage() {
   const [lureEnchantLevel, setLureEnchantLevel] = useState(
     INITIAL_FORM.lureEnchantLevel,
   );
-
+  const [thirstMin, setThirstMin] = useState<ThirstMin>(INITIAL_FORM.thirstMin);
   const [useDoubleHook, setUseDoubleHook] = useState(INITIAL_FORM.useDoubleHook);
   const [useSchoolFishing, setUseSchoolFishing] = useState(
     INITIAL_FORM.useSchoolFishing,
@@ -184,6 +187,7 @@ export default function CalculatorPage() {
         baitType,
         groundbaitType,
         lureEnchantLevel,
+        thirstMin,
         useDoubleHook,
         useSchoolFishing,
       },
@@ -224,6 +228,7 @@ export default function CalculatorPage() {
     setBaitType(INITIAL_FORM.baitType);
     setGroundbaitType(INITIAL_FORM.groundbaitType);
     setLureEnchantLevel(INITIAL_FORM.lureEnchantLevel);
+    setThirstMin(INITIAL_FORM.thirstMin);
 
     setUseDoubleHook(INITIAL_FORM.useDoubleHook);
     setUseSchoolFishing(INITIAL_FORM.useSchoolFishing);
@@ -393,6 +398,21 @@ export default function CalculatorPage() {
                   setIsDirty(true);
                 }}
               />
+
+              <SelectField
+                label="갈증 최소치"
+                value={String(thirstMin)}
+                onChange={(value) => {
+                  setThirstMin(Number(value) as ThirstMin);
+                  setIsDirty(true);
+                }}
+                options={[
+                  { value: "15", label: "15 이상 유지" },
+                  { value: "10", label: "10 이상 유지" },
+                  { value: "5", label: "5 이상 유지" },
+                  { value: "1", label: "1 이상 유지" },
+                ]}
+              />
             </div>
 
             <div className="rounded-xl bg-neutral-50 p-4 text-sm dark:bg-neutral-900">
@@ -544,10 +564,6 @@ export default function CalculatorPage() {
           <ResultCard
             title="기대 획득량"
             rows={[
-              [
-                "평균 갈증",
-                `${result.catchExpectation.averageThirst.toFixed(0)}`,
-              ],
               [
                 "더블 캐치 확률",
                 `${result.catchExpectation.doubleCatchChancePercent.toFixed(2)}%`,

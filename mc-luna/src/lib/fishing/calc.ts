@@ -58,13 +58,34 @@ export const DEFAULT_FISHING_CONFIG: FishingCalcConfig = {
 
   maxThirst: 100,
   averageThirst: 75,
-};
+}
 
 /**
- * 소수점 버림 함수
+ * 갈증 최소치에 대한 유효 계수 계산 함수
  */
-function floorTick(value: number): number {
-  return Math.floor(value);
+function getEffectiveThirstMultiplier(thirstMin: 15 | 10 | 5 | 1): number {
+  switch (thirstMin) {
+    // 갈증 20~15 유지
+    case 15:
+      return 1;
+
+    // 갈증 10~20 유지
+    case 10:
+      // 20~15: 6칸 * 1
+      // 14~10: 5칸 * 0.75
+      return (6 * 1 + 5 * 0.75) / 11; // 0.886363...
+
+    // 갈증 5~20 유지
+    case 5:
+      // 20~15, 14~10, 9~5
+      return (6 * 1 + 5 * 0.75 + 5 * 0.5) / 16; // 0.765625
+
+    case 1:
+      return (6 * 1 + 5 * 0.75 + 5 * 0.5 + 4 * 0.25) / 20; // 0.6625
+
+    default:
+      return 1;
+  }
 }
 
 /**
@@ -130,16 +151,16 @@ function mergeConfig(config?: Partial<FishingCalcConfig>): FishingCalcConfig {
 
 /**
  * 1회 낚시 시간 계산
- *
+ *기본값
  * 계산 순서:
  * 1. 기본값
  * 2. 감각 적용
- * 3. 미끼 인챈트 적용 (기척만)
- * 4. 밤 보정
- * 5. 어장 보정
- * 6. 미끼 보정
- * 7. 떡밥 보정
- * 8. 떼낚시 고정 감소
+ * 3. 밤 보정
+ * 4. 어장 보정
+ * 5. 미끼 보정
+ * 6. 떡밥 보정
+ * 7. 떼낚시 고정 감소
+ * 8. 미끼 인챈트 적용 (기척만)
  *
  * 왜 이 순서로 했는가?
  * - 감각/인챈트는 기본 대기시간을 직접 깎는 성격으로 보고 먼저 적용
@@ -361,16 +382,9 @@ export function calculateCatchExpectation(
   const { skills, environment } = input;
 
   /**
-   * 평균 갈증값
-   * 실전 기준 15의 1%=75 고정
+   * 갈증 유효계수 계산
    */
-  const averageThirst = config.averageThirst;
-
-  /**
-   * 갈증의 1.0%
-   * 예: 갈증 15 -> 15%
-   */
-  const thirstPercent = averageThirst;
+  const effectiveThirstMultiplier = getEffectiveThirstMultiplier(environment.thirstMin);
 
   /**
    * 소문난 미끼 수치 = 어획량 증가율
@@ -387,7 +401,7 @@ export function calculateCatchExpectation(
    * 최종 = 18.9%
    */
   const doubleCatchChancePercent = clamp(
-    6 * (thirstPercent / 100) + rumoredBaitChancePercent,
+    6 * effectiveThirstMultiplier + rumoredBaitChancePercent,
     0,
     100,
   );
@@ -428,7 +442,8 @@ export function calculateCatchExpectation(
   const expCatchCountPerCycle = catchCountPerCycle;
 
   return {
-    averageThirst: round(averageThirst),
+    selectedThirstMin: environment.thirstMin,
+    effectiveThirstMultiplier: round(effectiveThirstMultiplier, 4),
     doubleCatchChancePercent: round(doubleCatchChancePercent),
     doubleCastChancePercent: round(doubleCastChancePercent),
     fishPerCatch: round(fishPerCatch),
