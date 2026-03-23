@@ -214,8 +214,8 @@ export function calculateCatchTime(input: FishingCalculationInput): CatchTimeRes
    * 여기까지가 "루나서버 상단 표시값" 기준
    * 즉, 인챈트 미적용 표시용 값
    */
-  const displayNibbleTicks = floorTick(clamp(afterSchoolFishingNibbleTicks, 1));
-  const displayBiteTicks = floorTick(clamp(afterSchoolFishingBiteTicks, 1));
+  const displayNibbleTicks = clamp(afterSchoolFishingNibbleTicks, 1);
+  const displayBiteTicks = clamp(afterSchoolFishingBiteTicks, 1);
 
   const displayNibbleSeconds = ticksToSeconds(displayNibbleTicks);
   const displayBiteSeconds = ticksToSeconds(displayBiteTicks);

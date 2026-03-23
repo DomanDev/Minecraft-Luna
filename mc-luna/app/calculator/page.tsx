@@ -512,16 +512,12 @@ export default function CalculatorPage() {
                 `${result.catchTime.displayNibbleSeconds.toFixed(2)}초 (${result.catchTime.displayNibbleTicks.toFixed(2)}틱)`,
               ],
               [
-                "표시 입질 시간(인챈트 미적용)",
-                `${result.catchTime.displayBiteSeconds.toFixed(2)}초 (${result.catchTime.displayBiteTicks.toFixed(2)}틱)`,
-              ],
-              [
                 "실제 기척 시간(인챈트 적용)",
                 `${result.catchTime.finalNibbleSeconds.toFixed(2)}초 (${result.catchTime.finalNibbleTicks.toFixed(2)}틱)`,
               ],
               [
-                "실제 입질 시간",
-                `${result.catchTime.finalBiteSeconds.toFixed(2)}초 (${result.catchTime.finalBiteTicks.toFixed(2)}틱)`,
+                "표시 입질 시간(인챈트 미적용)",
+                `${result.catchTime.displayBiteSeconds.toFixed(2)}초 (${result.catchTime.displayBiteTicks.toFixed(2)}틱)`,
               ],
               ["총 1회 시간", `${result.catchTime.totalCycleSeconds.toFixed(2)}초`],
             ]}
