@@ -166,6 +166,27 @@ export default function CalculatorPage() {
   const [isDirty, setIsDirty] = useState(false);
 
   /**
+   * =========================
+   * 경험치 계산기 state
+   * =========================
+   * 오른쪽 결과 영역 하단에서 별도로 계산
+   * - expPerFish: 커스텀 물고기 1마리당 경험치
+   * - remainingExp: 레벨업까지 남은 경험치
+   * - expResult: 버튼 클릭 시 계산된 결과
+   */
+  const [expPerFish, setExpPerFish] = useState(72);
+  const [remainingExp, setRemainingExp] = useState(0);
+
+  const [expResult, setExpResult] = useState<{
+    customFishPerHour: number;
+    expPerHour: number;
+    levelUpHours: number;
+    levelUpMinutes: number;
+  } | null>(null);
+
+  const [isExpDirty, setIsExpDirty] = useState(false);
+
+  /**
    * 현재 폼 입력값을 계산기 입력 객체로 묶어주는 함수
    * 버튼 클릭 시 이 함수 결과를 calculateFishing에 넣으면 됨
    */
@@ -249,6 +270,72 @@ export default function CalculatorPage() {
     (item) => item.value === groundbaitType,
   );
 
+  /**
+   * 시간을 "~시간 ~분" 형식으로 변환
+   * - 시간이 1 미만이면 0시간 N분으로 표시
+   * - 경험치가 0이거나 계산 불가면 null 처리
+   */
+  const formatLevelUpTime = (hours: number) => {
+    if (!Number.isFinite(hours) || hours < 0) {
+      return "계산 불가";
+    }
+
+    const totalMinutes = Math.ceil(hours * 60);
+    const hh = Math.floor(totalMinutes / 60);
+    const mm = totalMinutes % 60;
+
+    return `${hh}시간 ${mm}분`;
+  };
+
+  /**
+   * 경험치 계산
+   *
+   * 현재 요청 기준:
+   * - 시간당 커스텀 물고기 수 =
+   *   시간당 전체 기대 획득량 × 커스텀 물고기 확률
+   * - 시간당 획득 경험치 =
+   *   시간당 커스텀 물고기 수 × 물고기 1마리당 경험치
+   *
+   * 참고:
+   * 예전 "더블 캐치 추가분은 경험치 없음" 정책을 유지하려면
+   * finalFishPerCycle 대신 expCatchCountPerCycle 기반으로 바꿔야 함.
+   */
+  const handleCalculateExp = () => {
+    const cyclesPerHour =
+      result.catchTime.totalCycleSeconds > 0
+        ? 3600 / result.catchTime.totalCycleSeconds
+        : 0;
+
+    const customFishPerHour =
+      cyclesPerHour *
+      result.catchExpectation.expCatchCountPerCycle *
+      (result.value.customFishChancePercent / 100);
+
+    const nextExpPerHour = customFishPerHour * expPerFish;
+
+    const levelUpHours =
+      nextExpPerHour > 0 ? remainingExp / nextExpPerHour : Number.POSITIVE_INFINITY;
+
+    setExpResult({
+      customFishPerHour,
+      expPerHour: nextExpPerHour,
+      levelUpHours,
+      levelUpMinutes: levelUpHours * 60,
+    });
+
+    setIsExpDirty(false);
+  };
+
+  /**
+   * 경험치 계산 입력 초기화
+   */
+  const handleResetExp = () => {
+    setExpPerFish(72);
+    setRemainingExp(0);
+    setExpResult(null);
+    setIsExpDirty(false);
+  };
+  
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
       <h1 className="mb-8 text-3xl font-bold">낚시 예상 수익 계산기</h1>
@@ -619,15 +706,92 @@ export default function CalculatorPage() {
             ]}
           />
 
-          <details className="rounded-xl border p-4">
-            <summary className="cursor-pointer font-medium">
-              단계별 계산값 / 디버그 JSON 보기
-            </summary>
+          <div className="rounded-xl border p-4">
+            <h3 className="mb-3 font-semibold">경험치 계산</h3>
 
-            <pre className="mt-4 overflow-x-auto rounded-lg bg-black p-4 text-sm text-white">
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          </details>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <NumberField
+                label="물고기 1마리당 경험치"
+                value={expPerFish}
+                min={0}
+                step={0.1}
+                onChange={(value) => {
+                // 소수점 첫째 자리까지만 허용
+                const rounded = Math.round(value * 10) / 10;
+                setExpPerFish(rounded);
+                setIsExpDirty(true);
+                }}
+              />
+
+              <NumberField
+                label="잔여 경험치"
+                value={remainingExp}
+                min={0}
+                step={1}
+                onChange={(value) => {
+                  setRemainingExp(value);
+                  setIsExpDirty(true);
+                }}
+              />
+            </div>
+
+            <div className="mt-4 rounded-xl bg-neutral-50 p-4 text-sm dark:bg-neutral-900">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-neutral-500">시간당 커스텀 물고기 수</span>
+                <span className="text-right font-medium">
+                  {expResult
+                    ? `${Math.round(expResult.customFishPerHour).toLocaleString()}마리`
+                    : "-"}
+                </span>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between gap-4">
+                <span className="text-neutral-500">시간당 획득 경험치</span>
+                <span className="text-right font-medium">
+                  {expResult
+                    ? `${Math.round(expResult.expPerHour).toLocaleString()}`
+                    : "-"}
+                </span>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between gap-4">
+                <span className="text-neutral-500">레벨업까지 예상 시간</span>
+                <span className="text-right font-medium">
+                  {expResult
+                    ? formatLevelUpTime(expResult.levelUpHours)
+                    : "-"}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-dashed p-4 text-sm text-neutral-400">
+              오른쪽 경험치 계산도 <span className="font-semibold">계산하기</span> 버튼을
+              눌러야 반영됩니다.
+              {isExpDirty && (
+                <p className="mt-2 font-medium text-amber-400">
+                  경험치 입력값이 변경되었습니다. 아직 계산 결과에 반영되지 않았습니다.
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={handleCalculateExp}
+                className="w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black transition hover:bg-neutral-200"
+              >
+                경험치 계산하기
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetExp}
+                className="w-full rounded-xl border px-4 py-3 text-sm font-semibold transition hover:bg-neutral-900"
+              >
+                경험치 입력 초기화
+              </button>
+            </div>
+          </div>
         </section>
       </div>
     </main>
