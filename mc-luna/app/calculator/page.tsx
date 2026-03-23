@@ -178,13 +178,18 @@ export default function CalculatorPage() {
   const [remainingExp, setRemainingExp] = useState(0);
 
   const [expResult, setExpResult] = useState<{
-    customFishPerHour: number;
+    catchesPerHour: number;
     expPerHour: number;
     levelUpHours: number;
     levelUpMinutes: number;
   } | null>(null);
 
   const [isExpDirty, setIsExpDirty] = useState(false);
+
+  const catchesPerHour =
+  result.catchTime.totalCycleSeconds > 0
+    ? 3600 / result.catchTime.totalCycleSeconds
+    : 0;
 
   /**
    * 현재 폼 입력값을 계산기 입력 객체로 묶어주는 함수
@@ -306,18 +311,18 @@ export default function CalculatorPage() {
         ? 3600 / result.catchTime.totalCycleSeconds
         : 0;
 
-    const customFishPerHour =
+    const expFishPerHour =
       cyclesPerHour *
       result.catchExpectation.expCatchCountPerCycle *
       (result.value.customFishChancePercent / 100);
 
-    const nextExpPerHour = customFishPerHour * expPerFish;
+    const nextExpPerHour = expFishPerHour * expPerFish;
 
     const levelUpHours =
       nextExpPerHour > 0 ? remainingExp / nextExpPerHour : Number.POSITIVE_INFINITY;
 
     setExpResult({
-      customFishPerHour,
+      catchesPerHour: cyclesPerHour,
       expPerHour: nextExpPerHour,
       levelUpHours,
       levelUpMinutes: levelUpHours * 60,
@@ -626,7 +631,7 @@ export default function CalculatorPage() {
                 "표시 입질 시간(인챈트 미적용)",
                 `${result.catchTime.displayBiteSeconds.toFixed(2)}초 (${result.catchTime.displayBiteTicks.toFixed(2)}틱)`,
               ],
-              ["총 1회 시간", `${result.catchTime.totalCycleSeconds.toFixed(2)}초`],
+              ["최종 1회 낚시 시간(기척+입질)", `${result.catchTime.totalCycleSeconds.toFixed(2)}초`],
             ]}
           />
 
@@ -656,19 +661,19 @@ export default function CalculatorPage() {
                 `${result.catchExpectation.doubleCatchChancePercent.toFixed(2)}%`,
               ],
               [
-                "2회 낚시 확률",
-                `${result.catchExpectation.doubleCastChancePercent.toFixed(2)}%`,
-              ],
-              [
                 "낚시 1회당 기대 물고기 수",
                 `${result.catchExpectation.fishPerCatch.toFixed(3)}개`,
               ],
               [
-                "1회 사이클당 기대 낚시 횟수",
+                "2회 낚시 확률",
+                `${result.catchExpectation.doubleCastChancePercent.toFixed(2)}%`,
+              ],
+              [
+                "사이클 1회당 기대 낚시 횟수",
                 `${result.catchExpectation.catchCountPerCycle.toFixed(3)}회`,
               ],
               [
-                "최종 기대 획득량",
+                "최종 기대 획득량(물고기 수x낚시 횟수)",
                 `${result.catchExpectation.finalFishPerCycle.toFixed(3)}개`,
               ],
             ]}
@@ -679,15 +684,16 @@ export default function CalculatorPage() {
             rows={[
               [
                 "물고기 1개 기대가치",
-                `${Math.round(result.value.expectedValuePerFish).toLocaleString()}`,
+                `${Math.round(result.value.expectedValuePerFish).toLocaleString()}셀`,
               ],
               [
-                "1회 기대 수익",
-                `${Math.round(result.value.expectedValuePerCycle).toLocaleString()}`,
+                "낚시 1회당 기대 수익",
+                `${Math.round(result.value.expectedValuePerCycle).toLocaleString()}셀`,
               ],
+              [ "시간당 낚시 횟수", `${Math.round(catchesPerHour).toLocaleString()}회`],
               [
                 "시간당 기대 수익",
-                `${Math.round(result.value.expectedValuePerHour).toLocaleString()}`,
+                `${Math.round(result.value.expectedValuePerHour).toLocaleString()}셀`,
               ],
             ]}
           />
@@ -737,10 +743,10 @@ export default function CalculatorPage() {
 
             <div className="mt-4 rounded-xl bg-neutral-50 p-4 text-sm dark:bg-neutral-900">
               <div className="flex items-center justify-between gap-4">
-                <span className="text-neutral-500">시간당 커스텀 물고기 수</span>
+                <span className="text-neutral-500">시간당 낚시 횟수</span>
                 <span className="text-right font-medium">
                   {expResult
-                    ? `${Math.round(expResult.customFishPerHour).toLocaleString()}마리`
+                    ? `${Math.round(expResult.catchesPerHour).toLocaleString()}회`
                     : "-"}
                 </span>
               </div>
