@@ -121,7 +121,12 @@ export default function CalculatorPage() {
    * 입력 폼 state
    * =========================
    */
+
+  // 프로필 불러오기 여부
   const [profileLoaded, setProfileLoaded] = useState(false);
+
+  // 플랜 타입 및 입력값 수정가능 여부
+  const [planType, setPlanType] = useState<"free" | "pro" | null>(null);
 
   const [luck, setLuck] = useState(INITIAL_FORM.luck);
   const [sense, setSense] = useState(INITIAL_FORM.sense);
@@ -179,6 +184,21 @@ export default function CalculatorPage() {
 
       if (!user || !isMounted) return;
 
+      // 사용자 프로필 DB에서 플랜 타입 불러오기
+      const { data: profileRow, error: profileError } = await supabase
+      .from("profiles")
+      .select("plan_type")
+      .eq("id", user.id)
+      .single();
+
+      if (profileError) {
+        console.warn("profiles 조회 실패:", profileError.message);
+        return;
+      }
+
+      const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
+
+      // 낚시 프로필 DB에서 정보 불러오기
       const { data: fishingProfile, error: fishingProfileError } = await supabase
         .from("fishing_profiles")
         .select("*")
@@ -187,6 +207,7 @@ export default function CalculatorPage() {
 
       if (fishingProfileError || !fishingProfile) {
         console.warn("fishing_profiles 조회 실패:", fishingProfileError?.message);
+        setPlanType(nextPlanType);
         return;
       }
 
@@ -228,6 +249,7 @@ export default function CalculatorPage() {
       setDoubleHook(Number(skillMap["쌍걸이"] ?? INITIAL_FORM.doubleHook));
       setSchoolFishing(Number(skillMap["떼낚시"] ?? INITIAL_FORM.schoolFishing));
 
+      setPlanType(nextPlanType);
       setProfileLoaded(true);
       setIsDirty(true);
     };
@@ -264,6 +286,25 @@ export default function CalculatorPage() {
   result.catchTime.totalCycleSeconds > 0
     ? 3600 / result.catchTime.totalCycleSeconds
     : 0;
+
+  const isProUser = planType === "pro";
+  const disableProfileFields = profileLoaded && !isProUser;
+  const disableDoubleHookCheckbox = doubleHook <= 0;
+  const disableSchoolFishingCheckbox = schoolFishing <= 0;
+
+  useEffect(() => {
+    if (doubleHook <= 0 && useDoubleHook) {
+      setUseDoubleHook(false);
+      setIsDirty(true);
+    }
+  }, [doubleHook, useDoubleHook]);
+
+  useEffect(() => {
+    if (schoolFishing <= 0 && useSchoolFishing) {
+      setUseSchoolFishing(false);
+      setIsDirty(true);
+    }
+  }, [schoolFishing, useSchoolFishing]);
 
   /**
    * 현재 폼 입력값을 계산기 입력 객체로 묶어주는 함수
@@ -307,7 +348,6 @@ export default function CalculatorPage() {
     const nextResult = calculateFishing(buildCalculationInput());
     setResult(nextResult);
     setIsDirty(false);
-    setProfileLoaded(false);
   };
 
   /**
@@ -315,6 +355,9 @@ export default function CalculatorPage() {
    * 지금 UI에 바로 쓰지는 않아도, 나중에 쉽게 추가 가능
    */
   const handleReset = () => {
+    setProfileLoaded(false);
+    setPlanType(null);
+
     setLuck(INITIAL_FORM.luck);
     setSense(INITIAL_FORM.sense);
 
@@ -429,29 +472,42 @@ export default function CalculatorPage() {
 
           {profileLoaded && (
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
-              프로필에 저장된 낚시 스탯과 스킬 레벨을 자동으로 불러왔습니다.
+              프로필 데이터를 불러왔습니다.
+              <div className="mt-1 text-neutral-400">
+                플랜: <b>{isProUser ? "Pro" : "Free"}</b> <br></br>
+                {isProUser
+                  ? "→프로필 기반 낚시 스탯/스킬 값을 수정할 수 있습니다"
+                  : "→프로필에서 불러온 낚시 스탯/스킬 값은 수정할 수 없습니다.(Pro 전용기능)"}
+              </div>
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <NumberField
-              label="행운"
-              value={luck}
-              step={0.1}
-              onChange={(value) => {
-                setLuck(value);
-                setIsDirty(true);
-              }}
-            />
-            <NumberField
-              label="감각"
-              value={sense}
-              step={0.1}
-              onChange={(value) => {
-                setSense(value);
-                setIsDirty(true);
-              }}
-            />
+          <div className="space-y-3 rounded-xl border p-4">
+            <h3 className="font-semibold">낚시 스탯</h3>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <NumberField
+                label="행운"
+                value={luck}
+                min={0}
+                onChange={(value) => {
+                  setLuck(value);
+                  setIsDirty(true);
+                }}
+                disabled={disableProfileFields}
+              />
+
+              <NumberField
+                label="감각"
+                value={sense}
+                min={0}
+                onChange={(value) => {
+                  setSense(value);
+                  setIsDirty(true);
+                }}
+                disabled={disableProfileFields}
+              />
+            </div>
           </div>
 
           <div className="space-y-3 rounded-xl border p-4">
@@ -467,6 +523,7 @@ export default function CalculatorPage() {
                   setRumoredBait(value);
                   setIsDirty(true);
                 }}
+                disabled={disableProfileFields}
               />
 
               <NumberField
@@ -478,6 +535,7 @@ export default function CalculatorPage() {
                   setLineTension(value);
                   setIsDirty(true);
                 }}
+                disabled={disableProfileFields}
               />
 
               <NumberField
@@ -489,6 +547,7 @@ export default function CalculatorPage() {
                   setDoubleHook(value);
                   setIsDirty(true);
                 }}
+                disabled={disableProfileFields}
               />
 
               <NumberField
@@ -500,6 +559,7 @@ export default function CalculatorPage() {
                   setSchoolFishing(value);
                   setIsDirty(true);
                 }}
+                disabled={disableProfileFields}
               />
             </div>
           </div>
@@ -590,11 +650,11 @@ export default function CalculatorPage() {
 
             <div className="rounded-xl bg-neutral-50 p-4 text-sm dark:bg-neutral-900">
               <p>
-                <span className="font-semibold">선택한 미끼:</span>{" "}
+                <span className="font-semibold">선택한 미끼 효과:</span>{" "}
                 {selectedBait?.description}
               </p>
               <p className="mt-2">
-                <span className="font-semibold">선택한 떡밥:</span>{" "}
+                <span className="font-semibold">선택한 떡밥 효과:</span>{" "}
                 {selectedGroundbait?.description}
               </p>
             </div>
@@ -611,6 +671,7 @@ export default function CalculatorPage() {
                   setUseDoubleHook(value);
                   setIsDirty(true);
                 }}
+                disabled={disableDoubleHookCheckbox}
               />
 
               <CheckboxField
@@ -620,6 +681,7 @@ export default function CalculatorPage() {
                   setUseSchoolFishing(value);
                   setIsDirty(true);
                 }}
+                disabled={disableSchoolFishingCheckbox}
               />
             </div>
           </div>
@@ -897,6 +959,7 @@ function NumberField({
   min,
   max,
   step = 1,
+  disabled = false,
 }: {
   label: string;
   value: number;
@@ -904,6 +967,7 @@ function NumberField({
   min?: number;
   max?: number;
   step?: number;
+  disabled?: boolean;
 }) {
   return (
     <label className="space-y-2">
@@ -914,8 +978,9 @@ function NumberField({
         min={min}
         max={max}
         step={step}
+        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full rounded-xl border px-3 py-2 outline-none focus:ring"
+        className="w-full rounded-xl border px-3 py-2 outline-none focus:ring disabled:opacity-50 disabled:cursor-not-allowed"
       />
     </label>
   );
@@ -960,16 +1025,23 @@ function CheckboxField({
   label,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string;
   checked: boolean;
   onChange: (value: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
-    <label className="flex items-center gap-3 rounded-xl border px-4 py-3">
+    <label
+      className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
+        disabled ? "cursor-not-allowed opacity-50" : ""
+      }`}
+    >
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
       <span className="text-sm font-medium">{label}</span>
