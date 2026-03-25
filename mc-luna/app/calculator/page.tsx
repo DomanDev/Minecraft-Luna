@@ -762,6 +762,7 @@ export default function CalculatorPage() {
           <ResultCard
             title="1회 낚시 시간"
             rows={[
+              ["낚싯대 던지는 시간", `${result.catchTime.castStartSeconds.toFixed(2)}초`],
               [
                 "표시 기척 시간(인챈트 미적용)",
                 `${result.catchTime.displayNibbleSeconds.toFixed(2)}초 (${result.catchTime.displayNibbleTicks.toFixed(2)}틱)`,
@@ -774,7 +775,8 @@ export default function CalculatorPage() {
                 "표시 입질 시간(인챈트 미적용)",
                 `${result.catchTime.displayBiteSeconds.toFixed(2)}초 (${result.catchTime.displayBiteTicks.toFixed(2)}틱)`,
               ],
-              ["최종 1회 낚시 시간(기척+입질)", `${result.catchTime.totalCycleSeconds.toFixed(2)}초`],
+              ["건져올리는 시간", `${result.catchTime.reelInSeconds.toFixed(2)}초`],
+              ["※최종 1회 낚시 시간(던짐+기척+입질+건져올림)", `${result.catchTime.totalCycleSeconds.toFixed(2)}초`],
             ]}
           />
 

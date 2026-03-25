@@ -128,6 +128,11 @@ export interface FishingCalcConfig {
   baseNibbleTicks: number;
   baseBiteTicks: number;
 
+  // 낚싯대 던지는 시간
+  castStartSeconds: number;   
+  // 물고기 물고 난 뒤 건져올리는 시간
+  reelInSeconds: number;     
+
   /**
    * 감각 계수
    * 기척 = 360 - (1.2 * 감각)
@@ -243,6 +248,11 @@ export interface CatchTimeResult {
 
   finalNibbleSeconds: number;
   finalBiteSeconds: number;
+
+  castStartSeconds: number;
+  reelInSeconds: number;
+  waitSeconds: number;
+
   totalCycleSeconds: number;
 }
 

@@ -56,6 +56,9 @@ export const DEFAULT_FISHING_CONFIG: FishingCalcConfig = {
   // Minecraft 기본 규칙 기준 :contentReference[oaicite:2]{index=2}
   lureEnchantReductionTicksPerLevel: 100,
 
+  castStartSeconds: 0.7,
+  reelInSeconds: 0.8,
+
   maxThirst: 100,
   averageThirst: 75,
 }
@@ -261,7 +264,12 @@ export function calculateCatchTime(input: FishingCalculationInput): CatchTimeRes
 
   const finalNibbleSeconds = ticksToSeconds(finalNibbleTicks);
   const finalBiteSeconds = ticksToSeconds(finalBiteTicks);
-  const totalCycleSeconds = finalNibbleSeconds + finalBiteSeconds;
+
+  const castStartSeconds = config.castStartSeconds;
+  const reelInSeconds = config.reelInSeconds;
+  const waitSeconds = finalNibbleSeconds + finalBiteSeconds;
+
+  const totalCycleSeconds = castStartSeconds + waitSeconds + reelInSeconds;
 
   return {
     baseNibbleTicks: round(baseNibbleTicks),
@@ -298,6 +306,11 @@ export function calculateCatchTime(input: FishingCalculationInput): CatchTimeRes
 
     finalNibbleSeconds: round(finalNibbleSeconds),
     finalBiteSeconds: round(finalBiteSeconds),
+
+    castStartSeconds: round(castStartSeconds),
+    reelInSeconds: round(reelInSeconds),
+    waitSeconds: round(waitSeconds),
+    
     totalCycleSeconds: round(totalCycleSeconds),
   };
 }
