@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { calculateFishing } from "../../src/lib/fishing/calc";
+import { supabase } from "@/src/lib/supabase";
 import type {
   BaitType,
   GroundbaitType,
@@ -120,6 +121,8 @@ export default function CalculatorPage() {
    * 입력 폼 state
    * =========================
    */
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
   const [luck, setLuck] = useState(INITIAL_FORM.luck);
   const [sense, setSense] = useState(INITIAL_FORM.sense);
 
@@ -164,6 +167,77 @@ export default function CalculatorPage() {
    * true면 현재 결과가 최신 입력값과 다를 수 있다는 뜻
    */
   const [isDirty, setIsDirty] = useState(false);
+
+  // 프로필 페이지 저장값 자동 불러오기
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfileToCalculator = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user || !isMounted) return;
+
+      const { data: fishingProfile, error: fishingProfileError } = await supabase
+        .from("fishing_profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (fishingProfileError || !fishingProfile) {
+        console.warn("fishing_profiles 조회 실패:", fishingProfileError?.message);
+        return;
+      }
+
+      const { data: skillLevels, error: skillLevelsError } = await supabase
+        .from("user_skill_levels")
+        .select("skill_id, skill_level")
+        .eq("user_id", user.id);
+
+      if (skillLevelsError) {
+        console.warn("user_skill_levels 조회 실패:", skillLevelsError.message);
+        return;
+      }
+
+      const { data: skillDefinitions, error: skillDefinitionsError } = await supabase
+        .from("skill_definitions")
+        .select("id, skill_name_ko")
+        .eq("job_code", "fishing")
+        .eq("is_enabled", true);
+
+      if (skillDefinitionsError) {
+        console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
+        return;
+      }
+
+      const skillMap = Object.fromEntries(
+        (skillLevels ?? []).map((row) => {
+          const matched = (skillDefinitions ?? []).find((def) => def.id === row.skill_id);
+          return [matched?.skill_name_ko ?? "", row.skill_level];
+        }),
+      );
+
+      if (!isMounted) return;
+
+      setLuck(Number(fishingProfile.luck_total ?? INITIAL_FORM.luck));
+      setSense(Number(fishingProfile.sense_total ?? INITIAL_FORM.sense));
+
+      setRumoredBait(Number(skillMap["소문난 미끼"] ?? INITIAL_FORM.rumoredBait));
+      setLineTension(Number(skillMap["낚싯줄 장력"] ?? INITIAL_FORM.lineTension));
+      setDoubleHook(Number(skillMap["쌍걸이"] ?? INITIAL_FORM.doubleHook));
+      setSchoolFishing(Number(skillMap["떼낚시"] ?? INITIAL_FORM.schoolFishing));
+
+      setProfileLoaded(true);
+      setIsDirty(true);
+    };
+
+    loadProfileToCalculator();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   /**
    * =========================
@@ -233,6 +307,7 @@ export default function CalculatorPage() {
     const nextResult = calculateFishing(buildCalculationInput());
     setResult(nextResult);
     setIsDirty(false);
+    setProfileLoaded(false);
   };
 
   /**
@@ -351,6 +426,12 @@ export default function CalculatorPage() {
             ========================= */}
         <section className="space-y-6 rounded-2xl border p-6 shadow-sm">
           <h2 className="text-xl font-semibold">입력값</h2>
+
+          {profileLoaded && (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+              프로필에 저장된 낚시 스탯과 스킬 레벨을 자동으로 불러왔습니다.
+            </div>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <NumberField
