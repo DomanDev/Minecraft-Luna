@@ -392,7 +392,7 @@ export function calculateCatchExpectation(
   input: FishingCalculationInput,
 ): CatchExpectationResult {
   const config = mergeConfig(input.config);
-  const { skills, environment } = input;
+  const { stats, skills, environment } = input;
 
   /**
    * 갈증 유효계수 계산
@@ -406,15 +406,16 @@ export function calculateCatchExpectation(
 
   /**
    * 더블 캐치 확률
-   * = 6 * (갈증의 1.0%) + 어획량 증가율
+   * = 6 * (갈증의 1.0%) + (0.3 * 행운) + 어획량 증가율
    *
    * 예:
    * 갈증 15 -> 6 * 15% = 0.9
+   * 행운 22.7 -> 0.3 * 22.7 = 6.81
    * 소문난 미끼 20레벨 -> 18
    * 최종 = 18.9%
    */
   const doubleCatchChancePercent = clamp(
-    6 * effectiveThirstMultiplier + rumoredBaitChancePercent,
+    6 * effectiveThirstMultiplier + (0.3 * stats.luck) + rumoredBaitChancePercent,
     0,
     100,
   );
