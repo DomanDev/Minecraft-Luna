@@ -57,11 +57,11 @@ const groundbaitOptions: {
  * - 이후 result의 초기 계산에도 동일하게 사용
  */
 const INITIAL_FORM = {
-  luck: 23,
-  sense: 26,
+  luck: 0,
+  sense: 0,
 
-  rumoredBait: 20,
-  lineTension: 10,
+  rumoredBait: 0,
+  lineTension: 0,
   doubleHook: 0,
   schoolFishing: 0,
 
@@ -76,9 +76,9 @@ const INITIAL_FORM = {
   useDoubleHook: false,
   useSchoolFishing: false,
 
-  normalPrice: 8,
+  normalPrice: 10,
   advancedPrice: 20,
-  rarePrice: 27,
+  rarePrice: 35,
 };
 
 /**
@@ -287,6 +287,9 @@ export default function CalculatorPage() {
     ? 3600 / result.catchTime.totalCycleSeconds
     : 0;
 
+  const customFishPerHour =
+  catchesPerHour * result.catchExpectation.finalCustomFishPerCycle;
+
   const isProUser = planType === "pro";
   const disableProfileFields = profileLoaded && !isProUser;
   const disableDoubleHookCheckbox = doubleHook <= 0;
@@ -430,9 +433,7 @@ export default function CalculatorPage() {
         : 0;
 
     const expFishPerHour =
-      cyclesPerHour *
-      result.catchExpectation.expCatchCountPerCycle *
-      (result.value.customFishChancePercent / 100);
+      cyclesPerHour * result.catchExpectation.expCatchCountPerCycle;
 
     const nextExpPerHour = expFishPerHour * expPerFish;
 
@@ -799,15 +800,34 @@ export default function CalculatorPage() {
           />
 
           <ResultCard
+            title="결과물 확률"
+            rows={[
+              [
+                "바닐라 결과물 확률",
+                `${result.value.vanillaChancePercent.toFixed(2)}%`,
+              ],
+              [
+                "커스텀 물고기 확률",
+                `${result.value.customFishChancePercent.toFixed(2)}%`,
+              ],
+  
+            ]}
+            />
+
+          <ResultCard
             title="기대 획득량"
             rows={[
+              [
+                "낚시 1회당 커스텀 물고기 수",
+                `${result.catchExpectation.customFishPerCatch.toFixed(3)}마리`,
+              ],
               [
                 "더블 캐치 확률",
                 `${result.catchExpectation.doubleCatchChancePercent.toFixed(2)}%`,
               ],
               [
-                "낚시 1회당 기대 물고기 수",
-                `${result.catchExpectation.fishPerCatch.toFixed(3)}개`,
+                "(더블 캐치 적용 후)낚시 1회당 커스텀 물고기 수",
+                `${result.catchExpectation.finalCustomFishPerCatch.toFixed(3)}마리`,
               ],
               [
                 "2회 낚시 확률",
@@ -818,8 +838,8 @@ export default function CalculatorPage() {
                 `${result.catchExpectation.catchCountPerCycle.toFixed(3)}회`,
               ],
               [
-                "최종 기대 획득량(물고기 수x낚시 횟수)",
-                `${result.catchExpectation.finalFishPerCycle.toFixed(3)}개`,
+                "최종 기대 획득량(커스텀 물고기)",
+                `${result.catchExpectation.finalCustomFishPerCycle.toFixed(3)}마리`,
               ],
             ]}
           />
@@ -828,31 +848,24 @@ export default function CalculatorPage() {
             title="기대 수익"
             rows={[
               [
-                "물고기 1개 기대가치",
+                "물고기 1마리 기대가치",
                 `${Math.round(result.value.expectedValuePerFish).toLocaleString()}셀`,
+              ],
+              [
+                "시간당 커스텀 물고기 수",
+                `${customFishPerHour.toFixed(3)}마리`,
               ],
               [
                 "낚시 1회당 기대 수익",
                 `${Math.round(result.value.expectedValuePerCycle).toLocaleString()}셀`,
               ],
-              [ "시간당 낚시 횟수", `${Math.round(catchesPerHour).toLocaleString()}회`],
+              [
+                "시간당 낚시 횟수",
+                `${catchesPerHour.toFixed(2)}회`,
+              ],
               [
                 "시간당 기대 수익",
                 `${Math.round(result.value.expectedValuePerHour).toLocaleString()}셀`,
-              ],
-            ]}
-          />
-
-          <ResultCard
-            title="기타 정보"
-            rows={[
-              [
-                "바닐라 결과물 확률",
-                `${result.value.vanillaChancePercent.toFixed(2)}%`,
-              ],
-              [
-                "커스텀 물고기 확률",
-                `${result.value.customFishChancePercent.toFixed(2)}%`,
               ],
             ]}
           />

@@ -286,9 +286,12 @@ export interface CatchExpectationResult {
    */
   effectiveThirstMultiplier: number;
 
+  /** 커스텀 물고기 확률 (= 100 - 바닐라 결과물 확률) */
+  customFishChancePercent: number;
+
   /**
    * 더블 캐치 확률
-   * = 6 * (갈증의 1.0%) + 소문난 미끼 수치
+   * = 6 * (갈증의 1.0%) + (0.3 * 행운) + 소문난 미끼 수치
    */
   doubleCatchChancePercent: number;
 
@@ -298,26 +301,35 @@ export interface CatchExpectationResult {
    */
   doubleCastChancePercent: number;
 
+  /** 낚시 1회당 기대 커스텀 물고기 수 */
+  customFishPerCatch: number;
+  
+  /** 더블 캐치 적용 후 낚시 1회당 최종 기대 커스텀 물고기 수 */
+  finalCustomFishPerCatch: number;
+
   /**
-   * 낚시 1회당 기대 물고기 수
+   * 전체 물고기 기준 낚시 1회당 기대 획득량
    * 더블 캐치 반영
    */
   fishPerCatch: number;
-  
+
   /**
    * 1회 사이클당 기대 낚시 횟수
    * 쌍걸이 반영
    */
   catchCountPerCycle: number;
 
-  /**
-   * 최종 기대 획득량
-   */
-  finalFishPerCycle: number;
+  /** 최종 기대 획득량(커스텀 물고기) */
+  finalCustomFishPerCycle: number;
 
+  /** 참고용: 전체 물고기 기준 최종 기대 획득량 */
+  finalFishPerCycle: number;
+  
   /**
    * 경험치 계산용 기대 낚시 횟수
+   * 더블 캐치 추가 물고기는 경험치 없음
    * 2회 낚시는 경험치 2번 획득
+   * 바닐라 결과물은 제외
    */
   expCatchCountPerCycle: number;
 }

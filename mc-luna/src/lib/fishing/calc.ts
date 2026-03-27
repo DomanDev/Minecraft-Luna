@@ -405,14 +405,16 @@ export function calculateCatchExpectation(
   const rumoredBaitChancePercent = getRumoredBaitValue(skills.rumoredBait);
 
   /**
+   * 커스텀 물고기 확률
+   * = 100 - 바닐라 결과물 확률
+   */
+  const vanillaChancePercent = calculateVanillaChancePercent(input);
+  const customFishChancePercent = 100 - vanillaChancePercent;
+  const customFishChanceMultiplier = customFishChancePercent / 100;
+
+  /**
    * 더블 캐치 확률
    * = 6 * (갈증의 1.0%) + (0.3 * 행운) + 어획량 증가율
-   *
-   * 예:
-   * 갈증 15 -> 6 * 15% = 0.9
-   * 행운 22.7 -> 0.3 * 22.7 = 6.81
-   * 소문난 미끼 20레벨 -> 18
-   * 최종 = 18.9%
    */
   const doubleCatchChancePercent = clamp(
     6 * effectiveThirstMultiplier + (0.3 * stats.luck) + rumoredBaitChancePercent,
@@ -430,21 +432,36 @@ export function calculateCatchExpectation(
       : 0;
 
   /**
-   * 낚시 1회당 기대 물고기 수
-   * 더블 캐치 반영
-   * 예: 18.9% -> 1.189개
+   * 낚시 1회당 기대 커스텀 물고기 수
+   * 바닐라 결과물은 제외
+   */
+  const customFishPerCatch = customFishChanceMultiplier;
+
+  /**
+   * 더블 캐치 적용 후
+   * 낚시 1회당 최종 기대 커스텀 물고기 수
+   */
+  const finalCustomFishPerCatch =
+    customFishPerCatch * (1 + doubleCatchChancePercent / 100);
+
+  /**
+   * 참고용: 전체 물고기 기준 낚시 1회당 기대 획득량
    */
   const fishPerCatch = 1 + doubleCatchChancePercent / 100;
 
   /**
    * 1회 사이클당 기대 낚시 횟수
    * 쌍걸이 반영
-   * 예: 6% -> 1.06회
    */
   const catchCountPerCycle = 1 + doubleCastChancePercent / 100;
 
   /**
-   * 최종 기대 획득량
+   * 최종 기대 획득량(커스텀 물고기)
+   */
+  const finalCustomFishPerCycle = finalCustomFishPerCatch * catchCountPerCycle;
+
+  /**
+   * 참고용: 전체 물고기 기준 최종 기대 획득량
    */
   const finalFishPerCycle = fishPerCatch * catchCountPerCycle;
 
@@ -452,16 +469,21 @@ export function calculateCatchExpectation(
    * 경험치 계산 기준
    * 더블 캐치 추가 물고기는 경험치 없음
    * 하지만 2회 낚시는 경험치 2번 획득 가능
+   * 또한 바닐라 결과물은 제외
    */
-  const expCatchCountPerCycle = catchCountPerCycle;
+  const expCatchCountPerCycle = customFishPerCatch * catchCountPerCycle;
 
   return {
     selectedThirstMin: environment.thirstMin,
     effectiveThirstMultiplier: round(effectiveThirstMultiplier, 4),
+    customFishChancePercent: round(customFishChancePercent),
     doubleCatchChancePercent: round(doubleCatchChancePercent),
     doubleCastChancePercent: round(doubleCastChancePercent),
+    customFishPerCatch: round(customFishPerCatch),
+    finalCustomFishPerCatch: round(finalCustomFishPerCatch),
     fishPerCatch: round(fishPerCatch),
     catchCountPerCycle: round(catchCountPerCycle),
+    finalCustomFishPerCycle: round(finalCustomFishPerCycle),
     finalFishPerCycle: round(finalFishPerCycle),
     expCatchCountPerCycle: round(expCatchCountPerCycle),
   };
@@ -478,15 +500,15 @@ export function calculateValue(
 ): ValueResult {
   const { prices } = input;
 
-  // 물고기 1마리의 기대 가치
+  // 커스텀 물고기 1마리의 기대 가치
   const expectedValuePerFish =
     gradeRatio.probabilityNormal * prices.normal +
     gradeRatio.probabilityAdvanced * prices.advanced +
     gradeRatio.probabilityRare * prices.rare;
 
-  // 1회 낚시 기대 수익
+  // 바닐라 결과물은 제외한 사이클 1회당 기대 수익
   const expectedValuePerCycle =
-    expectedValuePerFish * catchExpectation.finalFishPerCycle;
+    expectedValuePerFish * catchExpectation.finalCustomFishPerCycle;
 
   // 시간당 수익
   const cyclesPerHour =
