@@ -1,8 +1,26 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* =========================
+   전역 테마 변수
+   =========================
+   - 기본값은 light
+   - 나중에 data-theme="dark" 확장 가능
+*/
+:root,
+html[data-theme="light"] {
+  --background: #f8fafc;
+  --foreground: #18181b;
+  --surface: #ffffff;
+  --surface-muted: #f4f4f5;
+  --border: #e4e4e7;
+}
+
+html[data-theme="dark"] {
+  --background: #09090b;
+  --foreground: #f4f4f5;
+  --surface: #18181b;
+  --surface-muted: #27272a;
+  --border: #3f3f46;
 }
 
 @theme inline {
@@ -12,11 +30,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  min-height: 100%;
 }
 
 body {
