@@ -52,7 +52,7 @@ export default function ThemeToggleButton() {
       title={theme === "light" ? "다크 모드로 변경" : "라이트 모드로 변경"}
       className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-700 shadow-sm transition hover:bg-zinc-100"
     >
-      <span className="text-lg">{theme === "light" ? "🌙" : "☀️"}</span>
+      <span className="text-lg">{theme === "light" ? "☀️" : "🌙"}</span>
     </button>
   );
 }
