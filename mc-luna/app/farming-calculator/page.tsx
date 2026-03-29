@@ -11,6 +11,14 @@ import type {
   FarmingCropType,
 } from "@/src/lib/farming/types";
 
+import CalculatorLayout from "@/src/components/calculator/CalculatorLayout";
+import CalculatorPanel from "@/src/components/calculator/CalculatorPanel";
+import Field from "@/src/components/calculator/Field";
+import NumberInput from "@/src/components/calculator/NumberInput";
+import SelectInput from "@/src/components/calculator/SelectInput";
+import ActionButton from "@/src/components/calculator/ActionButton";
+import ResultCard from "@/src/components/calculator/ResultCard";
+
 /**
  * 작물 선택 드롭다운 옵션
  * - value: 내부 계산용 키
@@ -39,15 +47,12 @@ const cropOptions: { value: FarmingCropType; label: string }[] = [
 const INITIAL_FORM = {
   luck: 0,
   sense: 0,
-
   blessingOfHarvest: 0,
   fertileSoil: 0,
   oathOfCultivation: 0,
-
   potCount: 96,
   thirst: 0,
   cropType: "cabbage" as FarmingCropType,
-
   normalPrice: 10,
   advancedPrice: 20,
   rarePrice: 35,
@@ -78,16 +83,6 @@ function createInitialCalculationInput(): FarmingCalculationInput {
       rare: INITIAL_FORM.rarePrice,
     },
   };
-}
-
-/**
- * 숫자 입력 공통 변환 함수
- * - 빈 문자열은 0 처리
- * - NaN 방지
- */
-function parseNumber(value: string): number {
-  const next = Number(value);
-  return Number.isFinite(next) ? next : 0;
 }
 
 /**
@@ -309,7 +304,6 @@ export default function FarmingCalculatorPage() {
       const nextOath = Number(
         skillMap["개간의 서약"] ?? INITIAL_FORM.oathOfCultivation
       );
-
       const nextMaxPots = OATH_OF_CULTIVATION_MAX_POTS[nextOath] ?? 96;
 
       setLuck(nextLuck);
@@ -413,25 +407,19 @@ export default function FarmingCalculatorPage() {
   const selectedCrop = cropOptions.find((item) => item.value === cropType);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8">
-      <h1 className="mb-6 text-3xl font-bold">농사 결과물 계산기</h1>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* =========================
-            왼쪽: 입력 영역
-           ========================= */}
-        <section className="rounded-2xl border border-zinc-700 bg-zinc-900/70 p-5 shadow-sm">
-          <h2 className="mb-4 text-xl font-semibold">입력값</h2>
-
+    <CalculatorLayout
+      title="농사 결과물 계산기"
+      left={
+        <CalculatorPanel title="입력값">
           {profileLoaded && (
-            <div className="mb-5 rounded-xl border border-emerald-700/40 bg-emerald-950/30 p-4 text-sm">
-              <p className="font-medium text-emerald-300">
+            <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+              <p className="font-medium text-emerald-700">
                 프로필 데이터를 불러왔습니다.
               </p>
-              <p className="mt-1 text-zinc-300">
+              <p className="mt-1 text-zinc-700">
                 플랜: {isProUser ? "Pro" : "Free"}
               </p>
-              <p className="mt-1 text-zinc-400">
+              <p className="mt-1 text-zinc-500">
                 {isProUser
                   ? "→ 프로필 기반 농사 스탯/스킬 값을 수정할 수 있습니다."
                   : "→ 프로필에서 불러온 농사 스탯/스킬 값은 수정할 수 없습니다. (Pro 전용)"}
@@ -442,96 +430,73 @@ export default function FarmingCalculatorPage() {
           {/* 스탯 */}
           <div className="mb-6">
             <h3 className="mb-3 text-lg font-semibold">농사 스탯</h3>
-
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">행운</span>
-                <input
-                  type="number"
+              <Field label="행운">
+                <NumberInput
                   value={luck}
-                  onChange={(e) => {
-                    setLuck(parseNumber(e.target.value));
+                  disabled={disableProfileFields}
+                  onChange={(value) => {
+                    setLuck(value);
                     setIsDirty(true);
                   }}
-                  disabled={disableProfileFields}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
                 />
-              </label>
+              </Field>
 
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">감각</span>
-                <input
-                  type="number"
+              <Field label="감각">
+                <NumberInput
                   value={sense}
-                  onChange={(e) => {
-                    setSense(parseNumber(e.target.value));
+                  disabled={disableProfileFields}
+                  onChange={(value) => {
+                    setSense(value);
                     setIsDirty(true);
                   }}
-                  disabled={disableProfileFields}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
                 />
-              </label>
+              </Field>
             </div>
           </div>
 
           {/* 스킬 */}
           <div className="mb-6">
             <h3 className="mb-3 text-lg font-semibold">농사 스킬</h3>
-
             <div className="grid gap-4 sm:grid-cols-3">
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  풍년의 축복
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  max={30}
+              <Field label="풍년의 축복">
+                <NumberInput
                   value={blessingOfHarvest}
-                  onChange={(e) => {
-                    setBlessingOfHarvest(parseNumber(e.target.value));
-                    setIsDirty(true);
-                  }}
-                  disabled={disableProfileFields}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  비옥한 토양
-                </span>
-                <input
-                  type="number"
                   min={0}
                   max={30}
+                  disabled={disableProfileFields}
+                  onChange={(value) => {
+                    setBlessingOfHarvest(value);
+                    setIsDirty(true);
+                  }}
+                />
+              </Field>
+
+              <Field label="비옥한 토양">
+                <NumberInput
                   value={fertileSoil}
-                  onChange={(e) => {
-                    setFertileSoil(parseNumber(e.target.value));
-                    setIsDirty(true);
-                  }}
-                  disabled={disableProfileFields}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  개간의 서약
-                </span>
-                <input
-                  type="number"
                   min={0}
                   max={30}
-                  value={oathOfCultivation}
-                  onChange={(e) => {
-                    setOathOfCultivation(parseNumber(e.target.value));
+                  disabled={disableProfileFields}
+                  onChange={(value) => {
+                    setFertileSoil(value);
                     setIsDirty(true);
                   }}
-                  disabled={disableProfileFields}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
                 />
-              </label>
+              </Field>
+
+              <Field label="개간의 서약">
+                <NumberInput
+                  value={oathOfCultivation}
+                  min={0}
+                  max={30}
+                  disabled={disableProfileFields}
+                  onChange={(value) => {
+                    setOathOfCultivation(value);
+                    setIsDirty(true);
+                  }}
+                />
+              </Field>
             </div>
           </div>
 
@@ -540,272 +505,202 @@ export default function FarmingCalculatorPage() {
             <h3 className="mb-3 text-lg font-semibold">재배 정보</h3>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  작물 선택
-                </span>
-                <select
+              <Field label="작물 선택">
+                <SelectInput
                   value={cropType}
-                  onChange={(e) => {
-                    setCropType(e.target.value as FarmingCropType);
+                  options={cropOptions}
+                  onChange={(value) => {
+                    setCropType(value);
                     setIsDirty(true);
                   }}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
-                >
-                  {cropOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                />
+              </Field>
 
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  총 화분통 개수
-                </span>
-                <input
-                  type="number"
+              <Field label="총 화분통 개수">
+                <NumberInput
+                  value={potCount}
                   min={0}
                   max={maxPotCountBySkill}
-                  value={potCount}
-                  onChange={(e) => {
-                    const next = parseNumber(e.target.value);
-                    setPotCount(Math.min(next, maxPotCountBySkill));
+                  onChange={(value) => {
+                    setPotCount(Math.min(value, maxPotCountBySkill));
                     setIsDirty(true);
                   }}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
                 />
-              </label>
+              </Field>
 
-              <label className="block sm:col-span-2">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  갈증 수치
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  value={thirst}
-                  onChange={(e) => {
-                    setThirst(parseNumber(e.target.value));
-                    setIsDirty(true);
-                  }}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
-                />
-                <p className="mt-1 text-xs text-zinc-500">
-                  현재 로직 기준: 작물 2개 드롭률 = (갈증 × 5) + (감각 × 0.8)
-                </p>
-              </label>
+              <div className="sm:col-span-2">
+                <Field
+                  label="갈증 수치"
+                  hint="현재 로직 기준: 작물 2개 드롭률 = (갈증 × 5) + (감각 × 0.8)"
+                >
+                  <NumberInput
+                    value={thirst}
+                    min={0}
+                    onChange={(value) => {
+                      setThirst(value);
+                      setIsDirty(true);
+                    }}
+                  />
+                </Field>
+              </div>
             </div>
 
-            <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-sm text-zinc-400">
+            <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
               <p>선택 작물: {selectedCrop?.label ?? "양배추"}</p>
-              <p>개간의 서약 기준 최대 화분통 수: {maxPotCountBySkill.toLocaleString()}개</p>
+              <p>
+                개간의 서약 기준 최대 화분통 수:{" "}
+                {maxPotCountBySkill.toLocaleString()}개
+              </p>
             </div>
           </div>
 
           {/* 시세 */}
           <div className="mb-6">
             <h3 className="mb-3 text-lg font-semibold">평균 시세</h3>
-
             <div className="grid gap-4 sm:grid-cols-3">
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  일반 시세
-                </span>
-                <input
-                  type="number"
-                  min={0}
+              <Field label="일반 시세">
+                <NumberInput
                   value={normalPrice}
-                  onChange={(e) => {
-                    setNormalPrice(parseNumber(e.target.value));
+                  min={0}
+                  onChange={(value) => {
+                    setNormalPrice(value);
                     setIsDirty(true);
                   }}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
                 />
-              </label>
+              </Field>
 
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  고급 시세
-                </span>
-                <input
-                  type="number"
-                  min={0}
+              <Field label="고급 시세">
+                <NumberInput
                   value={advancedPrice}
-                  onChange={(e) => {
-                    setAdvancedPrice(parseNumber(e.target.value));
-                    setIsDirty(true);
-                  }}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  희귀 시세
-                </span>
-                <input
-                  type="number"
                   min={0}
-                  value={rarePrice}
-                  onChange={(e) => {
-                    setRarePrice(parseNumber(e.target.value));
+                  onChange={(value) => {
+                    setAdvancedPrice(value);
                     setIsDirty(true);
                   }}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
                 />
-              </label>
+              </Field>
+
+              <Field label="희귀 시세">
+                <NumberInput
+                  value={rarePrice}
+                  min={0}
+                  onChange={(value) => {
+                    setRarePrice(value);
+                    setIsDirty(true);
+                  }}
+                />
+              </Field>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button
-              onClick={handleCalculate}
-              className="rounded-xl bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500"
-            >
-              계산하기
-            </button>
+            <ActionButton onClick={handleCalculate}>계산하기</ActionButton>
 
-            <button
-              onClick={handleReset}
-              className="rounded-xl border border-zinc-700 px-4 py-2 font-medium text-zinc-200 hover:bg-zinc-800"
-            >
+            <ActionButton onClick={handleReset} variant="secondary">
               전체 초기화
-            </button>
+            </ActionButton>
 
             {isDirty && (
-              <span className="self-center text-sm text-amber-400">
+              <span className="self-center text-sm text-amber-500">
                 입력값이 변경되었습니다. 계산하기를 눌러 결과를 갱신하세요.
               </span>
             )}
           </div>
-        </section>
-
-        {/* =========================
-            오른쪽: 결과 영역
-           ========================= */}
-        <section className="rounded-2xl border border-zinc-700 bg-zinc-900/70 p-5 shadow-sm">
-          <h2 className="mb-4 text-xl font-semibold">계산 결과</h2>
-
+        </CalculatorPanel>
+      }
+      right={
+        <CalculatorPanel title="계산 결과">
           {/* 등급 가중치 / 확률 */}
-          <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-            <h3 className="mb-3 text-lg font-semibold">등급 비율</h3>
-            <div className="space-y-2 text-sm">
-              <p>일반 가중치: {formatNumber(result.intermediate.normalWeight, 4)}</p>
-              <p>고급 가중치: {formatNumber(result.intermediate.advancedWeight, 4)}</p>
-              <p>희귀 가중치: {formatNumber(result.intermediate.rareWeight, 4)}</p>
-              <p>전체 가중치 합: {formatNumber(result.intermediate.totalWeight, 4)}</p>
-              <hr className="border-zinc-800" />
-              <p>일반 확률: {toPercent(result.intermediate.normalProbability)}</p>
-              <p>고급 확률: {toPercent(result.intermediate.advancedProbability)}</p>
-              <p>희귀 확률: {toPercent(result.intermediate.rareProbability)}</p>
-            </div>
-          </div>
+          <ResultCard title="등급 비율">
+            <p>일반 가중치: {formatNumber(result.intermediate.normalWeight, 4)}</p>
+            <p>고급 가중치: {formatNumber(result.intermediate.advancedWeight, 4)}</p>
+            <p>희귀 가중치: {formatNumber(result.intermediate.rareWeight, 4)}</p>
+            <p>전체 가중치 합: {formatNumber(result.intermediate.totalWeight, 4)}</p>
+            <hr className="border-zinc-200" />
+            <p>일반 확률: {toPercent(result.intermediate.normalProbability)}</p>
+            <p>고급 확률: {toPercent(result.intermediate.advancedProbability)}</p>
+            <p>희귀 확률: {toPercent(result.intermediate.rareProbability)}</p>
+          </ResultCard>
 
           {/* 기타 비율 / 중간 계산 */}
-          <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-            <h3 className="mb-3 text-lg font-semibold">중간 계산값</h3>
-            <div className="space-y-2 text-sm">
-              <p>씨앗 드롭률: {formatNumber(result.intermediate.seedDropRatePercent, 2)}%</p>
-              <p>비옥한 토양 발동률: {formatNumber(result.intermediate.fertileSoilRatePercent, 2)}%</p>
-              <p>작물 2개 드롭률: {formatNumber(result.intermediate.doubleDropRatePercent, 2)}%</p>
-              <hr className="border-zinc-800" />
-              <p>
-                화분통 1개당 기대 수확 판정 횟수:{" "}
-                {formatNumber(result.intermediate.expectedHarvestAttemptsPerPot, 4)}
-              </p>
-              <p>
-                1사이클 총 기대 수확 판정 횟수:{" "}
-                {formatNumber(result.intermediate.expectedHarvestAttemptsPerCycle, 4)}
-              </p>
-              <p>
-                수확 1회당 기대 작물 개수:{" "}
-                {formatNumber(result.intermediate.expectedCropsPerHarvestAttempt, 4)}
-              </p>
-              <p>
-                1사이클 총 기대 작물 개수:{" "}
-                {formatNumber(result.intermediate.expectedTotalCropsPerCycle, 4)}
-              </p>
-            </div>
-          </div>
+          <ResultCard title="중간 계산값">
+            <p>씨앗 드롭률: {formatNumber(result.intermediate.seedDropRatePercent, 2)}%</p>
+            <p>비옥한 토양 발동률: {formatNumber(result.intermediate.fertileSoilRatePercent, 2)}%</p>
+            <p>작물 2개 드롭률: {formatNumber(result.intermediate.doubleDropRatePercent, 2)}%</p>
+            <hr className="border-zinc-200" />
+            <p>
+              화분통 1개당 기대 수확 판정 횟수:{" "}
+              {formatNumber(result.intermediate.expectedHarvestAttemptsPerPot, 4)}
+            </p>
+            <p>
+              1사이클 총 기대 수확 판정 횟수:{" "}
+              {formatNumber(result.intermediate.expectedHarvestAttemptsPerCycle, 4)}
+            </p>
+            <p>
+              수확 1회당 기대 작물 개수:{" "}
+              {formatNumber(result.intermediate.expectedCropsPerHarvestAttempt, 4)}
+            </p>
+            <p>
+              1사이클 총 기대 작물 개수:{" "}
+              {formatNumber(result.intermediate.expectedTotalCropsPerCycle, 4)}
+            </p>
+          </ResultCard>
 
           {/* 결과물 / 수익 */}
-          <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-            <h3 className="mb-3 text-lg font-semibold">결과물 기대값</h3>
-            <div className="space-y-2 text-sm">
-              <p>일반 기대 개수: {formatNumber(result.normalExpectedCount, 4)}개</p>
-              <p>고급 기대 개수: {formatNumber(result.advancedExpectedCount, 4)}개</p>
-              <p>희귀 기대 개수: {formatNumber(result.rareExpectedCount, 4)}개</p>
-              <hr className="border-zinc-800" />
-              <p className="text-base font-semibold text-emerald-300">
-                1사이클 기대 수익: {formatNumber(result.expectedRevenuePerCycle, 2)}
-              </p>
-            </div>
-          </div>
+          <ResultCard title="결과물 기대값">
+            <p>일반 기대 개수: {formatNumber(result.normalExpectedCount, 4)}개</p>
+            <p>고급 기대 개수: {formatNumber(result.advancedExpectedCount, 4)}개</p>
+            <p>희귀 기대 개수: {formatNumber(result.rareExpectedCount, 4)}개</p>
+            <hr className="border-zinc-200" />
+            <p className="text-base font-semibold text-emerald-700">
+              1사이클 기대 수익: {formatNumber(result.expectedRevenuePerCycle, 2)}
+            </p>
+          </ResultCard>
 
           {/* 경험치 계산기 */}
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-            <h3 className="mb-3 text-lg font-semibold">경험치 계산</h3>
-
+          <ResultCard title="경험치 계산">
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  수확 1회당 획득 경험치
-                </span>
-                <input
-                  type="number"
-                  min={0}
+              <Field label="수확 1회당 획득 경험치">
+                <NumberInput
                   value={expPerHarvest}
-                  onChange={(e) => {
-                    setExpPerHarvest(parseNumber(e.target.value));
-                    setIsExpDirty(true);
-                  }}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1 block text-sm text-zinc-300">
-                  잔여 경험치
-                </span>
-                <input
-                  type="number"
                   min={0}
-                  value={remainingExp}
-                  onChange={(e) => {
-                    setRemainingExp(parseNumber(e.target.value));
+                  onChange={(value) => {
+                    setExpPerHarvest(value);
                     setIsExpDirty(true);
                   }}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 outline-none"
                 />
-              </label>
+              </Field>
+
+              <Field label="잔여 경험치">
+                <NumberInput
+                  value={remainingExp}
+                  min={0}
+                  onChange={(value) => {
+                    setRemainingExp(value);
+                    setIsExpDirty(true);
+                  }}
+                />
+              </Field>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-3">
-              <button
-                onClick={handleCalculateExp}
-                className="rounded-xl bg-sky-600 px-4 py-2 font-medium text-white hover:bg-sky-500"
-              >
+              <ActionButton onClick={handleCalculateExp}>
                 경험치 계산
-              </button>
+              </ActionButton>
 
-              <button
-                onClick={handleResetExp}
-                className="rounded-xl border border-zinc-700 px-4 py-2 font-medium text-zinc-200 hover:bg-zinc-800"
-              >
+              <ActionButton onClick={handleResetExp} variant="secondary">
                 경험치 입력 초기화
-              </button>
+              </ActionButton>
 
               {isExpDirty && (
-                <span className="self-center text-sm text-amber-400">
+                <span className="self-center text-sm text-amber-500">
                   경험치 입력값이 변경되었습니다.
                 </span>
               )}
             </div>
 
             {expResult && (
-              <div className="mt-4 space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-sm">
+              <div className="mt-4 space-y-2 rounded-lg border border-zinc-200 bg-white p-3 text-sm">
                 <p>1사이클당 획득 경험치: {formatNumber(expResult.expPerCycle, 4)}</p>
                 <p>목표까지 필요한 사이클 수: {formatNumber(expResult.cyclesToGoal, 0)}회</p>
                 <p>목표까지 필요한 시간: {formatNumber(expResult.totalHoursToGoal, 2)}시간</p>
@@ -816,9 +711,9 @@ export default function FarmingCalculatorPage() {
             <p className="mt-3 text-xs text-zinc-500">
               기준: 농사 1사이클 = 15분, 경험치는 수확 판정 횟수 기준으로 계산
             </p>
-          </div>
-        </section>
-      </div>
-    </main>
+          </ResultCard>
+        </CalculatorPanel>
+      }
+    />
   );
 }

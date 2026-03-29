@@ -1,26 +1,35 @@
 export type ParsedStatValue = {
-  base: number
-  temp: number
-  equipValue: number
-  total: number
-}
-
-export type ParsedFishingSkill = {
-  name: string
-  level: number
-}
+  base: number;
+  temp: number;
+  equipValue: number;
+  total: number;
+};
 
 export type ParsedLifeProfile = {
-  reputationLevel: number | null
-  fishingLevel: number | null
+  reputationLevel: number | null;
 
-  luck: ParsedStatValue | null
-  sense: ParsedStatValue | null
-  fishingYieldBonus: ParsedStatValue | null
-  normalFishReduction: ParsedStatValue | null
-  nibbleTimeReduction: ParsedStatValue | null
+  // 숙련도
+  fishingLevel: number | null;
+  farmingLevel: number | null;
 
-  fishingSkills: ParsedFishingSkill[]
+  // 공통 스탯
+  luck: ParsedStatValue | null;
+  sense: ParsedStatValue | null;
 
-  rawText: string
-}
+  // 낚시 전용 스탯
+  fishingYieldBonus: ParsedStatValue | null;
+  normalFishReduction: ParsedStatValue | null;
+  nibbleTimeReduction: ParsedStatValue | null;
+
+  /**
+   * 모든 생활 스킬 레벨을 한글 스킬명 기준으로 저장
+   * 예:
+   * {
+   *   "보물 감지": 10,
+   *   "풍년의 축복": 20
+   * }
+   */
+  skills: Record<string, number>;
+
+  rawText: string;
+};
