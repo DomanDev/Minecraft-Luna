@@ -5,15 +5,15 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/src/lib/supabase";
 import ThemeToggleButton from "@/src/components/common/ThemeToggleButton";
+import GlobalNav from "@/src/components/common/GlobalNav";
 
 /**
  * =========================
  * 공통 상단 헤더
  * =========================
  * 구조:
- * - 좌측: 도맨 얼굴 + 텍스트
- * - 중앙: 루나 로고 + "루나 서버 통합 어플리케이션"
- * - 우측: 테마 토글 + 닉네임 + 로그인/로그아웃
+ * - 1줄: 좌측 도맨 얼굴 + 텍스트 / 중앙 루나 로고 + 제목 / 우측 테마 + 닉네임 + 로그인/로그아웃
+ * - 2줄: 공통 네비게이션 바
  */
 type HeaderProfile = {
   username: string | null;
@@ -33,7 +33,11 @@ export default function GlobalHeader() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user || !isMounted) {
+      if (!isMounted) return;
+
+      if (!user) {
+        setUserEmail(null);
+        setProfile(null);
         setLoading(false);
         return;
       }
@@ -109,10 +113,12 @@ export default function GlobalHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white/95 backdrop-blur">
+      {/* =========================
+          1줄 헤더 본문
+         ========================= */}
       <div className="mx-auto grid max-w-7xl grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 py-3">
-
         {/* =========================
-            좌측: 도맨 얼굴 + 텍스트 (추가된 부분)
+            좌측: 도맨 얼굴 + 텍스트
            ========================= */}
         <div className="flex items-center justify-start">
           <Link href="/" className="flex items-center gap-3">
@@ -127,10 +133,9 @@ export default function GlobalHeader() {
               />
             </div>
 
-            {/* 🔥 추가된 텍스트 */}
             <div className="leading-tight">
               <div className="text-base font-bold text-zinc-900">Doman</div>
-              <div className="text-xs text-zinc-500">도맨 제작</div>
+              <div className="text-xs text-zinc-500">made by 도맨</div>
             </div>
           </Link>
         </div>
@@ -152,7 +157,7 @@ export default function GlobalHeader() {
             href="/"
             className="whitespace-nowrap text-lg font-bold text-zinc-900 sm:text-xl"
           >
-            루나 서버 통합 어플리케이션
+            루나월드 통합 어플리케이션
           </Link>
         </div>
 
@@ -170,14 +175,15 @@ export default function GlobalHeader() {
             <>
               <Link
                 href="/profile"
-                className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-100"
+                className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-100"
               >
                 {headerName}
               </Link>
 
               <button
+                type="button"
                 onClick={handleLogout}
-                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700"
               >
                 로그아웃
               </button>
@@ -185,13 +191,18 @@ export default function GlobalHeader() {
           ) : (
             <Link
               href="/login"
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700"
             >
               로그인
             </Link>
           )}
         </div>
       </div>
+
+      {/* =========================
+          2줄: 공통 네비게이션 바
+         ========================= */}
+      <GlobalNav />
     </header>
   );
 }
