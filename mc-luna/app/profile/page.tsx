@@ -1,24 +1,50 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../src/hooks/useAuth'
 import { supabase } from '../../src/lib/supabase'
 import { saveLifeProfileFromText } from '../../src/lib/save-life-profile'
 import { ParsedLifeProfile } from '../../src/types/life-profile'
+
 /*
 [프로필 페이지]
--로그인 상태 확인
--기본 프로필 표시
--생활 정보 붙여넣기
--파싱/저장 실행
--결과 미리보기
-**/
+- 로그인 상태 확인
+- 기본 프로필 표시
+- 생활 정보 붙여넣기
+- 파싱/저장 실행
+- 결과 미리보기
+*/
+
 type Profile = {
   id: string
   username: string
   display_name: string
   plan_type: 'free' | 'pro'
 }
+
+/**
+ * 낚시 스킬명 목록
+ * - 현재 ParsedLifeProfile.skills는 Record<string, number> 구조라서
+ *   화면에서 직업별로 다시 분리해서 보여준다.
+ */
+const FISHING_SKILL_NAMES = [
+  '보물 감지',
+  '소문난 미끼',
+  '낚싯줄 장력',
+  '쌍걸이',
+  '떼낚시',
+]
+
+/**
+ * 농사 스킬명 목록
+ */
+const FARMING_SKILL_NAMES = [
+  '풍년의 축복',
+  '비옥한 토양',
+  '개간의 서약',
+  '수확의 손길',
+  '되뿌리기',
+]
 
 export default function ProfilePage() {
   const { user, loading } = useAuth()
@@ -77,6 +103,35 @@ export default function ProfilePage() {
     }
   }
 
+  /**
+   * 파싱 결과에서 낚시 스킬만 추출
+   * - skills 객체가 없더라도 빈 배열로 안전 처리
+   */
+  const fishingSkills = useMemo(() => {
+    if (!parsedPreview?.skills) return []
+
+    return FISHING_SKILL_NAMES
+      .filter((name) => parsedPreview.skills[name] != null)
+      .map((name) => ({
+        name,
+        level: parsedPreview.skills[name],
+      }))
+  }, [parsedPreview])
+
+  /**
+   * 파싱 결과에서 농사 스킬만 추출
+   */
+  const farmingSkills = useMemo(() => {
+    if (!parsedPreview?.skills) return []
+
+    return FARMING_SKILL_NAMES
+      .filter((name) => parsedPreview.skills[name] != null)
+      .map((name) => ({
+        name,
+        level: parsedPreview.skills[name],
+      }))
+  }, [parsedPreview])
+
   if (loading) return <div className="p-10">로그인 확인 중...</div>
   if (!user) return <div className="p-10">로그인이 필요합니다.</div>
   if (profileLoading) return <div className="p-10">프로필 불러오는 중...</div>
@@ -102,25 +157,29 @@ export default function ProfilePage() {
           value={rawText}
           onChange={(e) => setRawText(e.target.value)}
           placeholder={`예시)
-            ===== 생활 정보 =====
-            명성: 13 (3,220.8 / 59,700, 5.39%)
+===== 생활 정보 =====
+명성: 13 (3,220.8 / 59,700, 5.39%)
 
-            [스탯 정보]
-            ㆍ행운 (base:22 / temp:0.7 / equip:0 / total:22.7)
-            ㆍ감각 (base:18 / temp:0 / equip:0 / total:18)
-            ㆍ어획량 증가율 (base:0 / temp:0 / equip:0 / total:0)
-            ㆍ일반 물고기 감소비율 (base:0 / temp:0 / equip:0 / total:0)
-            ㆍ기척 시간 감소 (base:0 / temp:0 / equip:0 / total:0)
+[스탯 정보]
+ㆍ행운 (base:22 / temp:0.7 / equip:0 / total:22.7)
+ㆍ감각 (base:18 / temp:0 / equip:0 / total:18)
+ㆍ어획량 증가율 (base:0 / temp:0 / equip:0 / total:0)
+ㆍ일반 물고기 감소비율 (base:0 / temp:0 / equip:0 / total:0)
+ㆍ기척 시간 감소 (base:0 / temp:0 / equip:0 / total:0)
 
-            [숙련도]
-            ㆍ낚시 Lv.10
+[숙련도]
+ㆍ낚시 (Lv : 10)
+ㆍ농사 (Lv : 13)
 
-            [스킬]
-            ㆍ보물 감지 Lv.3
-            ㆍ소문난 미끼 Lv.5
-            ㆍ낚싯줄 장력 Lv.10
-            ㆍ쌍걸이 Lv.4
-            ㆍ떼낚시 Lv.2`}
+[스킬]
+ㆍ보물 감지 (Lv : 3)
+ㆍ소문난 미끼 (Lv : 5)
+ㆍ낚싯줄 장력 (Lv : 10)
+ㆍ쌍걸이 (Lv : 4)
+ㆍ떼낚시 (Lv : 2)
+ㆍ풍년의 축복 (Lv : 20)
+ㆍ비옥한 토양 (Lv : 8)
+ㆍ개간의 서약 (Lv : 20)`}
           className="w-full min-h-[320px] rounded border p-4"
         />
 
@@ -158,19 +217,22 @@ export default function ProfilePage() {
           <h2 className="text-xl font-semibold">파싱 결과 미리보기</h2>
 
           <div className="grid gap-3 md:grid-cols-2">
+            {/* 기본 정보 */}
             <div className="rounded border p-4">
               <h3 className="mb-2 font-semibold">기본 정보</h3>
               <div>명성 레벨: {parsedPreview.reputationLevel ?? '-'}</div>
               <div>낚시 레벨: {parsedPreview.fishingLevel ?? '-'}</div>
+              <div>농사 레벨: {parsedPreview.farmingLevel ?? '-'}</div>
             </div>
 
+            {/* 낚시 스킬 */}
             <div className="rounded border p-4">
               <h3 className="mb-2 font-semibold">낚시 스킬</h3>
-              {parsedPreview.fishingSkills.length === 0 ? (
+              {fishingSkills.length === 0 ? (
                 <div>파싱된 낚시 스킬 없음</div>
               ) : (
                 <ul className="space-y-1">
-                  {parsedPreview.fishingSkills.map((skill) => (
+                  {fishingSkills.map((skill) => (
                     <li key={skill.name}>
                       {skill.name}: Lv.{skill.level}
                     </li>
@@ -179,6 +241,31 @@ export default function ProfilePage() {
               )}
             </div>
 
+            {/* 농사 스킬 */}
+            <div className="rounded border p-4">
+              <h3 className="mb-2 font-semibold">농사 스킬</h3>
+              {farmingSkills.length === 0 ? (
+                <div>파싱된 농사 스킬 없음</div>
+              ) : (
+                <ul className="space-y-1">
+                  {farmingSkills.map((skill) => (
+                    <li key={skill.name}>
+                      {skill.name}: Lv.{skill.level}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* 전체 스킬 원본 */}
+            <div className="rounded border p-4">
+              <h3 className="mb-2 font-semibold">전체 스킬 원본</h3>
+              <pre className="text-sm whitespace-pre-wrap">
+                {JSON.stringify(parsedPreview.skills ?? {}, null, 2)}
+              </pre>
+            </div>
+
+            {/* 스탯들 */}
             <div className="rounded border p-4">
               <h3 className="mb-2 font-semibold">행운</h3>
               <pre className="text-sm whitespace-pre-wrap">
