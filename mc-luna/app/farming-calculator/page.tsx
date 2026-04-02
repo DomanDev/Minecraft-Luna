@@ -19,9 +19,6 @@ import SelectInput from "@/src/components/calculator/SelectInput";
 import ActionButton from "@/src/components/calculator/ActionButton";
 import ResultCard from "@/src/components/calculator/ResultCard";
 
-/**
- * 작물 선택 드롭다운 옵션
- */
 const cropOptions: { value: FarmingCropType; label: string }[] = [
   { value: "cabbage", label: "양배추" },
   { value: "lettuce", label: "상추" },
@@ -37,14 +34,8 @@ const cropOptions: { value: FarmingCropType; label: string }[] = [
   { value: "pomegranate", label: "석류" },
 ];
 
-/**
- * 갈증 최소치 타입
- */
 type ThirstMin = 15 | 10 | 5 | 1 | 0;
 
-/**
- * 갈증 최소치 드롭다운 옵션
- */
 const thirstMinOptions: { value: string; label: string }[] = [
   { value: "15", label: "15 이상 유지" },
   { value: "10", label: "10 이상 유지" },
@@ -53,9 +44,6 @@ const thirstMinOptions: { value: string; label: string }[] = [
   { value: "0", label: "0 이상 유지" },
 ];
 
-/**
- * 갈증 최소치별 가중치
- */
 const THIRST_MIN_WEIGHTS: Record<ThirstMin, number> = {
   15: 1,
   10: 0.75,
@@ -64,43 +52,25 @@ const THIRST_MIN_WEIGHTS: Record<ThirstMin, number> = {
   0: 0,
 };
 
-/**
- * 갈증 최소치 -> 실제 계산에 사용할 유효 갈증값 변환
- */
 function getWeightedThirstValue(thirstMin: ThirstMin): number {
   return thirstMin * THIRST_MIN_WEIGHTS[thirstMin];
 }
 
-/**
- * 페이지 초기 입력값
- */
 const INITIAL_FORM = {
-  // 스탯
   luck: 0,
   sense: 0,
-
-  // 계산 반영 스킬
   blessingOfHarvest: 0,
   fertileSoil: 0,
   oathOfCultivation: 0,
-
-  // 계산 미반영 스킬(표시/확장 대비용)
   handOfHarvest: 0,
   reseeding: 0,
-
-  // 환경
   thirstMin: 0 as ThirstMin,
   cropType: "cabbage" as FarmingCropType,
-
-  // 시세
   normalPrice: 4,
   advancedPrice: 9,
   rarePrice: 12,
 };
 
-/**
- * 초기 계산 입력 객체 생성
- */
 function createInitialCalculationInput(): FarmingCalculationInput {
   const initialMaxPots =
     OATH_OF_CULTIVATION_MAX_POTS[INITIAL_FORM.oathOfCultivation] ?? 96;
@@ -130,16 +100,10 @@ function createInitialCalculationInput(): FarmingCalculationInput {
   };
 }
 
-/**
- * 퍼센트 보기 좋게 표시
- */
 function toPercent(value: number, digits = 2): string {
   return `${(value * 100).toFixed(digits)}%`;
 }
 
-/**
- * 숫자 보기 좋게 표시
- */
 function formatNumber(value: number, digits = 2): string {
   return value.toLocaleString("ko-KR", {
     minimumFractionDigits: 0,
@@ -151,19 +115,12 @@ export default function FarmingCalculatorPage() {
   const pathname = usePathname();
   const loadingProfileRef = useRef(false);
 
-  /**
-   * =========================
-   * 입력 폼 state
-   * =========================
-   */
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [planType, setPlanType] = useState<"free" | "pro" | null>(null);
 
-  // 스탯
   const [luck, setLuck] = useState(INITIAL_FORM.luck);
   const [sense, setSense] = useState(INITIAL_FORM.sense);
 
-  // 계산 반영 스킬
   const [blessingOfHarvest, setBlessingOfHarvest] = useState(
     INITIAL_FORM.blessingOfHarvest,
   );
@@ -172,34 +129,21 @@ export default function FarmingCalculatorPage() {
     INITIAL_FORM.oathOfCultivation,
   );
 
-  // 계산 미반영 스킬
   const [handOfHarvest, setHandOfHarvest] = useState(INITIAL_FORM.handOfHarvest);
   const [reseeding, setReseeding] = useState(INITIAL_FORM.reseeding);
 
-  // 환경 / 입력
   const [thirstMin, setThirstMin] = useState<ThirstMin>(INITIAL_FORM.thirstMin);
   const [cropType, setCropType] = useState(INITIAL_FORM.cropType);
 
-  // 시세
   const [normalPrice, setNormalPrice] = useState(INITIAL_FORM.normalPrice);
   const [advancedPrice, setAdvancedPrice] = useState(INITIAL_FORM.advancedPrice);
   const [rarePrice, setRarePrice] = useState(INITIAL_FORM.rarePrice);
 
-  /**
-   * =========================
-   * 결과 state
-   * =========================
-   */
   const [result, setResult] = useState<FarmingCalculationResult>(() =>
     calculateFarming(createInitialCalculationInput()),
   );
   const [isDirty, setIsDirty] = useState(false);
 
-  /**
-   * =========================
-   * 경험치 계산 state
-   * =========================
-   */
   const [expPerHarvest, setExpPerHarvest] = useState(1);
   const [remainingExp, setRemainingExp] = useState(0);
   const [expResult, setExpResult] = useState<{
@@ -210,29 +154,17 @@ export default function FarmingCalculatorPage() {
   } | null>(null);
   const [isExpDirty, setIsExpDirty] = useState(false);
 
-  /**
-   * 개간의 서약 레벨 기준 최대 화분통 수
-   */
   const maxPotCountBySkill = useMemo(() => {
     return OATH_OF_CULTIVATION_MAX_POTS[oathOfCultivation] ?? 96;
   }, [oathOfCultivation]);
 
-  /**
-   * 갈증 최소치 기반 실제 계산용 유효 갈증값
-   */
   const weightedThirstValue = useMemo(() => {
     return getWeightedThirstValue(thirstMin);
   }, [thirstMin]);
 
-  /**
-   * Pro 여부
-   */
   const isProUser = planType === "pro";
   const disableProfileFields = profileLoaded && !isProUser;
 
-  /**
-   * 계산기 입력 객체 생성
-   */
   const buildCalculationInput = (): FarmingCalculationInput => {
     return {
       stats: {
@@ -259,13 +191,6 @@ export default function FarmingCalculatorPage() {
     };
   };
 
-  /**
-   * 프로필 자동 불러오기
-   *
-   * - 탭 이동(pathname 변경) 시 다시 로딩
-   * - 로그인/세션 복원 시 다시 로딩
-   * - 탭 이동 직후 세션이 늦게 붙는 경우를 대비해 짧게 재시도
-   */
   const loadProfileToCalculator = useCallback(async () => {
     if (loadingProfileRef.current) return;
     loadingProfileRef.current = true;
@@ -273,7 +198,6 @@ export default function FarmingCalculatorPage() {
     try {
       let user = null;
 
-      // 탭 이동 직후 세션 반영 지연 대응
       for (let i = 0; i < 5; i++) {
         const {
           data: { session },
@@ -298,9 +222,6 @@ export default function FarmingCalculatorPage() {
         return;
       }
 
-      /**
-       * 1) 플랜 타입 조회
-       */
       const { data: profileRow, error: profileError } = await supabase
         .from("profiles")
         .select("plan_type")
@@ -314,9 +235,6 @@ export default function FarmingCalculatorPage() {
 
       const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
 
-      /**
-       * 2) farming_profiles 조회
-       */
       const { data: farmingProfile, error: farmingProfileError } = await supabase
         .from("farming_profiles")
         .select("*")
@@ -330,9 +248,6 @@ export default function FarmingCalculatorPage() {
         return;
       }
 
-      /**
-       * 3) 유저 스킬 레벨 조회
-       */
       const { data: skillLevels, error: skillLevelsError } = await supabase
         .from("user_skill_levels")
         .select("skill_id, skill_level")
@@ -343,9 +258,6 @@ export default function FarmingCalculatorPage() {
         return;
       }
 
-      /**
-       * 4) 농사 스킬 정의 조회
-       */
       const { data: skillDefinitions, error: skillDefinitionsError } =
         await supabase
           .from("skill_definitions")
@@ -358,9 +270,6 @@ export default function FarmingCalculatorPage() {
         return;
       }
 
-      /**
-       * skill_id -> 스킬명 매핑
-       */
       const skillMap = Object.fromEntries(
         (skillLevels ?? []).map((row) => {
           const matched = (skillDefinitions ?? []).find(
@@ -370,35 +279,23 @@ export default function FarmingCalculatorPage() {
         }),
       );
 
-      const nextLuck = Number(farmingProfile.luck_total ?? INITIAL_FORM.luck);
-      const nextSense = Number(farmingProfile.sense_total ?? INITIAL_FORM.sense);
+      setLuck(Number(farmingProfile.luck_total ?? INITIAL_FORM.luck));
+      setSense(Number(farmingProfile.sense_total ?? INITIAL_FORM.sense));
 
-      const nextBlessing = Number(
-        skillMap["풍년의 축복"] ?? INITIAL_FORM.blessingOfHarvest,
+      setBlessingOfHarvest(
+        Number(skillMap["풍년의 축복"] ?? INITIAL_FORM.blessingOfHarvest),
       );
-      const nextFertileSoil = Number(
-        skillMap["비옥한 토양"] ?? INITIAL_FORM.fertileSoil,
+      setFertileSoil(
+        Number(skillMap["비옥한 토양"] ?? INITIAL_FORM.fertileSoil),
       );
-      const nextOath = Number(
-        skillMap["개간의 서약"] ?? INITIAL_FORM.oathOfCultivation,
-      );
-
-      const nextHandOfHarvest = Number(
-        skillMap["수확의 손길"] ?? INITIAL_FORM.handOfHarvest,
-      );
-      const nextReseeding = Number(
-        skillMap["되뿌리기"] ?? INITIAL_FORM.reseeding,
+      setOathOfCultivation(
+        Number(skillMap["개간의 서약"] ?? INITIAL_FORM.oathOfCultivation),
       );
 
-      setLuck(nextLuck);
-      setSense(nextSense);
-
-      setBlessingOfHarvest(nextBlessing);
-      setFertileSoil(nextFertileSoil);
-      setOathOfCultivation(nextOath);
-
-      setHandOfHarvest(nextHandOfHarvest);
-      setReseeding(nextReseeding);
+      setHandOfHarvest(
+        Number(skillMap["수확의 손길"] ?? INITIAL_FORM.handOfHarvest),
+      );
+      setReseeding(Number(skillMap["되뿌리기"] ?? INITIAL_FORM.reseeding));
 
       setPlanType(nextPlanType);
       setProfileLoaded(true);
@@ -408,16 +305,10 @@ export default function FarmingCalculatorPage() {
     }
   }, []);
 
-  /**
-   * 경로가 바뀔 때마다 재로딩
-   */
   useEffect(() => {
     loadProfileToCalculator();
   }, [pathname, loadProfileToCalculator]);
 
-  /**
-   * 로그인/세션 복원 시 재로딩
-   */
   useEffect(() => {
     const {
       data: { subscription },
@@ -436,18 +327,12 @@ export default function FarmingCalculatorPage() {
     };
   }, [loadProfileToCalculator]);
 
-  /**
-   * 계산 버튼
-   */
   const handleCalculate = () => {
     const nextResult = calculateFarming(buildCalculationInput());
     setResult(nextResult);
     setIsDirty(false);
   };
 
-  /**
-   * 전체 입력 초기화
-   */
   const handleReset = () => {
     setProfileLoaded(false);
     setPlanType(null);
@@ -478,9 +363,6 @@ export default function FarmingCalculatorPage() {
     setIsExpDirty(false);
   };
 
-  /**
-   * 경험치 계산 버튼
-   */
   const handleCalculateExp = () => {
     const nextExp = calculateFarmingExp({
       expectedHarvestAttemptsPerCycle:
@@ -493,9 +375,6 @@ export default function FarmingCalculatorPage() {
     setIsExpDirty(false);
   };
 
-  /**
-   * 경험치 입력 초기화
-   */
   const handleResetExp = () => {
     setExpPerHarvest(1);
     setRemainingExp(0);
@@ -723,61 +602,31 @@ export default function FarmingCalculatorPage() {
               </div>
               <div className="flex justify-between">
                 <span>씨앗 드롭률</span>
-                <span>
-                  {formatNumber(result.intermediate.seedDropRatePercent, 2)}%
-                </span>
+                <span>{formatNumber(result.intermediate.seedDropRatePercent, 2)}%</span>
               </div>
               <div className="flex justify-between">
                 <span>비옥한 토양 발동률</span>
-                <span>
-                  {formatNumber(result.intermediate.fertileSoilRatePercent, 2)}%
-                </span>
+                <span>{formatNumber(result.intermediate.fertileSoilRatePercent, 2)}%</span>
               </div>
               <div className="flex justify-between">
                 <span>작물 2개 드롭률</span>
-                <span>
-                  {formatNumber(result.intermediate.doubleDropRatePercent, 2)}%
-                </span>
+                <span>{formatNumber(result.intermediate.doubleDropRatePercent, 2)}%</span>
               </div>
               <div className="flex justify-between">
                 <span>화분통 1개당 기대 수확 판정 횟수</span>
-                <span>
-                  {formatNumber(
-                    result.intermediate.expectedHarvestAttemptsPerPot,
-                    4,
-                  )}
-                  회
-                </span>
+                <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerPot, 4)}회</span>
               </div>
               <div className="flex justify-between">
                 <span>1사이클당 총 기대 수확 판정 횟수</span>
-                <span>
-                  {formatNumber(
-                    result.intermediate.expectedHarvestAttemptsPerCycle,
-                    4,
-                  )}
-                  회
-                </span>
+                <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerCycle, 4)}회</span>
               </div>
               <div className="flex justify-between">
                 <span>수확 1회당 기대 작물 개수</span>
-                <span>
-                  {formatNumber(
-                    result.intermediate.expectedCropsPerHarvestAttempt,
-                    4,
-                  )}
-                  개
-                </span>
+                <span>{formatNumber(result.intermediate.expectedCropsPerHarvestAttempt, 4)}개</span>
               </div>
               <div className="flex justify-between">
                 <span>1사이클 총 기대 작물 개수</span>
-                <span>
-                  {formatNumber(
-                    result.intermediate.expectedTotalCropsPerCycle,
-                    4,
-                  )}
-                  개
-                </span>
+                <span>{formatNumber(result.intermediate.expectedTotalCropsPerCycle, 4)}개</span>
               </div>
             </div>
           </ResultCard>
