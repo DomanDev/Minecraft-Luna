@@ -124,7 +124,7 @@ function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
     normal_crop_reduction_total: toSafeNumber(
       farmingStats.normalCropReduction?.total,
     ),
-    
+
     updated_at: new Date().toISOString(),
   };
 }

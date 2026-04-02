@@ -357,11 +357,54 @@ export default function FarmingCalculatorPage() {
     };
   }, [loadProfileToCalculator]);
 
-  const handleCalculate = () => {
+  const handleCalculate = useCallback(() => {
     const nextResult = calculateFarming(buildCalculationInput());
     setResult(nextResult);
     setIsDirty(false);
-  };
+  }, [
+    luck,
+    sense,
+    normalCropReduction,
+    blessingOfHarvest,
+    fertileSoil,
+    oathOfCultivation,
+    handOfHarvest,
+    reseeding,
+    maxPotCountBySkill,
+    weightedThirstValue,
+    cropType,
+    normalPrice,
+    advancedPrice,
+    rarePrice,
+  ]);
+
+  useEffect(() => {
+    /**
+     * 프로필 페이지에서 저장이 끝나면
+     * window.dispatchEvent(new Event("profileUpdated")) 가 발생한다.
+     *
+     * 이 이벤트를 받으면:
+     * 1) 최신 farming_profiles / user_skill_levels 를 다시 불러오고
+     * 2) 상태 반영이 끝난 뒤 자동 계산까지 수행한다.
+     */
+    const handleProfileUpdated = async () => {
+      await loadProfileToCalculator();
+
+      /**
+       * React state 반영이 한 템포 뒤에 일어날 수 있어서
+       * setTimeout(..., 0) 으로 다음 tick에 자동 계산한다.
+       */
+      setTimeout(() => {
+        handleCalculate();
+      }, 0);
+    };
+
+    window.addEventListener("profileUpdated", handleProfileUpdated);
+
+    return () => {
+      window.removeEventListener("profileUpdated", handleProfileUpdated);
+    };
+  }, [loadProfileToCalculator, handleCalculate]);
 
   const handleReset = () => {
     setProfileLoaded(false);

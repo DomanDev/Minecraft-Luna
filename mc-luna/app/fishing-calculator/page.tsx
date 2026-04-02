@@ -361,6 +361,7 @@ export default function FishingCalculatorPage() {
     }
   }, []);
 
+  
   useEffect(() => {
     loadProfileToCalculator();
   }, [pathname, loadProfileToCalculator]);
@@ -434,11 +435,54 @@ export default function FishingCalculatorPage() {
     };
   };
 
-  const handleCalculate = () => {
+  const handleCalculate = useCallback(() => {
     const nextResult = calculateFishing(buildCalculationInput());
     setResult(nextResult);
     setIsDirty(false);
-  };
+  }, [
+    luck,
+    sense,
+    normalFishReduction,
+    nibbleTimeReduction,
+    rumoredBait,
+    lineTension,
+    doubleHook,
+    schoolFishing,
+    timeOfDay,
+    pondState,
+    baitType,
+    groundbaitType,
+    lureEnchantLevel,
+    thirstMin,
+    useDoubleHook,
+    useSchoolFishing,
+    normalPrice,
+    advancedPrice,
+    rarePrice,
+  ]);
+
+  useEffect(() => {
+    /**
+     * 프로필 저장 완료 이벤트를 감지하면
+     * 최신 낚시 프로필을 다시 불러오고 자동 계산까지 수행한다.
+     */
+    const handleProfileUpdated = async () => {
+      await loadProfileToCalculator();
+
+      /**
+       * 상태 반영 직후 자동 계산
+       */
+      setTimeout(() => {
+        handleCalculate();
+      }, 0);
+    };
+
+    window.addEventListener("profileUpdated", handleProfileUpdated);
+
+    return () => {
+      window.removeEventListener("profileUpdated", handleProfileUpdated);
+    };
+  }, [loadProfileToCalculator, handleCalculate]);
 
   const handleReset = () => {
     setProfileLoaded(false);

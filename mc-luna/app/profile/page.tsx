@@ -32,6 +32,7 @@ import type {
   ParsedLifeProfile,
   ParsedStatValue,
 } from '../../src/types/life-profile';
+import { toast } from "sonner";
 
 /**
  * profiles 테이블에서 가져오는 기본 프로필 타입
@@ -647,23 +648,48 @@ export default function ProfilePage() {
   const handleSaveImportProfile = async () => {
     try {
       setSaving(true);
-      setSaveMessage('');
+      setSaveMessage("");
 
       if (!user) {
-        setSaveMessage('사용자 정보를 불러올 수 없습니다.');
+        setSaveMessage("사용자 정보를 불러올 수 없습니다.");
+        toast.error("사용자 정보를 불러올 수 없습니다.");
         return;
       }
 
+      /**
+       * 1) 생활 정보 원문을 파싱하고
+       * 2) DB에 저장한 뒤
+       * 3) 저장된 결과(parsed)를 preview에 반영
+       */
       const parsed = await saveLifeProfileFromText(user.id, rawText);
 
       setParsedPreview(parsed);
-      setSaveMessage('생활 정보 가져오기 저장 완료');
+
+      /**
+       * 중요:
+       * - 여기서 profileUpdated 이벤트를 발생시킨다.
+       * - 이유: saveLifeProfileFromText()가 정상 종료되었다는 것은
+       *   내부 DB 저장이 모두 성공했다는 뜻이므로,
+       *   이제 계산기 페이지가 최신 프로필을 다시 읽어도 안전하다.
+       */
+      window.dispatchEvent(new Event("profileUpdated"));
+
+      /**
+       * 저장 완료 메시지
+       * - 기존 화면 메시지
+       * - 토스트 메시지
+       * 둘 다 표시
+       */
+      setSaveMessage("생활 정보 가져오기 저장 완료");
+      toast.success("생활 정보가 저장되었고 계산기에 자동 반영됩니다.");
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : '가져오기 저장 중 오류가 발생했습니다.';
+          : "가져오기 저장 중 오류가 발생했습니다.";
+
       setSaveMessage(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -672,24 +698,38 @@ export default function ProfilePage() {
   const handleSaveManualProfile = async () => {
     try {
       setSaving(true);
-      setSaveMessage('');
+      setSaveMessage("");
 
       if (!user) {
-        setSaveMessage('사용자 정보를 불러올 수 없습니다.');
+        setSaveMessage("사용자 정보를 불러올 수 없습니다.");
+        toast.error("사용자 정보를 불러올 수 없습니다.");
         return;
       }
 
+      /**
+       * manual 입력값을 표준 구조로 변환해서 저장
+       */
       const manualInput = buildManualLifeProfileInput(manualForm);
       const parsed = await saveManualLifeProfile(user.id, manualInput);
 
       setParsedPreview(parsed);
-      setSaveMessage('직접 입력 프로필 저장 완료');
+
+      /**
+       * 저장 성공 직후 계산기 페이지들에게
+       * "프로필이 갱신됐다"는 이벤트를 보낸다.
+       */
+      window.dispatchEvent(new Event("profileUpdated"));
+
+      setSaveMessage("직접 입력 프로필 저장 완료");
+      toast.success("프로필이 저장되었고 계산기에 자동 반영됩니다.");
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : '직접 입력 저장 중 오류가 발생했습니다.';
+          : "직접 입력 저장 중 오류가 발생했습니다.";
+
       setSaveMessage(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
