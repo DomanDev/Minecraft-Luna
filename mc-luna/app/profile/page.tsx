@@ -7,6 +7,9 @@
  * 1) 기존 "생활 정보 가져오기(import)" 기능 유지
  * 2) 새로 "직접 입력(manual)" 기능 추가
  * 3) 새 life-profile 구조(jobs / skills)에 맞춰 미리보기와 저장 흐름 통일
+ * 4) 기본 프로필 수정 기능 추가
+ *    - 표시명(display_name): 모든 로그인 사용자 수정 가능
+ *    - 유저명(username): pro 유저만 수정 가능
  *
  * 설계 포인트:
  * - 입력 방식은 "import" / "manual" 두 가지 탭으로 분리
@@ -30,11 +33,13 @@ import type {
 
 /**
  * profiles 테이블에서 가져오는 기본 프로필 타입
+ *
+ * display_name은 null일 수 있으므로 nullable로 둔다.
  */
 type Profile = {
   id: string;
-  username: string;
-  display_name: string;
+  username: string | null;
+  display_name: string | null;
   plan_type: 'free' | 'pro';
 };
 
@@ -188,6 +193,20 @@ export default function ProfilePage() {
   const [profileLoading, setProfileLoading] = useState(true);
 
   /**
+   * 기본 프로필 수정용 state
+   *
+   * editDisplayName:
+   * - 모든 로그인 사용자가 수정 가능
+   *
+   * editUsername:
+   * - 실제 저장은 pro 유저만 허용
+   */
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaveMessage, setProfileSaveMessage] = useState('');
+
+  /**
    * 입력 방식 탭
    * - import: 생활 정보 텍스트 붙여넣기
    * - manual: 직접 입력
@@ -237,6 +256,15 @@ export default function ProfilePage() {
         setProfile(null);
       } else {
         setProfile(data);
+
+        /**
+         * 조회한 값을 수정 input의 초기값으로 동기화
+         *
+         * 이유:
+         * - 프로필을 새로 읽어오면 수정 input도 최신 값으로 맞춰야 함
+         */
+        setEditUsername(data?.username ?? '');
+        setEditDisplayName(data?.display_name ?? '');
       }
 
       setProfileLoading(false);
@@ -259,6 +287,165 @@ export default function ProfilePage() {
       ...prev,
       [key]: value,
     }));
+  };
+
+  /**
+   * 기본 프로필 수정 저장
+   *
+   * 정책:
+   * - 표시명(display_name): 모든 사용자 수정 가능
+   * - 유저명(username): plan_type === 'pro'일 때만 수정 가능
+   *
+   * 검증:
+   * - display_name은 trim 후 빈 문자열이면 null 저장
+   * - username은 trim 후 빈 문자열이면 기존 값 유지
+   * - username을 바꾸는 경우 중복 체크 수행
+   */
+  const handleSaveBasicProfile = async () => {
+    try {
+      setProfileSaving(true);
+      setProfileSaveMessage('');
+
+      if (!user || !profile) {
+        setProfileSaveMessage('사용자 정보를 불러올 수 없습니다.');
+        return;
+      }
+
+      const trimmedDisplayName = editDisplayName.trim();
+      const trimmedUsername = editUsername.trim();
+
+      const canEditUsername = profile.plan_type === 'pro';
+      const isUsernameChanged = trimmedUsername !== (profile.username ?? '');
+      const isDisplayNameChanged =
+        trimmedDisplayName !== (profile.display_name ?? '');
+
+      /**
+       * 아무것도 바뀌지 않았으면 저장하지 않음
+       */
+      if (!isUsernameChanged && !isDisplayNameChanged) {
+        setProfileSaveMessage('변경된 내용이 없습니다.');
+        return;
+      }
+
+      /**
+       * free 유저는 username 수정 불가
+       */
+      if (isUsernameChanged && !canEditUsername) {
+        setProfileSaveMessage('유저명 변경은 Pro 유저만 가능합니다.');
+        return;
+      }
+
+      /**
+         * 유저명 형식 간단 검증
+         * - 한글, 영문, 숫자, 밑줄(_), 마침표(.) 허용
+         * - 길이는 2~20자
+         *
+         * 허용 예시:
+         * - Doman
+         * - 도맨
+         * - 도맨123
+         * - 도맨_dev
+         * - 도맨.dev
+       */
+      if (isUsernameChanged) {
+
+        const usernameRegex = /^[가-힣a-zA-Z0-9._]{2,20}$/;
+
+        if (!usernameRegex.test(trimmedUsername)) {
+          setProfileSaveMessage(
+            '유저명은 2~20자의 한글, 영문, 숫자, 밑줄(_), 마침표(.)만 사용할 수 있습니다.',
+          );
+          return;
+        }
+
+        /**
+         * 다른 사용자가 이미 사용 중인지 확인
+         */
+        const { data: existingUser, error: usernameCheckError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', trimmedUsername)
+          .neq('id', user.id)
+          .maybeSingle();
+
+        if (usernameCheckError) {
+          console.error('유저명 중복 확인 실패:', usernameCheckError);
+          setProfileSaveMessage('유저명 중복 확인 중 오류가 발생했습니다.');
+          return;
+        }
+
+        if (existingUser) {
+          setProfileSaveMessage('이미 사용 중인 유저명입니다.');
+          return;
+        }
+      }
+
+      /**
+       * 실제 update payload 구성
+       *
+       * display_name:
+       * - 빈 문자열은 null 저장
+       *
+       * username:
+       * - 변경된 경우에만 payload에 포함
+       * - free 유저는 아예 포함되지 않음
+       */
+      const updatePayload: {
+        display_name: string | null;
+        username?: string | null;
+      } = {
+        display_name: trimmedDisplayName === '' ? null : trimmedDisplayName,
+      };
+
+      if (isUsernameChanged && canEditUsername) {
+        updatePayload.username = trimmedUsername === '' ? null : trimmedUsername;
+      }
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('기본 프로필 저장 실패:', updateError);
+        setProfileSaveMessage('기본 프로필 저장 중 오류가 발생했습니다.');
+        return;
+      }
+
+      /**
+       * 화면 상태도 즉시 최신값으로 반영
+       */
+      const nextProfile: Profile = {
+        ...profile,
+        display_name: updatePayload.display_name,
+        username:
+          updatePayload.username !== undefined
+            ? updatePayload.username
+            : profile.username,
+      };
+
+      setProfile(nextProfile);
+      setEditDisplayName(nextProfile.display_name ?? '');
+      setEditUsername(nextProfile.username ?? '');
+
+      setProfileSaveMessage('기본 프로필이 저장되었습니다.');
+    } catch (error) {
+      console.error('기본 프로필 저장 중 예외:', error);
+      setProfileSaveMessage('기본 프로필 저장 중 오류가 발생했습니다.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  /**
+   * 기본 프로필 수정 input 초기화
+   *
+   * DB 저장값 기준으로 되돌린다.
+   */
+  const resetBasicProfileForm = () => {
+    setEditDisplayName(profile?.display_name ?? '');
+    setEditUsername(profile?.username ?? '');
+    setProfileSaveMessage('');
   };
 
   /**
@@ -402,7 +589,7 @@ export default function ProfilePage() {
       {/* =========================
           기본 프로필 영역
          ========================= */}
-      <section className="space-y-3 rounded-xl border bg-white p-6 shadow-sm">
+      <section className="space-y-5 rounded-xl border bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-bold">프로필</h1>
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -425,6 +612,94 @@ export default function ProfilePage() {
             <div className="text-sm text-gray-500">플랜</div>
             <div className="font-medium uppercase">{profile?.plan_type ?? '-'}</div>
           </div>
+        </div>
+
+        {/* =========================
+            기본 프로필 수정 영역
+           ========================= */}
+        <div className="space-y-4 rounded-xl border p-4">
+          <div>
+            <h2 className="text-lg font-semibold">기본 프로필 수정</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              표시명은 누구나 변경할 수 있고, 유저명은 Pro 유저만 변경할 수 있습니다.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-1">
+              <div className="text-sm font-medium">표시명</div>
+              <input
+                type="text"
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
+                placeholder="표시명을 입력하세요"
+                maxLength={30}
+                className="w-full rounded-lg border p-2"
+              />
+              <div className="text-xs text-gray-500">
+                빈칸으로 저장하면 표시명이 제거됩니다.
+              </div>
+            </label>
+
+            <label className="space-y-1">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span>유저명</span>
+                {profile?.plan_type === 'pro' ? (
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                    Pro 수정 가능
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600">
+                    Free 수정 불가
+                  </span>
+                )}
+              </div>
+
+              <input
+                type="text"
+                value={editUsername}
+                onChange={(e) => setEditUsername(e.target.value)}
+                placeholder={
+                  profile?.plan_type === 'pro'
+                    ? '유저명을 입력하세요'
+                    : 'Pro 유저만 수정 가능합니다'
+                }
+                maxLength={20}
+                disabled={profile?.plan_type !== 'pro'}
+                className="w-full rounded-lg border p-2 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+              />
+
+              <div className="text-xs text-gray-500">
+                2~20자 한글, 영문, 숫자, 밑줄(_), 마침표(.) 사용 가능
+              </div>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleSaveBasicProfile}
+              disabled={profileSaving}
+              className="rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {profileSaving ? '저장 중...' : '기본 프로필 저장'}
+            </button>
+
+            <button
+              type="button"
+              onClick={resetBasicProfileForm}
+              disabled={profileSaving}
+              className="rounded-lg bg-gray-500 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              되돌리기
+            </button>
+          </div>
+
+          {profileSaveMessage && (
+            <div className="rounded-lg border bg-gray-50 p-3 text-sm">
+              {profileSaveMessage}
+            </div>
+          )}
         </div>
       </section>
 
