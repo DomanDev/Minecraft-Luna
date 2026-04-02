@@ -210,130 +210,236 @@ export default function FarmingCalculatorPage() {
     };
   };
 
-  const loadProfileToCalculator = useCallback(async () => {
-    if (loadingProfileRef.current) return;
-    loadingProfileRef.current = true;
+  /**
+   * 프로필에서 읽어온 "원시 값"으로 바로 계산 입력 객체를 만든다.
+   *
+   * 왜 필요한가?
+   * - setLuck, setSense 같은 setState는 비동기라서
+   *   직후 handleCalculate()를 호출하면 이전 state로 계산될 수 있다.
+   * - 그래서 자동 계산 시에는 DB에서 읽은 최신 값으로
+   *   계산 입력 객체를 직접 만들어 사용하는 것이 안전하다.
+   */
+  const buildCalculationInputFromProfile = (params: {
+    luck: number;
+    sense: number;
+    normalCropReduction: number;
+    blessingOfHarvest: number;
+    fertileSoil: number;
+    oathOfCultivation: number;
+    handOfHarvest: number;
+    reseeding: number;
+  }): FarmingCalculationInput => {
+    const nextMaxPotCount =
+      OATH_OF_CULTIVATION_MAX_POTS[params.oathOfCultivation] ?? 96;
 
-    try {
-      let user = null;
+    return {
+      stats: {
+        luck: params.luck,
+        sense: params.sense,
+        normalCropReduction: params.normalCropReduction,
+      },
+      skills: {
+        blessingOfHarvest: params.blessingOfHarvest,
+        fertileSoil: params.fertileSoil,
+        oathOfCultivation: params.oathOfCultivation,
+        handOfHarvest: params.handOfHarvest,
+        reseeding: params.reseeding,
+      },
+      environment: {
+        /**
+         * 작물 종류 / 갈증 최소치 / 시세는
+         * 사용자가 현재 계산기에서 선택해둔 값을 유지한다.
+         */
+        potCount: nextMaxPotCount,
+        thirst: weightedThirstValue,
+        cropType,
+      },
+      prices: {
+        normal: normalPrice,
+        advanced: advancedPrice,
+        rare: rarePrice,
+      },
+    };
+  };
 
-      for (let i = 0; i < 5; i++) {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
+  const loadProfileToCalculator = useCallback(
+    async (options?: { autoCalculate?: boolean }) => {
+      if (loadingProfileRef.current) return;
+      loadingProfileRef.current = true;
 
-        if (error) {
-          console.warn("getSession 실패:", error.message);
+      try {
+        let user = null;
+
+        for (let i = 0; i < 5; i++) {
+          const {
+            data: { session },
+            error,
+          } = await supabase.auth.getSession();
+
+          if (error) {
+            console.warn("getSession 실패:", error.message);
+          }
+
+          if (session?.user) {
+            user = session.user;
+            break;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 200));
         }
 
-        if (session?.user) {
-          user = session.user;
-          break;
+        if (!user) {
+          setPlanType(null);
+          setProfileLoaded(false);
+          return;
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
+        const { data: profileRow, error: profileError } = await supabase
+          .from("profiles")
+          .select("plan_type")
+          .eq("id", user.id)
+          .single();
 
-      if (!user) {
-        setPlanType(null);
-        setProfileLoaded(false);
-        return;
-      }
+        if (profileError) {
+          console.warn("profiles 조회 실패:", profileError.message);
+          return;
+        }
 
-      const { data: profileRow, error: profileError } = await supabase
-        .from("profiles")
-        .select("plan_type")
-        .eq("id", user.id)
-        .single();
+        const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
 
-      if (profileError) {
-        console.warn("profiles 조회 실패:", profileError.message);
-        return;
-      }
+        const { data: farmingProfile, error: farmingProfileError } = await supabase
+          .from("farming_profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
 
-      const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
+        if (farmingProfileError || !farmingProfile) {
+          console.warn("farming_profiles 조회 실패:", farmingProfileError?.message);
+          setPlanType(nextPlanType);
+          setProfileLoaded(false);
+          return;
+        }
 
-      const { data: farmingProfile, error: farmingProfileError } = await supabase
-        .from("farming_profiles")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+        const { data: skillLevels, error: skillLevelsError } = await supabase
+          .from("user_skill_levels")
+          .select("skill_id, skill_level")
+          .eq("user_id", user.id);
 
-      if (farmingProfileError || !farmingProfile) {
-        console.warn("farming_profiles 조회 실패:", farmingProfileError?.message);
-        setPlanType(nextPlanType);
-        setProfileLoaded(false);
-        return;
-      }
+        if (skillLevelsError) {
+          console.warn("user_skill_levels 조회 실패:", skillLevelsError.message);
+          return;
+        }
 
-      const { data: skillLevels, error: skillLevelsError } = await supabase
-        .from("user_skill_levels")
-        .select("skill_id, skill_level")
-        .eq("user_id", user.id);
+        const { data: skillDefinitions, error: skillDefinitionsError } =
+          await supabase
+            .from("skill_definitions")
+            .select("id, skill_name_ko")
+            .eq("job_code", "farming")
+            .eq("is_enabled", true);
 
-      if (skillLevelsError) {
-        console.warn("user_skill_levels 조회 실패:", skillLevelsError.message);
-        return;
-      }
+        if (skillDefinitionsError) {
+          console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
+          return;
+        }
 
-      const { data: skillDefinitions, error: skillDefinitionsError } =
-        await supabase
-          .from("skill_definitions")
-          .select("id, skill_name_ko")
-          .eq("job_code", "farming")
-          .eq("is_enabled", true);
+        const skillMap = Object.fromEntries(
+          (skillLevels ?? []).map((row) => {
+            const matched = (skillDefinitions ?? []).find(
+              (def) => def.id === row.skill_id,
+            );
+            return [matched?.skill_name_ko ?? "", row.skill_level];
+          }),
+        );
 
-      if (skillDefinitionsError) {
-        console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
-        return;
-      }
-
-      const skillMap = Object.fromEntries(
-        (skillLevels ?? []).map((row) => {
-          const matched = (skillDefinitions ?? []).find(
-            (def) => def.id === row.skill_id,
-          );
-          return [matched?.skill_name_ko ?? "", row.skill_level];
-        }),
-      );
-
-      setLuck(Number(farmingProfile.luck_total ?? INITIAL_FORM.luck));
-      setSense(Number(farmingProfile.sense_total ?? INITIAL_FORM.sense));
-
-      /**
-       * 도감 효과 자동 불러오기
-       * - 프로필 정보에서 가져온 값은 계산에 포함되지만 직접 수정은 막는다.
-       */
-      setNormalCropReduction(
-        Number(
+        /**
+         * 1) 먼저 DB에서 읽은 최신 값을 지역 변수로 확정한다.
+         * 2) 이 값을 state에도 넣고
+         * 3) 필요하면 이 값으로 즉시 자동 계산까지 수행한다.
+         */
+        const nextLuck = Number(farmingProfile.luck_total ?? INITIAL_FORM.luck);
+        const nextSense = Number(farmingProfile.sense_total ?? INITIAL_FORM.sense);
+        const nextNormalCropReduction = Number(
           farmingProfile.normal_crop_reduction_total ??
             INITIAL_FORM.normalCropReduction,
-        ),
-      );
+        );
 
-      setBlessingOfHarvest(
-        Number(skillMap["풍년의 축복"] ?? INITIAL_FORM.blessingOfHarvest),
-      );
-      setFertileSoil(
-        Number(skillMap["비옥한 토양"] ?? INITIAL_FORM.fertileSoil),
-      );
-      setOathOfCultivation(
-        Number(skillMap["개간의 서약"] ?? INITIAL_FORM.oathOfCultivation),
-      );
+        const nextBlessingOfHarvest = Number(
+          skillMap["풍년의 축복"] ?? INITIAL_FORM.blessingOfHarvest,
+        );
+        const nextFertileSoil = Number(
+          skillMap["비옥한 토양"] ?? INITIAL_FORM.fertileSoil,
+        );
+        const nextOathOfCultivation = Number(
+          skillMap["개간의 서약"] ?? INITIAL_FORM.oathOfCultivation,
+        );
+        const nextHandOfHarvest = Number(
+          skillMap["수확의 손길"] ?? INITIAL_FORM.handOfHarvest,
+        );
+        const nextReseeding = Number(
+          skillMap["되뿌리기"] ?? INITIAL_FORM.reseeding,
+        );
 
-      setHandOfHarvest(
-        Number(skillMap["수확의 손길"] ?? INITIAL_FORM.handOfHarvest),
-      );
-      setReseeding(Number(skillMap["되뿌리기"] ?? INITIAL_FORM.reseeding));
+        /**
+         * UI 표시용 state 반영
+         */
+        setLuck(nextLuck);
+        setSense(nextSense);
+        setNormalCropReduction(nextNormalCropReduction);
+        setBlessingOfHarvest(nextBlessingOfHarvest);
+        setFertileSoil(nextFertileSoil);
+        setOathOfCultivation(nextOathOfCultivation);
+        setHandOfHarvest(nextHandOfHarvest);
+        setReseeding(nextReseeding);
 
-      setPlanType(nextPlanType);
-      setProfileLoaded(true);
-      setIsDirty(true);
-    } finally {
-      loadingProfileRef.current = false;
-    }
-  }, []);
+        setPlanType(nextPlanType);
+        setProfileLoaded(true);
+
+        /**
+         * autoCalculate = true 이면
+         * 새 state 반영을 기다리지 않고
+         * 방금 읽은 최신 값으로 바로 계산한다.
+         */
+        if (options?.autoCalculate) {
+          const nextInput = buildCalculationInputFromProfile({
+            luck: nextLuck,
+            sense: nextSense,
+            normalCropReduction: nextNormalCropReduction,
+            blessingOfHarvest: nextBlessingOfHarvest,
+            fertileSoil: nextFertileSoil,
+            oathOfCultivation: nextOathOfCultivation,
+            handOfHarvest: nextHandOfHarvest,
+            reseeding: nextReseeding,
+          });
+
+          const nextResult = calculateFarming(nextInput);
+          setResult(nextResult);
+          setIsDirty(false);
+        } else {
+          setIsDirty(true);
+        }
+      } finally {
+        loadingProfileRef.current = false;
+      }
+    },
+    [cropType, normalPrice, advancedPrice, rarePrice, weightedThirstValue],
+  );
+
+  useEffect(() => {
+    /**
+     * 프로필 저장 완료 이벤트를 받으면
+     * 최신 프로필을 다시 불러오고,
+     * 그 값으로 즉시 자동 계산까지 수행한다.
+     */
+    const handleProfileUpdated = async () => {
+      await loadProfileToCalculator({ autoCalculate: true });
+    };
+
+    window.addEventListener("profileUpdated", handleProfileUpdated);
+
+    return () => {
+      window.removeEventListener("profileUpdated", handleProfileUpdated);
+    };
+  }, [loadProfileToCalculator]);
 
   useEffect(() => {
     loadProfileToCalculator();
@@ -377,34 +483,6 @@ export default function FarmingCalculatorPage() {
     advancedPrice,
     rarePrice,
   ]);
-
-  useEffect(() => {
-    /**
-     * 프로필 페이지에서 저장이 끝나면
-     * window.dispatchEvent(new Event("profileUpdated")) 가 발생한다.
-     *
-     * 이 이벤트를 받으면:
-     * 1) 최신 farming_profiles / user_skill_levels 를 다시 불러오고
-     * 2) 상태 반영이 끝난 뒤 자동 계산까지 수행한다.
-     */
-    const handleProfileUpdated = async () => {
-      await loadProfileToCalculator();
-
-      /**
-       * React state 반영이 한 템포 뒤에 일어날 수 있어서
-       * setTimeout(..., 0) 으로 다음 tick에 자동 계산한다.
-       */
-      setTimeout(() => {
-        handleCalculate();
-      }, 0);
-    };
-
-    window.addEventListener("profileUpdated", handleProfileUpdated);
-
-    return () => {
-      window.removeEventListener("profileUpdated", handleProfileUpdated);
-    };
-  }, [loadProfileToCalculator, handleCalculate]);
 
   const handleReset = () => {
     setProfileLoaded(false);
