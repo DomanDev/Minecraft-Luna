@@ -107,6 +107,24 @@ function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
     sense_equip: toSafeNumber(farmingStats.sense?.equip),
     sense_total: toSafeNumber(farmingStats.sense?.total),
 
+    /**
+     * 농사 도감 효과
+     * - 일반 작물 감소비율
+     * 계산기에서 자동 불러오려면 farming_profiles에도 저장되어 있어야 한다.
+     */
+    normal_crop_reduction_base: toSafeNumber(
+      farmingStats.normalCropReduction?.base,
+    ),
+    normal_crop_reduction_temp: toSafeNumber(
+      farmingStats.normalCropReduction?.temp,
+    ),
+    normal_crop_reduction_equip: toSafeNumber(
+      farmingStats.normalCropReduction?.equip,
+    ),
+    normal_crop_reduction_total: toSafeNumber(
+      farmingStats.normalCropReduction?.total,
+    ),
+    
     updated_at: new Date().toISOString(),
   };
 }

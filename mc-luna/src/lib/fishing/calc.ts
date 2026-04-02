@@ -122,15 +122,21 @@ function mergeConfig(config?: Partial<FishingCalcConfig>): FishingCalcConfig {
 
 /**
  * 1회 낚시 시간 계산
+ *
  * 계산 순서:
  * 1. 기본값
  * 2. 감각 적용
- * 3. 밤 보정
- * 4. 어장 보정
- * 5. 미끼 보정
- * 6. 떡밥 보정
- * 7. 떼낚시 고정 감소
- * 8. Lure 인챈트 적용
+ * 3. 도감 기척 시간 감소 적용
+ * 4. 밤 보정
+ * 5. 어장 보정
+ * 6. 미끼 보정
+ * 7. 떡밥 보정
+ * 8. 떼낚시 고정 감소
+ * 9. Lure 인챈트 적용
+ *
+ * 이번 수정:
+ * - 프로필 도감 효과인 "기척 시간 감소"를 감각 다음 단계에서 추가 차감
+ * - 이 값은 입질 시간에는 직접 적용하지 않음
  */
 export function calculateCatchTime(
   input: FishingCalculationInput,
@@ -145,10 +151,20 @@ export function calculateCatchTime(
   const baseNibbleTicks = config.baseNibbleTicks;
   const baseBiteTicks = config.baseBiteTicks;
 
-  const afterSenseNibbleTicks =
+  /**
+   * 감각 반영
+   */
+  const rawAfterSenseNibbleTicks =
     baseNibbleTicks - config.senseNibbleCoeff * stats.sense;
   const afterSenseBiteTicks =
     baseBiteTicks - config.senseBiteCoeff * stats.sense;
+
+  /**
+   * 도감 기척 시간 감소 반영
+   * - 0 미만은 의미가 없으므로 clamp
+   */
+  const codexNibbleReduction = Math.max(0, stats.nibbleTimeReduction);
+  const afterSenseNibbleTicks = rawAfterSenseNibbleTicks - codexNibbleReduction;
 
   const afterNightNibbleTicks =
     environment.timeOfDay === "night"
@@ -235,8 +251,6 @@ export function calculateCatchTime(
     finalBiteTicks: round(finalBiteTicks),
     finalNibbleSeconds: round(finalNibbleSeconds),
     finalBiteSeconds: round(finalBiteSeconds),
-    castStartSeconds: round(castStartSeconds),
-    reelInSeconds: round(reelInSeconds),
     waitSeconds: round(waitSeconds),
     totalCycleSeconds: round(totalCycleSeconds),
   };
@@ -244,6 +258,12 @@ export function calculateCatchTime(
 
 /**
  * 물고기 등급 비율 계산
+ *
+ * 이번 수정:
+ * - 일반 등급 감소는
+ *   a) 낚싯줄 장력
+ *   b) 도감 일반 물고기 감소비율
+ *   을 합산 반영
  */
 export function calculateGradeRatio(
   input: FishingCalculationInput,
@@ -252,8 +272,11 @@ export function calculateGradeRatio(
   const { stats, skills, environment } = input;
   const baitEffect = BAIT_EFFECTS[environment.baitType];
 
+  const lineTensionReduction = getLineTensionValue(skills.lineTension);
+  const codexNormalReduction = Math.max(0, stats.normalFishReduction);
+
   const rawNormal =
-    config.baseGradeNormal - getLineTensionValue(skills.lineTension);
+    config.baseGradeNormal - lineTensionReduction - codexNormalReduction;
   const rawAdvanced =
     config.baseGradeAdvanced +
     config.luckGradeCoeff * stats.luck +
@@ -302,7 +325,7 @@ export function calculateVanillaChancePercent(
  * 기대 획득량 계산
  * - 더블 캐치: 추가 물고기
  * - 2회 낚시: 추가 낚시 시도
- * - 이번 패치로 미끼도 2회 낚시 확률을 추가 제공
+ * - 미끼도 2회 낚시 확률을 추가 제공
  */
 export function calculateCatchExpectation(
   input: FishingCalculationInput,
@@ -327,28 +350,14 @@ export function calculateCatchExpectation(
     100,
   );
 
-  /**
-   * 쌍걸이로 얻는 2회 낚시 확률
-   */
   const skillDoubleCastChancePercent =
     environment.useDoubleHook && skills.doubleHook > 0
       ? getDoubleHookRow(skills.doubleHook).extraCatchChancePercent
       : 0;
 
-  /**
-   * 미끼 자체가 제공하는 2회 낚시 보너스
-   * - 없음: 0
-   * - 지렁이: +3
-   * - 어분: +5
-   * - 루어: +8
-   */
   const baitDoubleCastChancePercent =
     BAIT_EFFECTS[environment.baitType].doubleCastChanceBonusPercent;
 
-  /**
-   * 최종 2회 낚시 확률
-   * = 쌍걸이 + 미끼 보너스
-   */
   const doubleCastChancePercent = clamp(
     skillDoubleCastChancePercent + baitDoubleCastChancePercent,
     0,
@@ -418,7 +427,7 @@ export function calculateValue(
   };
 }
 
-/** 전체 계산을 한번에 묶은 메인 함수 */
+/** 전체 낚시 계산 */
 export function calculateFishing(
   input: FishingCalculationInput,
 ): FishingCalculationResult {

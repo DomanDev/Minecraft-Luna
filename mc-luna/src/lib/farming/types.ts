@@ -17,6 +17,16 @@
  *    현재 기대 수익 계산에는 사용하지 않음
  */
 
+/**
+ * 이번 수정의 핵심:
+ * 1) 일반 작물 감소비율을 농사 스탯에 추가
+ * 2) 계산 결과 intermediate에
+ *    - 스킬 감소값
+ *    - 도감 감소값
+ *    - 총 감소값
+ *    을 함께 담아서 UI에서 근거를 보여줄 수 있게 함
+ */
+
 export type FarmingCropType =
   | "lettuce"
   | "corn"
@@ -50,6 +60,13 @@ export interface FarmingStats {
 
   /** 감각 */
   sense: number;
+
+  /**
+   * 일반 작물 감소비율
+   * - 도감 효과에서 들어오는 값
+   * - 일반 등급 가중치(150)에서 추가로 차감
+   */
+  normalCropReduction: number;
 }
 
 /**
@@ -135,6 +152,12 @@ export interface FarmingIntermediateResult {
   normalProbability: number;
   advancedProbability: number;
   rareProbability: number;
+
+  // 일반 작물 감소 근거
+  skillNormalReduction: number;
+  codexNormalReduction: number;
+  totalNormalReduction: number;
+
 
   // 기타 확률
   seedDropRatePercent: number;

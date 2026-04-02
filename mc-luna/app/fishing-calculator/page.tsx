@@ -107,6 +107,15 @@ const thirstOptions: { value: ThirstMin; label: string }[] = [
 const INITIAL_FORM = {
   luck: 0,
   sense: 0,
+
+  /**
+   * 도감 효과
+   * - 프로필 값 자동 반영
+   * - 수동 수정 불가
+   */
+  normalFishReduction: 0,
+  nibbleTimeReduction: 0,
+
   rumoredBait: 0,
   lineTension: 0,
   doubleHook: 0,
@@ -129,6 +138,8 @@ function createInitialCalculationInput(): FishingCalculationInput {
     stats: {
       luck: INITIAL_FORM.luck,
       sense: INITIAL_FORM.sense,
+      normalFishReduction: INITIAL_FORM.normalFishReduction,
+      nibbleTimeReduction: INITIAL_FORM.nibbleTimeReduction,
     },
     skills: {
       rumoredBait: INITIAL_FORM.rumoredBait,
@@ -179,6 +190,19 @@ export default function FishingCalculatorPage() {
   const [luck, setLuck] = useState(INITIAL_FORM.luck);
   const [sense, setSense] = useState(INITIAL_FORM.sense);
 
+  /**
+   * 도감 효과
+   * - 일반 물고기 감소비율
+   * - 기척 시간 감소
+   * 프로필에서 자동 불러오기만 하고 수정은 막는다.
+   */
+  const [normalFishReduction, setNormalFishReduction] = useState(
+    INITIAL_FORM.normalFishReduction,
+  );
+  const [nibbleTimeReduction, setNibbleTimeReduction] = useState(
+    INITIAL_FORM.nibbleTimeReduction,
+  );
+
   const [rumoredBait, setRumoredBait] = useState(INITIAL_FORM.rumoredBait);
   const [lineTension, setLineTension] = useState(INITIAL_FORM.lineTension);
   const [doubleHook, setDoubleHook] = useState(INITIAL_FORM.doubleHook);
@@ -224,7 +248,6 @@ export default function FishingCalculatorPage() {
     try {
       let user = null;
 
-      // 탭 이동 직후 세션 반영이 살짝 늦을 수 있어서 짧게 재시도
       for (let i = 0; i < 5; i++) {
         const {
           data: { session },
@@ -308,6 +331,23 @@ export default function FishingCalculatorPage() {
 
       setLuck(Number(fishingProfile.luck_total ?? INITIAL_FORM.luck));
       setSense(Number(fishingProfile.sense_total ?? INITIAL_FORM.sense));
+
+      /**
+       * 도감 효과 자동 불러오기
+       */
+      setNormalFishReduction(
+        Number(
+          fishingProfile.normal_fish_reduction_total ??
+            INITIAL_FORM.normalFishReduction,
+        ),
+      );
+      setNibbleTimeReduction(
+        Number(
+          fishingProfile.nibble_time_reduction_total ??
+            INITIAL_FORM.nibbleTimeReduction,
+        ),
+      );
+
       setRumoredBait(Number(skillMap["소문난 미끼"] ?? INITIAL_FORM.rumoredBait));
       setLineTension(Number(skillMap["낚싯줄 장력"] ?? INITIAL_FORM.lineTension));
       setDoubleHook(Number(skillMap["쌍걸이"] ?? INITIAL_FORM.doubleHook));
@@ -321,12 +361,10 @@ export default function FishingCalculatorPage() {
     }
   }, []);
 
-  // 경로가 바뀔 때마다 다시 로딩
   useEffect(() => {
     loadProfileToCalculator();
   }, [pathname, loadProfileToCalculator]);
 
-  // 로그인/세션 복원 시 다시 로딩
   useEffect(() => {
     const {
       data: { subscription },
@@ -369,6 +407,8 @@ export default function FishingCalculatorPage() {
       stats: {
         luck,
         sense,
+        normalFishReduction,
+        nibbleTimeReduction,
       },
       skills: {
         rumoredBait,
@@ -406,6 +446,8 @@ export default function FishingCalculatorPage() {
 
     setLuck(INITIAL_FORM.luck);
     setSense(INITIAL_FORM.sense);
+    setNormalFishReduction(INITIAL_FORM.normalFishReduction);
+    setNibbleTimeReduction(INITIAL_FORM.nibbleTimeReduction);
 
     setRumoredBait(INITIAL_FORM.rumoredBait);
     setLineTension(INITIAL_FORM.lineTension);
@@ -537,6 +579,31 @@ export default function FishingCalculatorPage() {
                         setSense(value);
                         setIsDirty(true);
                       }}
+                    />
+                  </Field>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold text-zinc-900">도감 효과</h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="일반 물고기 감소비율">
+                    <NumberInput
+                      value={normalFishReduction}
+                      min={0}
+                      max={9999}
+                      disabled
+                      onChange={() => {}}
+                    />
+                  </Field>
+
+                  <Field label="기척 시간 감소">
+                    <NumberInput
+                      value={nibbleTimeReduction}
+                      min={0}
+                      max={9999}
+                      disabled
+                      onChange={() => {}}
                     />
                   </Field>
                 </div>
@@ -806,6 +873,10 @@ export default function FishingCalculatorPage() {
           <ResultCard title="등급 가중치 / 확률">
             <div className="space-y-2">
               <div className="flex justify-between">
+                <span>도감-일반 물고기 감소비율</span>
+                <span>{formatNumber(normalFishReduction, 2)}</span>
+              </div>
+              <div className="flex justify-between">
                 <span>일반 가중치</span>
                 <span>{formatNumber(result.gradeRatio.rawNormal, 2)}</span>
               </div>
@@ -852,20 +923,8 @@ export default function FishingCalculatorPage() {
           <ResultCard title="중간 계산값">
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span>선택 갈증 최소치</span>
-                <span>
-                  {thirstOptions.find((item) => item.value === thirstMin)?.label ??
-                    ""}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>계산 반영 갈증값</span>
-                <span>
-                  {formatNumber(
-                    result.catchExpectation.effectiveThirstMultiplier,
-                    2,
-                  )}
-                </span>
+                <span>도감-기척 시간 감소</span>
+                <span>{formatNumber(nibbleTimeReduction, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>바닐라 결과물 확률</span>

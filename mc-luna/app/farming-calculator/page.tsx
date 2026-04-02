@@ -59,6 +59,14 @@ function getWeightedThirstValue(thirstMin: ThirstMin): number {
 const INITIAL_FORM = {
   luck: 0,
   sense: 0,
+
+  /**
+   * 도감 효과
+   * - 일반 작물 감소비율
+   * 프로필에서 자동 불러오며 계산에 반영
+   */
+  normalCropReduction: 0,
+
   blessingOfHarvest: 0,
   fertileSoil: 0,
   oathOfCultivation: 0,
@@ -79,6 +87,7 @@ function createInitialCalculationInput(): FarmingCalculationInput {
     stats: {
       luck: INITIAL_FORM.luck,
       sense: INITIAL_FORM.sense,
+      normalCropReduction: INITIAL_FORM.normalCropReduction,
     },
     skills: {
       blessingOfHarvest: INITIAL_FORM.blessingOfHarvest,
@@ -120,6 +129,15 @@ export default function FarmingCalculatorPage() {
 
   const [luck, setLuck] = useState(INITIAL_FORM.luck);
   const [sense, setSense] = useState(INITIAL_FORM.sense);
+
+  /**
+   * 도감 효과
+   * - 항상 회색 read-only 표시
+   * - 프로필에서 불러온 값을 그대로 사용
+   */
+  const [normalCropReduction, setNormalCropReduction] = useState(
+    INITIAL_FORM.normalCropReduction,
+  );
 
   const [blessingOfHarvest, setBlessingOfHarvest] = useState(
     INITIAL_FORM.blessingOfHarvest,
@@ -170,6 +188,7 @@ export default function FarmingCalculatorPage() {
       stats: {
         luck,
         sense,
+        normalCropReduction,
       },
       skills: {
         blessingOfHarvest,
@@ -282,6 +301,17 @@ export default function FarmingCalculatorPage() {
       setLuck(Number(farmingProfile.luck_total ?? INITIAL_FORM.luck));
       setSense(Number(farmingProfile.sense_total ?? INITIAL_FORM.sense));
 
+      /**
+       * 도감 효과 자동 불러오기
+       * - 프로필 정보에서 가져온 값은 계산에 포함되지만 직접 수정은 막는다.
+       */
+      setNormalCropReduction(
+        Number(
+          farmingProfile.normal_crop_reduction_total ??
+            INITIAL_FORM.normalCropReduction,
+        ),
+      );
+
       setBlessingOfHarvest(
         Number(skillMap["풍년의 축복"] ?? INITIAL_FORM.blessingOfHarvest),
       );
@@ -339,6 +369,7 @@ export default function FarmingCalculatorPage() {
 
     setLuck(INITIAL_FORM.luck);
     setSense(INITIAL_FORM.sense);
+    setNormalCropReduction(INITIAL_FORM.normalCropReduction);
 
     setBlessingOfHarvest(INITIAL_FORM.blessingOfHarvest);
     setFertileSoil(INITIAL_FORM.fertileSoil);
@@ -424,6 +455,19 @@ export default function FarmingCalculatorPage() {
                     setIsDirty(true);
                   }}
                   disabled={disableProfileFields}
+                />
+              </Field>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">도감 효과</h3>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Field label="일반 작물 감소비율">
+                <NumberInput
+                  value={normalCropReduction}
+                  onChange={() => {}}
+                  disabled
                 />
               </Field>
             </div>
@@ -560,32 +604,44 @@ export default function FarmingCalculatorPage() {
           <ResultCard title="등급 가중치 / 확률">
             <div className="space-y-2">
               <div className="flex justify-between">
+                <span>풍년의 축복-일반 작물 감소비율</span>
+                <span>{formatNumber(result.intermediate.skillNormalReduction, 2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>도감-일반 작물 감소비율</span>
+                <span>{formatNumber(result.intermediate.codexNormalReduction, 2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>총 일반 작물 감소비율</span>
+                <span>{formatNumber(result.intermediate.totalNormalReduction, 2)}</span>
+              </div>
+              <div className="flex justify-between">
                 <span>일반 가중치</span>
-                <span>{formatNumber(result.intermediate.normalWeight, 4)}</span>
+                <span>{formatNumber(result.intermediate.normalWeight, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>고급 가중치</span>
-                <span>{formatNumber(result.intermediate.advancedWeight, 4)}</span>
+                <span>{formatNumber(result.intermediate.advancedWeight, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>희귀 가중치</span>
-                <span>{formatNumber(result.intermediate.rareWeight, 4)}</span>
+                <span>{formatNumber(result.intermediate.rareWeight, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>전체 가중치 합</span>
-                <span>{formatNumber(result.intermediate.totalWeight, 4)}</span>
+                <span>{formatNumber(result.intermediate.totalWeight, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>일반 확률</span>
-                <span>{toPercent(result.intermediate.normalProbability)}</span>
+                <span>{toPercent(result.intermediate.normalProbability, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>고급 확률</span>
-                <span>{toPercent(result.intermediate.advancedProbability)}</span>
+                <span>{toPercent(result.intermediate.advancedProbability, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>희귀 확률</span>
-                <span>{toPercent(result.intermediate.rareProbability)}</span>
+                <span>{toPercent(result.intermediate.rareProbability, 2)}</span>
               </div>
             </div>
           </ResultCard>
@@ -614,19 +670,19 @@ export default function FarmingCalculatorPage() {
               </div>
               <div className="flex justify-between">
                 <span>화분통 1개당 기대 수확 판정 횟수</span>
-                <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerPot, 4)}회</span>
+                <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerPot, 2)}회</span>
               </div>
               <div className="flex justify-between">
                 <span>1사이클당 총 기대 수확 판정 횟수</span>
-                <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerCycle, 4)}회</span>
+                <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerCycle, 2)}회</span>
               </div>
               <div className="flex justify-between">
                 <span>수확 1회당 기대 작물 개수</span>
-                <span>{formatNumber(result.intermediate.expectedCropsPerHarvestAttempt, 4)}개</span>
+                <span>{Math.floor(result.intermediate.expectedCropsPerHarvestAttempt).toLocaleString()}개</span>
               </div>
               <div className="flex justify-between">
                 <span>1사이클 총 기대 작물 개수</span>
-                <span>{formatNumber(result.intermediate.expectedTotalCropsPerCycle, 4)}개</span>
+                <span>{Math.floor(result.intermediate.expectedTotalCropsPerCycle).toLocaleString()}개</span>
               </div>
             </div>
           </ResultCard>
@@ -635,15 +691,15 @@ export default function FarmingCalculatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>일반 기대 개수</span>
-                <span>{formatNumber(result.normalExpectedCount, 4)}개</span>
+                <span>{Math.floor(result.normalExpectedCount).toLocaleString()}개</span>
               </div>
               <div className="flex justify-between">
                 <span>고급 기대 개수</span>
-                <span>{formatNumber(result.advancedExpectedCount, 4)}개</span>
+                <span>{Math.floor(result.advancedExpectedCount).toLocaleString()}개</span>
               </div>
               <div className="flex justify-between">
                 <span>희귀 기대 개수</span>
-                <span>{formatNumber(result.rareExpectedCount, 4)}개</span>
+                <span>{Math.floor(result.rareExpectedCount).toLocaleString()}개</span>
               </div>
 
               <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
@@ -652,7 +708,7 @@ export default function FarmingCalculatorPage() {
                     1사이클 기대 수익
                   </span>
                   <span className="text-lg font-bold text-blue-700">
-                    {formatNumber(result.expectedRevenuePerCycle, 2)}셀
+                    {Math.floor(result.expectedRevenuePerCycle).toLocaleString()}셀
                   </span>
                 </div>
               </div>
@@ -702,7 +758,7 @@ export default function FarmingCalculatorPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span>1사이클당 획득 경험치</span>
-                    <span>{formatNumber(expResult.expPerCycle, 4)}</span>
+                    <span>{formatNumber(expResult.expPerCycle, 2)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>목표까지 필요한 사이클 수</span>

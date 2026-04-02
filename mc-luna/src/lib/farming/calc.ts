@@ -30,17 +30,23 @@ function clampPercent(value: number): number {
  * 3) 작물 2개 드롭률 = 수확 1회 결과물 +1 기대값
  * 4) 경험치는 이 함수에서 직접 계산하지 않으며,
  *    "수확 판정 횟수"를 별도로 반환해서 exp 계산에 사용
+ *
+ * 이번 수정:
+ * - 일반 작물 감소비율을
+ *   a) 풍년의 축복 스킬 감소값
+ *   b) 도감 효과 감소값
+ *   두 부분으로 나눠 계산하고 합산 적용
  */
 export function calculateFarming(
-  input: FarmingCalculationInput
+  input: FarmingCalculationInput,
 ): FarmingCalculationResult {
-  const { luck, sense } = input.stats;
+  const { luck, sense, normalCropReduction } = input.stats;
   const { blessingOfHarvest, fertileSoil, oathOfCultivation } = input.skills;
   const { potCount, thirst } = input.environment;
   const { normal, advanced, rare } = input.prices;
 
   // 1) 스킬 수치 조회
-  const normalReduction =
+  const skillNormalReduction =
     BLESSING_OF_HARVEST_NORMAL_REDUCTION[blessingOfHarvest] ?? 0;
 
   const fertileSoilRatePercent =
@@ -49,12 +55,24 @@ export function calculateFarming(
   const maxPotCountBySkill =
     OATH_OF_CULTIVATION_MAX_POTS[oathOfCultivation] ?? 96;
 
+  /**
+   * 도감 효과 감소값
+   *
+   * 음수는 의미가 없으므로 0 미만은 잘라낸다.
+   */
+  const codexNormalReduction = Math.max(0, normalCropReduction);
+
+  /**
+   * 최종 일반 작물 감소비율
+   * = 풍년의 축복 감소 + 도감 감소
+   */
+  const totalNormalReduction = skillNormalReduction + codexNormalReduction;
+
   // 2) 등급 가중치 계산
-  // 첨부 이미지 기준
-  // 일반 : 150 - 일반 작물 감소비율
+  // 일반 : 150 - 일반 작물 감소비율(스킬 + 도감)
   // 고급 : 30 + (1.5 * 행운)
   // 희귀 : 15 + (1.5 * 행운)
-  const normalWeight = Math.max(0, 150 - normalReduction);
+  const normalWeight = Math.max(0, 150 - totalNormalReduction);
   const advancedWeight = Math.max(0, 30 + 1.5 * luck);
   const rareWeight = Math.max(0, 15 + 1.5 * luck);
   const totalWeight = normalWeight + advancedWeight + rareWeight;
@@ -68,25 +86,19 @@ export function calculateFarming(
   const seedDropRatePercent = clampPercent(50 + luck);
 
   // 작물 2개 드롭률 = (5 * 갈증 1.0%) + (0.8 * 감각)
-  // 예: 갈증 3, 감각 67 => 15 + 53.6 = 68.6%
   const doubleDropRatePercent = clampPercent(thirst * 5 + sense * 0.8);
 
   // 4) 기대 수확 판정 횟수
-  // 비옥한 토양은 "재배가 1번 더 이루어지는 것"으로 해석
-  // 즉, 수확 판정 자체가 한 번 더 발생하는 기대값
   const fertileSoilRate = fertileSoilRatePercent / 100;
   const expectedHarvestAttemptsPerPot = 1 + fertileSoilRate;
   const expectedHarvestAttemptsPerCycle =
     potCount * expectedHarvestAttemptsPerPot;
 
   // 5) 수확 1회당 기대 작물 개수
-  // 기본 1개 + 작물 2개 드롭 성공 시 +1개
-  // 작물 2개 드롭은 경험치 추가 없음
   const doubleDropRate = doubleDropRatePercent / 100;
   const expectedCropsPerHarvestAttempt = 1 + doubleDropRate;
 
   // 6) 총 기대 작물 개수
-  // 비옥한 토양으로 추가된 재배에도 2개 드롭률 / 등급 확률이 동일 적용
   const expectedTotalCropsPerCycle =
     expectedHarvestAttemptsPerCycle * expectedCropsPerHarvestAttempt;
 
@@ -114,6 +126,10 @@ export function calculateFarming(
       normalProbability: round(normalProbability),
       advancedProbability: round(advancedProbability),
       rareProbability: round(rareProbability),
+
+      skillNormalReduction: round(skillNormalReduction),
+      codexNormalReduction: round(codexNormalReduction),
+      totalNormalReduction: round(totalNormalReduction),
 
       seedDropRatePercent: round(seedDropRatePercent),
       fertileSoilRatePercent: round(fertileSoilRatePercent),
