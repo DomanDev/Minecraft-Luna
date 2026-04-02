@@ -2,28 +2,26 @@
 
 /**
  * 물고기 등급
- * normal   = 일반
+ * normal = 일반
  * advanced = 고급
- * rare     = 희귀
+ * rare = 희귀
  */
 export type FishGrade = "normal" | "advanced" | "rare";
 
 /**
  * 어장 상태
  * abundant = 풍부
- * normal   = 보통
+ * normal = 보통
  * depleted = 고갈
  */
 export type PondState = "abundant" | "normal" | "depleted";
 
-/**
- * 갈증 최소치
- */
+/** 갈증 최소치 */
 export type ThirstMin = 15 | 10 | 5 | 1;
 
 /**
  * 시간대
- * day   = 낮
+ * day = 낮
  * night = 밤
  */
 export type TimeOfDay = "day" | "night";
@@ -39,16 +37,14 @@ export type BaitType = "none" | "worm" | "meal" | "lure";
 
 /**
  * 떡밥 종류
- * none    = 미사용
- * plain   = 평범한 떡밥
- * good    = 잘만든 떡밥
+ * none = 미사용
+ * plain = 평범한 떡밥
+ * good = 잘만든 떡밥
  * rainbow = 무지개 떡밥
  */
 export type GroundbaitType = "none" | "plain" | "good" | "rainbow";
 
-/**
- * 유저 스탯
- */
+/** 유저 스탯 */
 export interface FishingStats {
   /** 행운 */
   luck: number;
@@ -71,44 +67,32 @@ export interface FishingSkills {
   schoolFishing: number;
 }
 
-/**
- * 계산기 환경값
- */
+/** 계산기 환경값 */
 export interface FishingEnvironment {
   /** 주스를 마시기 전까지 허용하는 최소 갈증값 */
   thirstMin: ThirstMin;
-
   /** 낮 / 밤 */
   timeOfDay: TimeOfDay;
-
   /** 어장 상태 */
   pondState: PondState;
-
   /** 미끼 종류 */
   baitType: BaitType;
-
   /** 떡밥 종류 */
   groundbaitType: GroundbaitType;
-
   /**
    * 낚싯대 미끼 인챈트 레벨 (Lure)
    * 0 ~ 3
-   * 마인크래프트 기본 규칙 기준:
-   * 레벨당 5초(100틱)씩 대기 시간 감소
-   * -> 루나 계산기에서는 표시값(display)에는 반영하지 않고, 실제 체감용 최종 기척 시간(final)에만 반영한다.
+   * 루나 계산기에서는 표시값(display)에는 반영하지 않고,
+   * 실제 체감용 최종 기척 시간(final)에만 반영한다.
    */
   lureEnchantLevel: number;
-
   /** 쌍걸이 스킬 사용 여부 */
   useDoubleHook: boolean;
-
   /** 떼낚시 스킬 사용 여부 */
   useSchoolFishing: boolean;
 }
 
-/**
- * 등급별 시세
- */
+/** 등급별 시세 */
 export interface FishPrices {
   normal: number;
   advanced: number;
@@ -120,18 +104,15 @@ export interface FishPrices {
  * 나중에 서버 분석 결과가 더 나오면 여기만 수정하면 됨
  */
 export interface FishingCalcConfig {
-  /**
-   * 루나서버 표시 기본값
-   * 기척 = 360틱
-   * 입질 = 90틱
-   */
+  /** 루나서버 표시 기본값 */
   baseNibbleTicks: number;
   baseBiteTicks: number;
 
-  // 낚싯대 던지는 시간
-  castStartSeconds: number;   
-  // 물고기 물고 난 뒤 건져올리는 시간
-  reelInSeconds: number;     
+  /** 낚싯대 던지는 시간 */
+  castStartSeconds: number;
+
+  /** 물고기 물고 난 뒤 건져올리는 시간 */
+  reelInSeconds: number;
 
   /**
    * 감각 계수
@@ -141,12 +122,10 @@ export interface FishingCalcConfig {
   senseNibbleCoeff: number;
   senseBiteCoeff: number;
 
-  /**
-   * 등급 비율 기본값
-   */
-  baseGradeNormal: number;   // 150
-  baseGradeAdvanced: number; // 30
-  baseGradeRare: number;     // 15
+  /** 등급 비율 기본값 */
+  baseGradeNormal: number;
+  baseGradeAdvanced: number;
+  baseGradeRare: number;
 
   /**
    * 행운이 고급/희귀에 미치는 계수
@@ -172,18 +151,16 @@ export interface FishingCalcConfig {
 
   /**
    * 미끼 인챈트(Lure) 레벨당 기척 감소 틱
-   * Minecraft 기본 규칙: 5초 = 100틱 / 레벨 :contentReference[oaicite:1]{index=1}
+   * 100틱 = 5초
    */
   lureEnchantReductionTicksPerLevel: number;
 
-  //** 갈증 값 */
-  maxThirst: number;     // 20 -> 100
-  averageThirst: number; // 15 -> 75
+  /** 갈증 값 */
+  maxThirst: number;
+  averageThirst: number;
 }
 
-/**
- * 미끼 효과
- */
+/** 미끼 효과 */
 export interface BaitEffect {
   /** 기척 시간 감소율 */
   nibbleReductionRate: number;
@@ -193,23 +170,20 @@ export interface BaitEffect {
   advancedBonus: number;
   /** 희귀 비율 추가 */
   rareBonus: number;
+  /** 미끼 자체가 주는 2회 낚시 확률 보너스 */
+  doubleCastChanceBonusPercent: number;
 }
 
-/**
- * 떡밥 효과
- */
+/** 떡밥 효과 */
 export interface GroundbaitEffect {
   nibbleReductionRate: number;
   biteReductionRate: number;
 }
 
-/**
- * 1회 낚시 시간 계산 결과
- */
+/** 1회 낚시 시간 계산 결과 */
 export interface CatchTimeResult {
   baseNibbleTicks: number;
   baseBiteTicks: number;
-
   afterSenseNibbleTicks: number;
   afterSenseBiteTicks: number;
 
@@ -218,7 +192,7 @@ export interface CatchTimeResult {
   displayBiteTicks: number;
   displayNibbleSeconds: number;
   displayBiteSeconds: number;
-  
+
   /** 미끼 인챈트 적용 후 */
   afterLureEnchantNibbleTicks: number;
   afterLureEnchantBiteTicks: number;
@@ -245,42 +219,34 @@ export interface CatchTimeResult {
 
   finalNibbleTicks: number;
   finalBiteTicks: number;
-
   finalNibbleSeconds: number;
   finalBiteSeconds: number;
 
   castStartSeconds: number;
   reelInSeconds: number;
   waitSeconds: number;
-
   totalCycleSeconds: number;
 }
 
-/**
- * 등급 비율 결과
- */
+/** 등급 비율 결과 */
 export interface GradeRatioResult {
   rawNormal: number;
   rawAdvanced: number;
   rawRare: number;
-
   probabilityNormal: number;
   probabilityAdvanced: number;
   probabilityRare: number;
 }
 
-/**
- * 기대 획득량 결과
- */
+/** 기대 획득량 결과 */
 export interface CatchExpectationResult {
   /** 사용자가 드롭박스에서 선택한 최소 갈증값 */
   selectedThirstMin: 15 | 10 | 5 | 1;
 
   /**
    * 최소 갈증값 기준으로 계산한 유효 갈증 계수
-   * 예:
    * 15 -> 1
-   * 10 -> 0.8864...
+   * 10 -> 0.8863...
    * 5  -> 0.7656...
    * 1  -> 0.6625
    */
@@ -297,26 +263,20 @@ export interface CatchExpectationResult {
 
   /**
    * 2회 낚시 확률
-   * = 쌍걸이 스킬 수치
+   * = 쌍걸이 확률 + 미끼 보너스
    */
   doubleCastChancePercent: number;
 
   /** 낚시 1회당 기대 커스텀 물고기 수 */
   customFishPerCatch: number;
-  
+
   /** 더블 캐치 적용 후 낚시 1회당 최종 기대 커스텀 물고기 수 */
   finalCustomFishPerCatch: number;
 
-  /**
-   * 전체 물고기 기준 낚시 1회당 기대 획득량
-   * 더블 캐치 반영
-   */
+  /** 전체 물고기 기준 낚시 1회당 기대 획득량 */
   fishPerCatch: number;
 
-  /**
-   * 1회 사이클당 기대 낚시 횟수
-   * 쌍걸이 반영
-   */
+  /** 1회 사이클당 기대 낚시 횟수 */
   catchCountPerCycle: number;
 
   /** 최종 기대 획득량(커스텀 물고기) */
@@ -324,7 +284,7 @@ export interface CatchExpectationResult {
 
   /** 참고용: 전체 물고기 기준 최종 기대 획득량 */
   finalFishPerCycle: number;
-  
+
   /**
    * 경험치 계산용 기대 낚시 횟수
    * 더블 캐치 추가 물고기는 경험치 없음
@@ -334,37 +294,25 @@ export interface CatchExpectationResult {
   expCatchCountPerCycle: number;
 }
 
-/**
- * 기대 가치 결과
- */
+/** 기대 가치 결과 */
 export interface ValueResult {
   expectedValuePerFish: number;
   expectedValuePerCycle: number;
   expectedValuePerHour: number;
-
   vanillaChancePercent: number;
   customFishChancePercent: number;
 }
 
-/**
- * 전체 계산 입력
- */
+/** 전체 계산 입력 */
 export interface FishingCalculationInput {
   stats: FishingStats;
   skills: FishingSkills;
   environment: FishingEnvironment;
   prices: FishPrices;
-
-  /**
-   * 기본 설정 덮어쓰기용
-   * 대부분은 안 넣고 DEFAULT 사용하면 됨
-   */
   config?: Partial<FishingCalcConfig>;
 }
 
-/**
- * 전체 계산 출력
- */
+/** 전체 계산 출력 */
 export interface FishingCalculationResult {
   catchTime: CatchTimeResult;
   gradeRatio: GradeRatioResult;

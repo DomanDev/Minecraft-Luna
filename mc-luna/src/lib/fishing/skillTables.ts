@@ -1,12 +1,15 @@
 // src/lib/fishing/skillTables.ts
 
-import type { BaitEffect, BaitType, GroundbaitEffect, GroundbaitType } from "./types";
+import type {
+  BaitEffect,
+  BaitType,
+  GroundbaitEffect,
+  GroundbaitType,
+} from "./types";
 
 /**
  * 소문난 미끼 / 낚싯줄 장력 수치표
- * 루나위키에서 확인한 값 기준
- *
- * 0레벨도 계산기 편의상 넣어둠
+ * 루나위키 기준
  */
 export const RUMORED_BAIT_TABLE: Record<number, number> = {
   0: 0,
@@ -79,9 +82,6 @@ export const LINE_TENSION_TABLE: Record<number, number> = {
 /**
  * 쌍걸이
  * extraCatchChancePercent = 추가 낚시 기대 확률
- *
- * duration/cooldown/mana는 현재 계산기 핵심에는 안 쓰지만,
- * 나중에 "실전 평균 효율" 계산할 때 필요할 수 있어서 보존
  */
 export const DOUBLE_HOOK_TABLE: Record<
   number,
@@ -127,10 +127,8 @@ export const DOUBLE_HOOK_TABLE: Record<
 
 /**
  * 떼낚시
- * 루나위키 표 기준
- *
  * nibbleReductionTicks = 기척 고정 감소 틱
- * biteReductionTicks   = 입질 고정 감소 틱
+ * biteReductionTicks = 입질 고정 감소 틱
  */
 export const SCHOOL_FISHING_TABLE: Record<
   number,
@@ -176,8 +174,9 @@ export const SCHOOL_FISHING_TABLE: Record<
 };
 
 /**
- * 미끼 종류별 시간 감소 + 등급 비율 추가
- * 네가 캡처해서 준 루나서버 위키 표 기준
+ * 미끼 종류별 효과
+ * - 기존 시간/등급 보정 유지
+ * - 이번 패치로 2회 낚시 확률 보너스 추가
  */
 export const BAIT_EFFECTS: Record<BaitType, BaitEffect> = {
   none: {
@@ -185,30 +184,35 @@ export const BAIT_EFFECTS: Record<BaitType, BaitEffect> = {
     biteReductionRate: 0,
     advancedBonus: 0,
     rareBonus: 0,
+    doubleCastChanceBonusPercent: 0,
   },
   worm: {
     nibbleReductionRate: 0.05,
     biteReductionRate: 0.03,
     advancedBonus: 20,
     rareBonus: 10,
+    doubleCastChanceBonusPercent: 3,
   },
   meal: {
-    nibbleReductionRate: 0.10,
+    nibbleReductionRate: 0.1,
     biteReductionRate: 0.05,
     advancedBonus: 30,
     rareBonus: 15,
+    doubleCastChanceBonusPercent: 5,
   },
   lure: {
     nibbleReductionRate: 0.15,
-    biteReductionRate: 0.10,
+    biteReductionRate: 0.1,
     advancedBonus: 40,
     rareBonus: 30,
+    doubleCastChanceBonusPercent: 8,
   },
 };
 
 /**
  * 떡밥 종류별 시간 감소
- * 네가 캡처해서 준 루나서버 위키 표 기준
+ * 새로 추가된 "어장 자원 소모 감소 / 상태 보정"은
+ * 현재 시간당 수익 계산에는 반영하지 않고 UI 설명용으로만 사용한다.
  */
 export const GROUNDBAIT_EFFECTS: Record<GroundbaitType, GroundbaitEffect> = {
   none: {
@@ -229,39 +233,28 @@ export const GROUNDBAIT_EFFECTS: Record<GroundbaitType, GroundbaitEffect> = {
   },
 };
 
-/**
- * 안전하게 레벨 보정하는 공통 함수
- * 0 ~ 30 범위로 고정
- */
+/** 안전하게 레벨 보정하는 공통 함수 */
 export function normalizeSkillLevel(level: number): number {
   if (!Number.isFinite(level)) return 0;
   return Math.max(0, Math.min(30, Math.floor(level)));
 }
 
-/**
- * 소문난 미끼 수치 가져오기
- */
+/** 소문난 미끼 수치 가져오기 */
 export function getRumoredBaitValue(level: number): number {
   return RUMORED_BAIT_TABLE[normalizeSkillLevel(level)] ?? 0;
 }
 
-/**
- * 낚싯줄 장력 수치 가져오기
- */
+/** 낚싯줄 장력 수치 가져오기 */
 export function getLineTensionValue(level: number): number {
   return LINE_TENSION_TABLE[normalizeSkillLevel(level)] ?? 0;
 }
 
-/**
- * 쌍걸이 테이블 행 가져오기
- */
+/** 쌍걸이 테이블 행 가져오기 */
 export function getDoubleHookRow(level: number) {
   return DOUBLE_HOOK_TABLE[normalizeSkillLevel(level)];
 }
 
-/**
- * 떼낚시 테이블 행 가져오기
- */
+/** 떼낚시 테이블 행 가져오기 */
 export function getSchoolFishingRow(level: number) {
   return SCHOOL_FISHING_TABLE[normalizeSkillLevel(level)];
 }

@@ -12,7 +12,7 @@ import { usePathname } from "next/navigation";
  */
 const navItems = [
   { href: "/", label: "홈" },
-  { href: "/calculator", label: "낚시" },
+  { href: "/fishing-calculator", label: "낚시" },
   { href: "/farming-calculator", label: "농사" },
   { href: "/mining-calculator", label: "채광" },
   { href: "/cooking-calculator", label: "요리" },

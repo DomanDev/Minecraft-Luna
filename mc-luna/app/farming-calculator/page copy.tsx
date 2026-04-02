@@ -39,6 +39,11 @@ const cropOptions: { value: FarmingCropType; label: string }[] = [
 
 /**
  * 갈증 최소치 타입
+ *
+ * 정책:
+ * - 사용자가 직접 숫자를 입력하지 않고
+ * - "어느 최소치 이상 유지할지"를 선택
+ * - 실제 계산에는 아래 최소치에 대응하는 가중치를 적용한 유효 갈증값을 사용
  */
 type ThirstMin = 15 | 10 | 5 | 1 | 0;
 
@@ -55,6 +60,16 @@ const thirstMinOptions: { value: string; label: string }[] = [
 
 /**
  * 갈증 최소치별 가중치
+ *
+ * 요청사항 반영:
+ * - 낚시 계산기와 같은 방식의 최소치 가중치 개념 사용
+ * - 15, 10, 5, 1, 0에 대해
+ *   1, 0.75, 0.5, 0.25, 0 가중치 적용
+ *
+ * 최종적으로 농사 계산기에서는
+ * "작물 2개 드롭률 = (갈증 × 5) + (감각 × 0.8)"
+ * 공식을 쓰므로,
+ * 여기서는 "실효 갈증값"을 먼저 만든 뒤 calc.ts에 넣는다.
  */
 const THIRST_MIN_WEIGHTS: Record<ThirstMin, number> = {
   15: 1,
@@ -66,6 +81,15 @@ const THIRST_MIN_WEIGHTS: Record<ThirstMin, number> = {
 
 /**
  * 갈증 최소치 -> 실제 계산에 사용할 유효 갈증값 변환
+ *
+ * 예:
+ * - 15 이상 유지 -> 15 * 1 = 15
+ * - 10 이상 유지 -> 10 * 0.75 = 7.5
+ * - 5 이상 유지 -> 5 * 0.5 = 2.5
+ * - 1 이상 유지 -> 1 * 0.25 = 0.25
+ * - 0 이상 유지 -> 0
+ *
+ * 이 값을 calc.ts의 thirst로 전달한다.
  */
 function getWeightedThirstValue(thirstMin: ThirstMin): number {
   return thirstMin * THIRST_MIN_WEIGHTS[thirstMin];
@@ -73,6 +97,14 @@ function getWeightedThirstValue(thirstMin: ThirstMin): number {
 
 /**
  * 페이지 초기 입력값
+ *
+ * 현재 정책:
+ * - 계산에 직접 쓰는 농사 스킬은 3개
+ *   (풍년의 축복 / 비옥한 토양 / 개간의 서약)
+ * - 수확의 손길 / 되뿌리기는 계산에 사용하지 않지만
+ *   프로필 불러오기 및 확장 대비용 state로는 유지
+ * - 총 화분통 수는 직접 입력하지 않고 개간의 서약으로 자동 계산
+ * - 갈증은 숫자가 아니라 최소치 드롭다운으로 관리
  */
 const INITIAL_FORM = {
   // 스탯
@@ -100,6 +132,10 @@ const INITIAL_FORM = {
 
 /**
  * 초기 계산 입력 객체 생성
+ *
+ * 중요:
+ * - 총 화분통 수는 개간의 서약 기준 최대치로 자동 계산
+ * - 갈증은 최소치 드롭다운 값에서 가중치 적용 후 계산용 값으로 변환
  */
 function createInitialCalculationInput(): FarmingCalculationInput {
   const initialMaxPots =
@@ -148,9 +184,6 @@ function formatNumber(value: number, digits = 2): string {
 }
 
 export default function FarmingCalculatorPage() {
-  const pathname = usePathname();
-  const loadingProfileRef = useRef(false);
-
   /**
    * =========================
    * 입력 폼 state
@@ -189,6 +222,7 @@ export default function FarmingCalculatorPage() {
    * =========================
    * 결과 state
    * =========================
+   * - 버튼 클릭 시에만 결과 반영
    */
   const [result, setResult] = useState<FarmingCalculationResult>(() =>
     calculateFarming(createInitialCalculationInput()),
@@ -212,6 +246,11 @@ export default function FarmingCalculatorPage() {
 
   /**
    * 개간의 서약 레벨 기준 최대 화분통 수
+   *
+   * 중요:
+   * - ./생활 정보의 "경작지당 화분통 설치 개수" 스탯은 사용하지 않음
+   * - 계산기 정책상 화분통 최대치는 개간의 서약 레벨 기준으로 산출
+   * - 직접 입력도 받지 않고 자동 계산된 값을 사용
    */
   const maxPotCountBySkill = useMemo(() => {
     return OATH_OF_CULTIVATION_MAX_POTS[oathOfCultivation] ?? 96;
@@ -219,6 +258,8 @@ export default function FarmingCalculatorPage() {
 
   /**
    * 갈증 최소치 기반 실제 계산용 유효 갈증값
+   *
+   * 결과 화면에 참고값을 보여주고 싶을 때도 재사용 가능
    */
   const weightedThirstValue = useMemo(() => {
     return getWeightedThirstValue(thirstMin);
@@ -226,12 +267,17 @@ export default function FarmingCalculatorPage() {
 
   /**
    * Pro 여부
+   * - 프로필에서 불러온 스탯/스킬은 Pro만 수정 가능
    */
   const isProUser = planType === "pro";
   const disableProfileFields = profileLoaded && !isProUser;
 
   /**
    * 계산기 입력 객체 생성
+   *
+   * 중요:
+   * - 총 화분통 수는 별도 입력값이 아니라 maxPotCountBySkill 사용
+   * - 갈증은 드롭다운 최소치 -> 가중치 적용 유효 갈증값으로 변환
    */
   const buildCalculationInput = (): FarmingCalculationInput => {
     return {
@@ -262,41 +308,26 @@ export default function FarmingCalculatorPage() {
   /**
    * 프로필 자동 불러오기
    *
-   * - 탭 이동(pathname 변경) 시 다시 로딩
-   * - 로그인/세션 복원 시 다시 로딩
-   * - 탭 이동 직후 세션이 늦게 붙는 경우를 대비해 짧게 재시도
+   * 기대 테이블:
+   * - profiles(plan_type)
+   * - farming_profiles(luck_total, sense_total)
+   * - user_skill_levels(skill_id, skill_level)
+   * - skill_definitions(id, skill_name_ko, job_code='farming')
+   *
+   * 현재 정책:
+   * - 농사 스킬 5개를 모두 읽어옴
+   * - 그러나 실제 계산에 쓰는 것은 3개뿐
+   * - 총 화분통 수는 별도 저장값이 아니라 개간의 서약으로 자동 계산
    */
-  const loadProfileToCalculator = useCallback(async () => {
-    if (loadingProfileRef.current) return;
-    loadingProfileRef.current = true;
+  useEffect(() => {
+    let isMounted = true;
 
-    try {
-      let user = null;
+    const loadProfileToCalculator = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      // 탭 이동 직후 세션 반영 지연 대응
-      for (let i = 0; i < 5; i++) {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-
-        if (error) {
-          console.warn("getSession 실패:", error.message);
-        }
-
-        if (session?.user) {
-          user = session.user;
-          break;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-
-      if (!user) {
-        setPlanType(null);
-        setProfileLoaded(false);
-        return;
-      }
+      if (!user || !isMounted) return;
 
       /**
        * 1) 플랜 타입 조회
@@ -316,6 +347,10 @@ export default function FarmingCalculatorPage() {
 
       /**
        * 2) farming_profiles 조회
+       *
+       * 현재 농사 계산기에서 사용하는 스탯:
+       * - luck_total
+       * - sense_total
        */
       const { data: farmingProfile, error: farmingProfileError } = await supabase
         .from("farming_profiles")
@@ -326,7 +361,6 @@ export default function FarmingCalculatorPage() {
       if (farmingProfileError || !farmingProfile) {
         console.warn("farming_profiles 조회 실패:", farmingProfileError?.message);
         setPlanType(nextPlanType);
-        setProfileLoaded(false);
         return;
       }
 
@@ -346,12 +380,11 @@ export default function FarmingCalculatorPage() {
       /**
        * 4) 농사 스킬 정의 조회
        */
-      const { data: skillDefinitions, error: skillDefinitionsError } =
-        await supabase
-          .from("skill_definitions")
-          .select("id, skill_name_ko")
-          .eq("job_code", "farming")
-          .eq("is_enabled", true);
+      const { data: skillDefinitions, error: skillDefinitionsError } = await supabase
+        .from("skill_definitions")
+        .select("id, skill_name_ko")
+        .eq("job_code", "farming")
+        .eq("is_enabled", true);
 
       if (skillDefinitionsError) {
         console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
@@ -359,7 +392,8 @@ export default function FarmingCalculatorPage() {
       }
 
       /**
-       * skill_id -> 스킬명 매핑
+       * skill_id -> 한글 스킬명 매핑 후
+       * "스킬명 -> 레벨" 객체 생성
        */
       const skillMap = Object.fromEntries(
         (skillLevels ?? []).map((row) => {
@@ -370,6 +404,20 @@ export default function FarmingCalculatorPage() {
         }),
       );
 
+      if (!isMounted) return;
+
+      /**
+       * 5) 스탯 / 스킬 반영
+       *
+       * 현재 계산 반영:
+       * - 풍년의 축복
+       * - 비옥한 토양
+       * - 개간의 서약
+       *
+       * 현재 계산 미반영(표시/확장 대비):
+       * - 수확의 손길
+       * - 되뿌리기
+       */
       const nextLuck = Number(farmingProfile.luck_total ?? INITIAL_FORM.luck);
       const nextSense = Number(farmingProfile.sense_total ?? INITIAL_FORM.sense);
 
@@ -403,38 +451,14 @@ export default function FarmingCalculatorPage() {
       setPlanType(nextPlanType);
       setProfileLoaded(true);
       setIsDirty(true);
-    } finally {
-      loadingProfileRef.current = false;
-    }
-  }, []);
+    };
 
-  /**
-   * 경로가 바뀔 때마다 재로딩
-   */
-  useEffect(() => {
     loadProfileToCalculator();
-  }, [pathname, loadProfileToCalculator]);
-
-  /**
-   * 로그인/세션 복원 시 재로딩
-   */
-  useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session?.user) {
-        setPlanType(null);
-        setProfileLoaded(false);
-        return;
-      }
-
-      loadProfileToCalculator();
-    });
 
     return () => {
-      subscription.unsubscribe();
+      isMounted = false;
     };
-  }, [loadProfileToCalculator]);
+  }, []);
 
   /**
    * 계산 버튼
@@ -480,6 +504,10 @@ export default function FarmingCalculatorPage() {
 
   /**
    * 경험치 계산 버튼
+   *
+   * 핵심:
+   * - expectedHarvestAttemptsPerCycle 사용
+   * - 액티브 스킬(수확의 손길, 되뿌리기)은 현재 계산에 영향 없음
    */
   const handleCalculateExp = () => {
     const nextExp = calculateFarmingExp({
@@ -522,34 +550,34 @@ export default function FarmingCalculatorPage() {
                   </p>
                 </div>
               )}
+          <br></br>
+          {/* 스탯 */}
+          <h3 className="mb-3 text-lg font-semibold">농사 스탯</h3>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Field label="행운">
+              <NumberInput
+                value={luck}
+                onChange={(value) => {
+                  setLuck(value);
+                  setIsDirty(true);
+                }}
+                disabled={disableProfileFields}
+              />
+            </Field>
 
-          <div className="mt-6">
-            <h3 className="mb-3 text-lg font-semibold">농사 스탯</h3>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field label="행운">
-                <NumberInput
-                  value={luck}
-                  onChange={(value) => {
-                    setLuck(value);
-                    setIsDirty(true);
-                  }}
-                  disabled={disableProfileFields}
-                />
-              </Field>
-
-              <Field label="감각">
-                <NumberInput
-                  value={sense}
-                  onChange={(value) => {
-                    setSense(value);
-                    setIsDirty(true);
-                  }}
-                  disabled={disableProfileFields}
-                />
-              </Field>
-            </div>
+            <Field label="감각">
+              <NumberInput
+                value={sense}
+                onChange={(value) => {
+                  setSense(value);
+                  setIsDirty(true);
+                }}
+                disabled={disableProfileFields}
+              />
+            </Field>
           </div>
 
+          {/* 스킬 */}
           <h3 className="mb-3 mt-6 text-lg font-semibold">농사 스킬</h3>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field label="풍년의 축복">
@@ -585,12 +613,18 @@ export default function FarmingCalculatorPage() {
               />
             </Field>
 
+            {/* 개간의 서약 오른쪽에 자동 계산된 총 화분통 수 표시
+                - 직접 입력 불가
+                - 현재 개간의 서약 기준 최대치만 보여줌
+                - 회색 배경 느낌의 읽기 전용 스타일 */}
             <Field label="총 화분통 수">
               <div className="w-full rounded-xl border bg-gray-100 px-3 py-2 text-gray-700">
                 {maxPotCountBySkill.toLocaleString()}개
               </div>
             </Field>
 
+            {/* 아래 2개는 현재 계산 미반영.
+                그래도 프로필과 실제 보유 상태를 확인할 수 있게 읽기 전용 표시 유지 */}
             <Field label="수확의 손길 (계산 미반영)">
               <div className="w-full rounded-xl border bg-gray-100 px-3 py-2 text-gray-700">
                 Lv.{handOfHarvest}
@@ -604,6 +638,7 @@ export default function FarmingCalculatorPage() {
             </Field>
           </div>
 
+          {/* 재배 정보 */}
           <h3 className="mb-3 mt-6 text-lg font-semibold">재배 정보</h3>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field label="작물 종류">
@@ -629,6 +664,7 @@ export default function FarmingCalculatorPage() {
             </Field>
           </div>
 
+          {/* 시세 */}
           <h3 className="mb-3 mt-6 text-lg font-semibold">평균 시세</h3>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <Field label="일반">
@@ -678,6 +714,7 @@ export default function FarmingCalculatorPage() {
       }
       right={
         <CalculatorPanel title="계산 결과">
+          {/* 등급 가중치 / 확률 */}
           <ResultCard title="등급 가중치 / 확률">
             <div className="space-y-2">
               <div className="flex justify-between">
@@ -723,61 +760,31 @@ export default function FarmingCalculatorPage() {
               </div>
               <div className="flex justify-between">
                 <span>씨앗 드롭률</span>
-                <span>
-                  {formatNumber(result.intermediate.seedDropRatePercent, 2)}%
-                </span>
+                <span>{formatNumber(result.intermediate.seedDropRatePercent, 2)}%</span>
               </div>
               <div className="flex justify-between">
                 <span>비옥한 토양 발동률</span>
-                <span>
-                  {formatNumber(result.intermediate.fertileSoilRatePercent, 2)}%
-                </span>
+                <span>{formatNumber(result.intermediate.fertileSoilRatePercent, 2)}%</span>
               </div>
               <div className="flex justify-between">
                 <span>작물 2개 드롭률</span>
-                <span>
-                  {formatNumber(result.intermediate.doubleDropRatePercent, 2)}%
-                </span>
+                <span>{formatNumber(result.intermediate.doubleDropRatePercent, 2)}%</span>
               </div>
               <div className="flex justify-between">
                 <span>화분통 1개당 기대 수확 판정 횟수</span>
-                <span>
-                  {formatNumber(
-                    result.intermediate.expectedHarvestAttemptsPerPot,
-                    4,
-                  )}
-                  회
-                </span>
+                <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerPot, 4)}회</span>
               </div>
               <div className="flex justify-between">
                 <span>1사이클당 총 기대 수확 판정 횟수</span>
-                <span>
-                  {formatNumber(
-                    result.intermediate.expectedHarvestAttemptsPerCycle,
-                    4,
-                  )}
-                  회
-                </span>
+                <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerCycle, 4)}회</span>
               </div>
               <div className="flex justify-between">
                 <span>수확 1회당 기대 작물 개수</span>
-                <span>
-                  {formatNumber(
-                    result.intermediate.expectedCropsPerHarvestAttempt,
-                    4,
-                  )}
-                  개
-                </span>
+                <span>{formatNumber(result.intermediate.expectedCropsPerHarvestAttempt, 4)}개</span>
               </div>
               <div className="flex justify-between">
                 <span>1사이클 총 기대 작물 개수</span>
-                <span>
-                  {formatNumber(
-                    result.intermediate.expectedTotalCropsPerCycle,
-                    4,
-                  )}
-                  개
-                </span>
+                <span>{formatNumber(result.intermediate.expectedTotalCropsPerCycle, 4)}개</span>
               </div>
             </div>
           </ResultCard>
@@ -797,6 +804,9 @@ export default function FarmingCalculatorPage() {
                 <span>{formatNumber(result.rareExpectedCount, 4)}개</span>
               </div>
 
+              {/* 요청사항 반영:
+                  - 1사이클당 수익 텍스트를 진하게
+                  - 연한 파란색 느낌으로 강조 */}
               <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-blue-900">
