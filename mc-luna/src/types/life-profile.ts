@@ -8,6 +8,27 @@ export type JobKey =
   | "blacksmithing"
   | "alchemy";
 
+/**
+ * 2) StatKey 확장
+ *
+ * 공통 기본 스탯 6개 +
+ * 계산에 바로 쓰는 직업별 도감 효과 스탯
+ */
+export type StatKey =
+  | 'luck'
+  | 'sense'
+  | 'endurance'
+  | 'mastery'
+  | 'dexterity'
+  | 'charisma'
+  | 'fishingYieldBonus'
+  | 'normalFishReduction'
+  | 'nibbleTimeReduction'
+  | 'normalCropReduction'
+  | 'miningDelayReduction'
+  | 'miningDamageIncrease'
+  | 'cookingGradeUpChance';
+
 export type InputMethod = "imported" | "manual";
 
 export type ParsedStatValue = {
@@ -25,10 +46,21 @@ export type JobProfile = {
   stats: JobStatMap;
 };
 
+/**
+ * 4) 각 job의 stats는 Partial<Record<StatKey, ParsedStatValue>> 형태를 허용
+ */
+export type ParsedJobProfile = {
+  level?: number;
+  stats: Partial<Record<StatKey, ParsedStatValue>>;
+};
+
+/**
+ * 5) ParsedLifeProfile 확장
+ */
 export type ParsedLifeProfile = {
-  reputationLevel: number;
-  jobs: Partial<Record<JobKey, JobProfile>>;
-  skills: Partial<Record<JobKey, JobSkillMap>>;
+  reputationLevel?: number;
+  jobs: Partial<Record<JobKey, ParsedJobProfile>>;
+  skills: Partial<Record<JobKey, Record<string, number>>>;
 };
 
 export type ManualStatInput = {
@@ -40,10 +72,32 @@ export type ManualJobProfileInput = {
   stats: Record<string, ManualStatInput>;
 };
 
+/**
+ * 6) ManualLifeProfileInput도 같은 구조를 수용하도록 확장
+ *
+ * 지금 ProfilePage의 buildManualLifeProfileInput()에서
+ * fishing/farming/mining/cooking 전부 넣으므로
+ * jobs, skills가 넓은 key를 허용해야 함
+ */
 export type ManualLifeProfileInput = {
-  reputationLevel: number;
-  jobs: Partial<Record<JobKey, ManualJobProfileInput>>;
-  skills: Partial<Record<JobKey, JobSkillMap>>;
+  reputationLevel?: number;
+  jobs: Partial<
+    Record<
+      JobKey,
+      {
+        level?: number;
+        stats: Partial<
+          Record<
+            StatKey,
+            {
+              total: number;
+            }
+          >
+        >;
+      }
+    >
+  >;
+  skills: Partial<Record<JobKey, Record<string, number>>>;
 };
 
 export const SUPPORTED_JOB_KEYS: JobKey[] = [

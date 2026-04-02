@@ -3,19 +3,21 @@
 /**
  * [프로필 페이지]
  *
- * 이번 버전의 핵심 목적:
- * 1) 기존 "생활 정보 가져오기(import)" 기능 유지
- * 2) 새로 "직접 입력(manual)" 기능 추가
- * 3) 새 life-profile 구조(jobs / skills)에 맞춰 미리보기와 저장 흐름 통일
- * 4) 기본 프로필 수정 기능 추가
- *    - 표시명(display_name): 모든 로그인 사용자 수정 가능
- *    - 유저명(username): pro 유저만 수정 가능
+ * 이번 개편의 핵심:
+ * 1) 기존 "생활 정보 가져오기(import)" 유지
+ * 2) 직접 입력(manual)을 "공통 스탯 + 직업별 탭" 구조로 개편
+ * 3) 공통 스탯 6개(total 기준) 입력
+ *    - 행운, 감각, 인내력, 노련함, 손재주, 카리스마
+ * 4) 직업별 탭에서
+ *    - 숙련도 레벨
+ *    - 스킬 레벨
+ *    - 도감 효과
+ *    를 분리 입력
+ * 5) 저장 시 공통 스탯을 각 직업 stats로 반복 주입
  *
- * 설계 포인트:
- * - 입력 방식은 "import" / "manual" 두 가지 탭으로 분리
- * - 저장 후에는 항상 ParsedLifeProfile 표준 구조를 preview로 보여줌
- * - 지금은 manual 입력을 우선 낚시 중심으로 구현
- *   (구조는 확장 가능하게 작성)
+ * 주의:
+ * - 이 파일은 src/types/life-profile.ts 쪽 타입 확장과 함께 적용해야 안전하다.
+ * - save-life-profile.ts 쪽 스킬 한글명 매핑도 같이 확장해야 한다.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -33,8 +35,6 @@ import type {
 
 /**
  * profiles 테이블에서 가져오는 기본 프로필 타입
- *
- * display_name은 null일 수 있으므로 nullable로 둔다.
  */
 type Profile = {
   id: string;
@@ -43,66 +43,177 @@ type Profile = {
   plan_type: 'free' | 'pro';
 };
 
-/**
- * 화면에서 탭 상태를 구분하기 위한 타입
- */
 type InputMode = 'import' | 'manual';
+type ManualJobTab = 'fishing' | 'farming' | 'mining' | 'cooking';
 
 /**
- * 직접 입력 폼용 로컬 state 타입
+ * 공통 스탯 입력 state
  *
- * 이유:
- * - ManualLifeProfileInput을 그대로 state로 쓰면
- *   input value 연결 시 코드가 너무 장황해짐
- * - UI에서는 평평한(flat) 구조가 관리가 편함
- * - 저장 직전에 ManualLifeProfileInput 형태로 변환
+ * 정책:
+ * - 모두 total 기준 입력
+ * - 기본값 0
+ * - 저장 시 필요한 직업에 반복 주입
  */
-type ManualFishingFormState = {
+type ManualCommonStatsState = {
   reputationLevel: number;
-  fishingLevel: number;
-
   luck: number;
   sense: number;
-  fishingYieldBonus: number;
-  normalFishReduction: number;
-  nibbleTimeReduction: number;
-
-  treasureDetection: number;
-  famousBait: number;
-  lineTension: number;
-  doubleCatch: number;
-  schoolFishing: number;
+  endurance: number;
+  mastery: number;
+  dexterity: number;
+  charisma: number;
 };
 
 /**
- * 직접 입력 기본값
- *
- * 새로고침 / 초기화 / 저장 후 리셋 등에 재사용하기 위해
- * 상수로 분리
+ * 낚시 탭 state
  */
-const INITIAL_MANUAL_FORM: ManualFishingFormState = {
-  reputationLevel: 0,
-  fishingLevel: 0,
-
-  luck: 0,
-  sense: 0,
-  fishingYieldBonus: 0,
-  normalFishReduction: 0,
-  nibbleTimeReduction: 0,
-
-  treasureDetection: 0,
-  famousBait: 0,
-  lineTension: 0,
-  doubleCatch: 0,
-  schoolFishing: 0,
+type ManualFishingState = {
+  level: number;
+  skills: {
+    treasureDetection: number;
+    famousBait: number;
+    lineTension: number;
+    doubleCatch: number;
+    schoolFishing: number;
+  };
+  codex: {
+    normalFishReduction: number;
+    nibbleTimeReduction: number;
+  };
 };
 
 /**
- * 낚시 / 농사 스킬 라벨 매핑
- *
- * parsedPreview.skills는 영문 key 중심 구조이므로
- * 화면에서는 사용자가 읽기 쉬운 한글 이름으로 다시 보여준다.
+ * 농사 탭 state
  */
+type ManualFarmingState = {
+  level: number;
+  skills: {
+    blessingOfHarvest: number;
+    fertileSoil: number;
+    oathOfCultivation: number;
+    handOfHarvest: number;
+    reseeding: number;
+  };
+  codex: {
+    normalCropReduction: number;
+  };
+};
+
+/**
+ * 채광 탭 state
+ */
+type ManualMiningState = {
+  level: number;
+  skills: {
+    temperedPickaxe: number;
+    veinSense: number;
+    veinFlow: number;
+    veinDetection: number;
+    explosiveMining: number;
+  };
+  codex: {
+    miningDelayReduction: number;
+    miningDamageIncrease: number;
+  };
+};
+
+/**
+ * 요리 탭 state
+ */
+type ManualCookingState = {
+  level: number;
+  skills: {
+    preparationMaster: number;
+    balanceOfTaste: number;
+    gourmet: number;
+    instantCompletion: number;
+    banquetPreparation: number;
+  };
+  codex: {
+    cookingGradeUpChance: number;
+  };
+};
+
+/**
+ * manual 전체 state
+ */
+type ManualProfileState = {
+  common: ManualCommonStatsState;
+  fishing: ManualFishingState;
+  farming: ManualFarmingState;
+  mining: ManualMiningState;
+  cooking: ManualCookingState;
+};
+
+/**
+ * manual 기본값
+ */
+const INITIAL_MANUAL_PROFILE: ManualProfileState = {
+  common: {
+    reputationLevel: 0,
+    luck: 0,
+    sense: 0,
+    endurance: 0,
+    mastery: 0,
+    dexterity: 0,
+    charisma: 0,
+  },
+  fishing: {
+    level: 0,
+    skills: {
+      treasureDetection: 0,
+      famousBait: 0,
+      lineTension: 0,
+      doubleCatch: 0,
+      schoolFishing: 0,
+    },
+    codex: {
+      normalFishReduction: 0,
+      nibbleTimeReduction: 0,
+    },
+  },
+  farming: {
+    level: 0,
+    skills: {
+      blessingOfHarvest: 0,
+      fertileSoil: 0,
+      oathOfCultivation: 0,
+      handOfHarvest: 0,
+      reseeding: 0,
+    },
+    codex: {
+      normalCropReduction: 0,
+    },
+  },
+  mining: {
+    level: 0,
+    skills: {
+      temperedPickaxe: 0,
+      veinSense: 0,
+      veinFlow: 0,
+      veinDetection: 0,
+      explosiveMining: 0,
+    },
+    codex: {
+      miningDelayReduction: 0,
+      miningDamageIncrease: 0,
+    },
+  },
+  cooking: {
+    level: 0,
+    skills: {
+      preparationMaster: 0,
+      balanceOfTaste: 0,
+      gourmet: 0,
+      instantCompletion: 0,
+      banquetPreparation: 0,
+    },
+    codex: {
+      cookingGradeUpChance: 0,
+    },
+  },
+};
+
 const FISHING_SKILL_LABELS: Record<string, string> = {
   treasureDetection: '보물 감지',
   famousBait: '소문난 미끼',
@@ -119,122 +230,197 @@ const FARMING_SKILL_LABELS: Record<string, string> = {
   reseeding: '되뿌리기',
 };
 
-/**
- * 화면에서 숫자 input 값을 안정적으로 number로 변환
- *
- * 주의:
- * - input.value는 항상 string이다.
- * - 빈 문자열이 들어오면 Number('') === 0 이 되긴 하지만
- *   의도를 명확히 하기 위해 직접 처리
- * - 숫자가 아니면 0으로 보정
- */
+const MINING_SKILL_LABELS: Record<string, string> = {
+  temperedPickaxe: '단련된 곡괭이',
+  veinSense: '광맥 감각',
+  veinFlow: '광맥 흐름',
+  veinDetection: '광맥 탐지',
+  explosiveMining: '폭발적인 채광',
+};
+
+const COOKING_SKILL_LABELS: Record<string, string> = {
+  preparationMaster: '손질 달인',
+  balanceOfTaste: '맛의 균형',
+  gourmet: '미식가',
+  instantCompletion: '즉시 완성',
+  banquetPreparation: '연회 준비',
+};
+
 function toNumberValue(value: string): number {
   if (value.trim() === '') return 0;
-
   const num = Number(value);
   return Number.isNaN(num) ? 0 : num;
 }
 
-/**
- * ParsedStatValue를 화면용 문자열로 예쁘게 표시
- *
- * 예:
- * base: 22 / temp: 0.7 / equip: 0 / total: 22.7
- */
 function formatStatValue(stat: ParsedStatValue | undefined): string {
   if (!stat) return '-';
   return `base: ${stat.base} / temp: ${stat.temp} / equip: ${stat.equip} / total: ${stat.total}`;
 }
 
 /**
- * 직접 입력용 로컬 state를
- * saveManualLifeProfile이 요구하는 ManualLifeProfileInput으로 변환
+ * 공통 스탯을 각 직업에 반복 주입해
+ * ManualLifeProfileInput으로 변환
  *
- * 핵심 정책:
- * - manual 입력은 total 중심
- * - base / temp / equip는 normalize 단계에서 0 처리
+ * 설계 이유:
+ * - 입력은 공통 스탯 1회
+ * - 저장 구조는 직업별 jobs.stats
  */
 function buildManualLifeProfileInput(
-  form: ManualFishingFormState,
+  form: ManualProfileState,
 ): ManualLifeProfileInput {
   return {
-    reputationLevel: form.reputationLevel,
+    reputationLevel: form.common.reputationLevel,
     jobs: {
       fishing: {
-        level: form.fishingLevel,
+        level: form.fishing.level,
         stats: {
-          luck: { total: form.luck },
-          sense: { total: form.sense },
-          fishingYieldBonus: { total: form.fishingYieldBonus },
-          normalFishReduction: { total: form.normalFishReduction },
-          nibbleTimeReduction: { total: form.nibbleTimeReduction },
+          luck: { total: form.common.luck },
+          sense: { total: form.common.sense },
+          endurance: { total: form.common.endurance },
+          mastery: { total: form.common.mastery },
+          dexterity: { total: form.common.dexterity },
+          charisma: { total: form.common.charisma },
+
+          /**
+           * 도감 효과는 UI에서는 분리 입력하지만
+           * 저장은 계산기에 쓰기 쉽도록 stats에 둔다.
+           */
+          normalFishReduction: { total: form.fishing.codex.normalFishReduction },
+          nibbleTimeReduction: { total: form.fishing.codex.nibbleTimeReduction },
+        },
+      },
+      farming: {
+        level: form.farming.level,
+        stats: {
+          luck: { total: form.common.luck },
+          sense: { total: form.common.sense },
+          endurance: { total: form.common.endurance },
+          mastery: { total: form.common.mastery },
+          dexterity: { total: form.common.dexterity },
+          charisma: { total: form.common.charisma },
+
+          normalCropReduction: { total: form.farming.codex.normalCropReduction },
+        },
+      },
+      mining: {
+        level: form.mining.level,
+        stats: {
+          luck: { total: form.common.luck },
+          sense: { total: form.common.sense },
+          endurance: { total: form.common.endurance },
+          mastery: { total: form.common.mastery },
+          dexterity: { total: form.common.dexterity },
+          charisma: { total: form.common.charisma },
+
+          miningDelayReduction: { total: form.mining.codex.miningDelayReduction },
+          miningDamageIncrease: { total: form.mining.codex.miningDamageIncrease },
+        },
+      },
+      cooking: {
+        level: form.cooking.level,
+        stats: {
+          luck: { total: form.common.luck },
+          sense: { total: form.common.sense },
+          endurance: { total: form.common.endurance },
+          mastery: { total: form.common.mastery },
+          dexterity: { total: form.common.dexterity },
+          charisma: { total: form.common.charisma },
+
+          cookingGradeUpChance: { total: form.cooking.codex.cookingGradeUpChance },
         },
       },
     },
     skills: {
       fishing: {
-        treasureDetection: form.treasureDetection,
-        famousBait: form.famousBait,
-        lineTension: form.lineTension,
-        doubleCatch: form.doubleCatch,
-        schoolFishing: form.schoolFishing,
+        treasureDetection: form.fishing.skills.treasureDetection,
+        famousBait: form.fishing.skills.famousBait,
+        lineTension: form.fishing.skills.lineTension,
+        doubleCatch: form.fishing.skills.doubleCatch,
+        schoolFishing: form.fishing.skills.schoolFishing,
+      },
+      farming: {
+        blessingOfHarvest: form.farming.skills.blessingOfHarvest,
+        fertileSoil: form.farming.skills.fertileSoil,
+        oathOfCultivation: form.farming.skills.oathOfCultivation,
+        handOfHarvest: form.farming.skills.handOfHarvest,
+        reseeding: form.farming.skills.reseeding,
+      },
+      mining: {
+        temperedPickaxe: form.mining.skills.temperedPickaxe,
+        veinSense: form.mining.skills.veinSense,
+        veinFlow: form.mining.skills.veinFlow,
+        veinDetection: form.mining.skills.veinDetection,
+        explosiveMining: form.mining.skills.explosiveMining,
+      },
+      cooking: {
+        preparationMaster: form.cooking.skills.preparationMaster,
+        balanceOfTaste: form.cooking.skills.balanceOfTaste,
+        gourmet: form.cooking.skills.gourmet,
+        instantCompletion: form.cooking.skills.instantCompletion,
+        banquetPreparation: form.cooking.skills.banquetPreparation,
       },
     },
   };
 }
 
+/**
+ * 직업 탭 버튼 공통 클래스 헬퍼
+ */
+function tabClass(active: boolean): string {
+  return active
+    ? 'rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white'
+    : 'rounded-lg border bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50';
+}
+
+/**
+ * 숫자 input 공통 렌더링용 작은 컴포넌트
+ */
+function NumberField(props: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  step?: string;
+  help?: string;
+}) {
+  const { label, value, onChange, step = '1', help } = props;
+
+  return (
+    <label className="space-y-1">
+      <div className="text-sm font-medium">{label}</div>
+      <input
+        type="number"
+        step={step}
+        value={value}
+        onChange={(e) => onChange(toNumberValue(e.target.value))}
+        className="w-full rounded-lg border p-2"
+      />
+      {help && <div className="text-xs text-gray-500">{help}</div>}
+    </label>
+  );
+}
+
 export default function ProfilePage() {
   const { user, loading } = useAuth();
 
-  /**
-   * 기본 프로필 표시용 state
-   */
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
-  /**
-   * 기본 프로필 수정용 state
-   *
-   * editDisplayName:
-   * - 모든 로그인 사용자가 수정 가능
-   *
-   * editUsername:
-   * - 실제 저장은 pro 유저만 허용
-   */
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaveMessage, setProfileSaveMessage] = useState('');
 
-  /**
-   * 입력 방식 탭
-   * - import: 생활 정보 텍스트 붙여넣기
-   * - manual: 직접 입력
-   */
   const [inputMode, setInputMode] = useState<InputMode>('import');
+  const [manualJobTab, setManualJobTab] = useState<ManualJobTab>('fishing');
 
-  /**
-   * import용 입력 state
-   */
   const [rawText, setRawText] = useState('');
-
-  /**
-   * manual용 입력 state
-   */
   const [manualForm, setManualForm] =
-    useState<ManualFishingFormState>(INITIAL_MANUAL_FORM);
+    useState<ManualProfileState>(INITIAL_MANUAL_PROFILE);
 
-  /**
-   * 공통 저장/결과 state
-   */
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [parsedPreview, setParsedPreview] = useState<ParsedLifeProfile | null>(null);
 
-  /**
-   * 로그인 사용자 기준으로 profiles 테이블에서
-   * 표시용 기본 프로필을 조회
-   */
   useEffect(() => {
     if (!user) {
       setProfile(null);
@@ -256,13 +442,6 @@ export default function ProfilePage() {
         setProfile(null);
       } else {
         setProfile(data);
-
-        /**
-         * 조회한 값을 수정 input의 초기값으로 동기화
-         *
-         * 이유:
-         * - 프로필을 새로 읽어오면 수정 input도 최신 값으로 맞춰야 함
-         */
         setEditUsername(data?.username ?? '');
         setEditDisplayName(data?.display_name ?? '');
       }
@@ -274,32 +453,90 @@ export default function ProfilePage() {
   }, [user]);
 
   /**
-   * 직접 입력 폼 업데이트 함수
-   *
-   * 사용 예:
-   * updateManualField('luck', 22.7)
+   * 공통 스탯 업데이트
    */
-  const updateManualField = <K extends keyof ManualFishingFormState>(
+  const updateCommonStat = <K extends keyof ManualCommonStatsState>(
     key: K,
-    value: ManualFishingFormState[K],
+    value: ManualCommonStatsState[K],
   ) => {
     setManualForm((prev) => ({
       ...prev,
-      [key]: value,
+      common: {
+        ...prev.common,
+        [key]: value,
+      },
     }));
   };
 
   /**
-   * 기본 프로필 수정 저장
+   * 직업 레벨 업데이트
+   */
+  const updateJobLevel = (
+    job: ManualJobTab,
+    value: number,
+  ) => {
+    setManualForm((prev) => ({
+      ...prev,
+      [job]: {
+        ...prev[job],
+        level: value,
+      },
+    }));
+  };
+
+  /**
+   * 직업 스킬 업데이트
+   */
+  const updateJobSkill = <
+    J extends ManualJobTab,
+    K extends keyof ManualProfileState[J]['skills']
+  >(
+    job: J,
+    key: K,
+    value: number,
+  ) => {
+    setManualForm((prev) => ({
+      ...prev,
+      [job]: {
+        ...prev[job],
+        skills: {
+          ...prev[job].skills,
+          [key]: value,
+        },
+      },
+    }));
+  };
+
+  /**
+   * 직업 도감 효과 업데이트
+   */
+  const updateJobCodex = <
+    J extends ManualJobTab,
+    K extends keyof ManualProfileState[J]['codex']
+  >(
+    job: J,
+    key: K,
+    value: number,
+  ) => {
+    setManualForm((prev) => ({
+      ...prev,
+      [job]: {
+        ...prev[job],
+        codex: {
+          ...prev[job].codex,
+          [key]: value,
+        },
+      },
+    }));
+  };
+
+  /**
+   * 기본 프로필 저장
    *
    * 정책:
-   * - 표시명(display_name): 모든 사용자 수정 가능
-   * - 유저명(username): plan_type === 'pro'일 때만 수정 가능
-   *
-   * 검증:
-   * - display_name은 trim 후 빈 문자열이면 null 저장
-   * - username은 trim 후 빈 문자열이면 기존 값 유지
-   * - username을 바꾸는 경우 중복 체크 수행
+   * - 표시명: 모두 가능
+   * - 유저명: Pro만 가능
+   * - 유저명: 한글/영문/숫자/밑줄/마침표 허용
    */
   const handleSaveBasicProfile = async () => {
     try {
@@ -319,36 +556,17 @@ export default function ProfilePage() {
       const isDisplayNameChanged =
         trimmedDisplayName !== (profile.display_name ?? '');
 
-      /**
-       * 아무것도 바뀌지 않았으면 저장하지 않음
-       */
       if (!isUsernameChanged && !isDisplayNameChanged) {
         setProfileSaveMessage('변경된 내용이 없습니다.');
         return;
       }
 
-      /**
-       * free 유저는 username 수정 불가
-       */
       if (isUsernameChanged && !canEditUsername) {
         setProfileSaveMessage('유저명 변경은 Pro 유저만 가능합니다.');
         return;
       }
 
-      /**
-         * 유저명 형식 간단 검증
-         * - 한글, 영문, 숫자, 밑줄(_), 마침표(.) 허용
-         * - 길이는 2~20자
-         *
-         * 허용 예시:
-         * - Doman
-         * - 도맨
-         * - 도맨123
-         * - 도맨_dev
-         * - 도맨.dev
-       */
       if (isUsernameChanged) {
-
         const usernameRegex = /^[가-힣a-zA-Z0-9._]{2,20}$/;
 
         if (!usernameRegex.test(trimmedUsername)) {
@@ -358,9 +576,6 @@ export default function ProfilePage() {
           return;
         }
 
-        /**
-         * 다른 사용자가 이미 사용 중인지 확인
-         */
         const { data: existingUser, error: usernameCheckError } = await supabase
           .from('profiles')
           .select('id')
@@ -380,16 +595,6 @@ export default function ProfilePage() {
         }
       }
 
-      /**
-       * 실제 update payload 구성
-       *
-       * display_name:
-       * - 빈 문자열은 null 저장
-       *
-       * username:
-       * - 변경된 경우에만 payload에 포함
-       * - free 유저는 아예 포함되지 않음
-       */
       const updatePayload: {
         display_name: string | null;
         username?: string | null;
@@ -412,9 +617,6 @@ export default function ProfilePage() {
         return;
       }
 
-      /**
-       * 화면 상태도 즉시 최신값으로 반영
-       */
       const nextProfile: Profile = {
         ...profile,
         display_name: updatePayload.display_name,
@@ -427,7 +629,6 @@ export default function ProfilePage() {
       setProfile(nextProfile);
       setEditDisplayName(nextProfile.display_name ?? '');
       setEditUsername(nextProfile.username ?? '');
-
       setProfileSaveMessage('기본 프로필이 저장되었습니다.');
     } catch (error) {
       console.error('기본 프로필 저장 중 예외:', error);
@@ -437,25 +638,12 @@ export default function ProfilePage() {
     }
   };
 
-  /**
-   * 기본 프로필 수정 input 초기화
-   *
-   * DB 저장값 기준으로 되돌린다.
-   */
   const resetBasicProfileForm = () => {
     setEditDisplayName(profile?.display_name ?? '');
     setEditUsername(profile?.username ?? '');
     setProfileSaveMessage('');
   };
 
-  /**
-   * import 방식 저장
-   *
-   * 기대 흐름:
-   * 1) rawText를 parser로 파싱
-   * 2) DB 저장
-   * 3) 저장된 parsed 결과를 반환받아 preview 표시
-   */
   const handleSaveImportProfile = async () => {
     try {
       setSaving(true);
@@ -481,14 +669,6 @@ export default function ProfilePage() {
     }
   };
 
-  /**
-   * manual 방식 저장
-   *
-   * 기대 흐름:
-   * 1) 화면용 state -> ManualLifeProfileInput 변환
-   * 2) saveManualLifeProfile 호출
-   * 3) ParsedLifeProfile 반환값을 preview에 반영
-   */
   const handleSaveManualProfile = async () => {
     try {
       setSaving(true);
@@ -515,62 +695,51 @@ export default function ProfilePage() {
     }
   };
 
-  /**
-   * import 영역 초기화
-   */
   const resetImportState = () => {
     setRawText('');
     setParsedPreview(null);
     setSaveMessage('');
   };
 
-  /**
-   * manual 영역 초기화
-   */
   const resetManualState = () => {
-    setManualForm(INITIAL_MANUAL_FORM);
+    setManualForm(INITIAL_MANUAL_PROFILE);
     setParsedPreview(null);
     setSaveMessage('');
+    setManualJobTab('fishing');
   };
 
-  /**
-   * preview에서 낚시 스킬 목록 추출
-   */
-  const previewFishingSkills = useMemo(() => {
-    const fishingSkills = parsedPreview?.skills?.fishing ?? {};
-
-    return Object.entries(FISHING_SKILL_LABELS)
-      .filter(([skillKey]) => fishingSkills[skillKey] != null)
-      .map(([skillKey, label]) => ({
-        key: skillKey,
-        label,
-        level: fishingSkills[skillKey],
-      }));
-  }, [parsedPreview]);
-
-  /**
-   * preview에서 농사 스킬 목록 추출
-   */
-  const previewFarmingSkills = useMemo(() => {
-    const farmingSkills = parsedPreview?.skills?.farming ?? {};
-
-    return Object.entries(FARMING_SKILL_LABELS)
-      .filter(([skillKey]) => farmingSkills[skillKey] != null)
-      .map(([skillKey, label]) => ({
-        key: skillKey,
-        label,
-        level: farmingSkills[skillKey],
-      }));
-  }, [parsedPreview]);
-
-  /**
-   * preview에서 자주 참조하는 직업/스탯을 미리 분리
-   *
-   * 이렇게 빼두면 JSX에서 optional chaining이 덜 길어져
-   * 읽기 쉬워진다.
-   */
   const previewFishingJob = parsedPreview?.jobs?.fishing;
   const previewFarmingJob = parsedPreview?.jobs?.farming;
+  const previewMiningJob = parsedPreview?.jobs?.mining;
+  const previewCookingJob = parsedPreview?.jobs?.cooking;
+
+  const previewFishingSkills = useMemo(() => {
+    const fishingSkills = parsedPreview?.skills?.fishing ?? {};
+    return Object.entries(FISHING_SKILL_LABELS)
+      .filter(([key]) => fishingSkills[key] != null)
+      .map(([key, label]) => ({ key, label, level: fishingSkills[key] }));
+  }, [parsedPreview]);
+
+  const previewFarmingSkills = useMemo(() => {
+    const farmingSkills = parsedPreview?.skills?.farming ?? {};
+    return Object.entries(FARMING_SKILL_LABELS)
+      .filter(([key]) => farmingSkills[key] != null)
+      .map(([key, label]) => ({ key, label, level: farmingSkills[key] }));
+  }, [parsedPreview]);
+
+  const previewMiningSkills = useMemo(() => {
+    const miningSkills = parsedPreview?.skills?.mining ?? {};
+    return Object.entries(MINING_SKILL_LABELS)
+      .filter(([key]) => miningSkills[key] != null)
+      .map(([key, label]) => ({ key, label, level: miningSkills[key] }));
+  }, [parsedPreview]);
+
+  const previewCookingSkills = useMemo(() => {
+    const cookingSkills = parsedPreview?.skills?.cooking ?? {};
+    return Object.entries(COOKING_SKILL_LABELS)
+      .filter(([key]) => cookingSkills[key] != null)
+      .map(([key, label]) => ({ key, label, level: cookingSkills[key] }));
+  }, [parsedPreview]);
 
   if (loading) {
     return <div className="p-6">로그인 확인 중...</div>;
@@ -586,9 +755,6 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
-      {/* =========================
-          기본 프로필 영역
-         ========================= */}
       <section className="space-y-5 rounded-xl border bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-bold">프로필</h1>
 
@@ -614,9 +780,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* =========================
-            기본 프로필 수정 영역
-           ========================= */}
         <div className="space-y-4 rounded-xl border p-4">
           <div>
             <h2 className="text-lg font-semibold">기본 프로필 수정</h2>
@@ -703,9 +866,6 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {/* =========================
-          입력 방식 탭 영역
-         ========================= */}
       <section className="space-y-4 rounded-xl border bg-white p-6 shadow-sm">
         <div>
           <h2 className="text-xl font-semibold">생활 정보 등록</h2>
@@ -722,11 +882,7 @@ export default function ProfilePage() {
               setInputMode('import');
               setSaveMessage('');
             }}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-              inputMode === 'import'
-                ? 'bg-blue-600 text-white'
-                : 'border bg-white text-gray-700 hover:bg-gray-50'
-            }`}
+            className={tabClass(inputMode === 'import')}
           >
             가져오기
           </button>
@@ -737,19 +893,12 @@ export default function ProfilePage() {
               setInputMode('manual');
               setSaveMessage('');
             }}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-              inputMode === 'manual'
-                ? 'bg-blue-600 text-white'
-                : 'border bg-white text-gray-700 hover:bg-gray-50'
-            }`}
+            className={tabClass(inputMode === 'manual')}
           >
             직접 입력
           </button>
         </div>
 
-        {/* =========================
-            가져오기 탭
-           ========================= */}
         {inputMode === 'import' && (
           <div className="space-y-4">
             <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
@@ -759,30 +908,6 @@ export default function ProfilePage() {
             <textarea
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
-              placeholder={`예시)
-===== 생활 정보 =====
-명성: 13 (3,220.8 / 59,700, 5.39%)
-
-[스탯 정보]
-ㆍ행운 (base:22 / temp:0.7 / equip:0 / total:22.7)
-ㆍ감각 (base:18 / temp:0 / equip:0 / total:18)
-ㆍ어획량 증가율 (base:0 / temp:0 / equip:0 / total:0)
-ㆍ일반 물고기 감소비율 (base:0 / temp:0 / equip:0 / total:0)
-ㆍ기척 시간 감소 (base:0 / temp:0 / equip:0 / total:0)
-
-[숙련도]
-ㆍ낚시 숙련도: 10
-ㆍ농사 숙련도: 13
-
-[스킬]
-ㆍ보물 감지 Lv. 3
-ㆍ소문난 미끼 Lv. 5
-ㆍ낚싯줄 장력 Lv. 10
-ㆍ쌍걸이 Lv. 4
-ㆍ떼낚시 Lv. 2
-ㆍ풍년의 축복 Lv. 20
-ㆍ비옥한 토양 Lv. 8
-ㆍ개간의 서약 Lv. 20`}
               className="min-h-[320px] w-full rounded-xl border p-4 text-sm outline-none focus:border-blue-500"
             />
 
@@ -808,196 +933,382 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* =========================
-            직접 입력 탭
-           ========================= */}
         {inputMode === 'manual' && (
           <div className="space-y-6">
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              직접 입력은 빠르게 등록할 수 있지만, 수동 입력 실수로 인해 실제 게임 내
-              수치와 달라질 수 있습니다. 가능하면 가져오기 사용을 권장합니다.
+              공통 스탯은 한 번만 입력하고, 각 직업 탭에서는 해당 직업의 숙련도 레벨,
+              스킬 레벨, 도감 효과만 입력합니다.
             </div>
 
-            {/* 기본 정보 */}
             <div className="space-y-3 rounded-xl border p-4">
-              <h3 className="text-lg font-semibold">기본 정보</h3>
-
+              <h3 className="text-lg font-semibold">공통 스탯 (total 기준)</h3>
               <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1">
-                  <div className="text-sm font-medium">명성 레벨</div>
-                  <input
-                    type="number"
-                    value={manualForm.reputationLevel}
-                    onChange={(e) =>
-                      updateManualField('reputationLevel', toNumberValue(e.target.value))
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
-
-                <label className="space-y-1">
-                  <div className="text-sm font-medium">낚시 레벨</div>
-                  <input
-                    type="number"
-                    value={manualForm.fishingLevel}
-                    onChange={(e) =>
-                      updateManualField('fishingLevel', toNumberValue(e.target.value))
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
+                <NumberField
+                  label="명성 레벨"
+                  value={manualForm.common.reputationLevel}
+                  onChange={(value) => updateCommonStat('reputationLevel', value)}
+                />
+                <NumberField
+                  label="행운"
+                  step="0.1"
+                  value={manualForm.common.luck}
+                  onChange={(value) => updateCommonStat('luck', value)}
+                />
+                <NumberField
+                  label="감각"
+                  step="0.1"
+                  value={manualForm.common.sense}
+                  onChange={(value) => updateCommonStat('sense', value)}
+                />
+                <NumberField
+                  label="인내력"
+                  step="0.1"
+                  value={manualForm.common.endurance}
+                  onChange={(value) => updateCommonStat('endurance', value)}
+                />
+                <NumberField
+                  label="노련함"
+                  step="0.1"
+                  value={manualForm.common.mastery}
+                  onChange={(value) => updateCommonStat('mastery', value)}
+                />
+                <NumberField
+                  label="손재주"
+                  step="0.1"
+                  value={manualForm.common.dexterity}
+                  onChange={(value) => updateCommonStat('dexterity', value)}
+                />
+                <NumberField
+                  label="카리스마"
+                  step="0.1"
+                  value={manualForm.common.charisma}
+                  onChange={(value) => updateCommonStat('charisma', value)}
+                />
               </div>
             </div>
 
-            {/* 낚시 스탯 */}
-            <div className="space-y-3 rounded-xl border p-4">
-              <h3 className="text-lg font-semibold">낚시 스탯 (total 기준)</h3>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1">
-                  <div className="text-sm font-medium">행운</div>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={manualForm.luck}
-                    onChange={(e) =>
-                      updateManualField('luck', toNumberValue(e.target.value))
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
-
-                <label className="space-y-1">
-                  <div className="text-sm font-medium">감각</div>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={manualForm.sense}
-                    onChange={(e) =>
-                      updateManualField('sense', toNumberValue(e.target.value))
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
-
-                <label className="space-y-1">
-                  <div className="text-sm font-medium">어획량 증가율</div>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={manualForm.fishingYieldBonus}
-                    onChange={(e) =>
-                      updateManualField(
-                        'fishingYieldBonus',
-                        toNumberValue(e.target.value),
-                      )
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
-
-                <label className="space-y-1">
-                  <div className="text-sm font-medium">일반 물고기 감소비율</div>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={manualForm.normalFishReduction}
-                    onChange={(e) =>
-                      updateManualField(
-                        'normalFishReduction',
-                        toNumberValue(e.target.value),
-                      )
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
-
-                <label className="space-y-1 md:col-span-2">
-                  <div className="text-sm font-medium">기척 시간 감소</div>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={manualForm.nibbleTimeReduction}
-                    onChange={(e) =>
-                      updateManualField(
-                        'nibbleTimeReduction',
-                        toNumberValue(e.target.value),
-                      )
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
+            <div className="space-y-4 rounded-xl border p-4">
+              <div>
+                <h3 className="text-lg font-semibold">직업별 입력</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  해당 탭의 숙련도, 스킬, 도감 효과만 입력하세요.
+                </p>
               </div>
-            </div>
 
-            {/* 낚시 스킬 */}
-            <div className="space-y-3 rounded-xl border p-4">
-              <h3 className="text-lg font-semibold">낚시 스킬 레벨</h3>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1">
-                  <div className="text-sm font-medium">보물 감지</div>
-                  <input
-                    type="number"
-                    value={manualForm.treasureDetection}
-                    onChange={(e) =>
-                      updateManualField(
-                        'treasureDetection',
-                        toNumberValue(e.target.value),
-                      )
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
-
-                <label className="space-y-1">
-                  <div className="text-sm font-medium">소문난 미끼</div>
-                  <input
-                    type="number"
-                    value={manualForm.famousBait}
-                    onChange={(e) =>
-                      updateManualField('famousBait', toNumberValue(e.target.value))
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
-
-                <label className="space-y-1">
-                  <div className="text-sm font-medium">낚싯줄 장력</div>
-                  <input
-                    type="number"
-                    value={manualForm.lineTension}
-                    onChange={(e) =>
-                      updateManualField('lineTension', toNumberValue(e.target.value))
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
-
-                <label className="space-y-1">
-                  <div className="text-sm font-medium">쌍걸이</div>
-                  <input
-                    type="number"
-                    value={manualForm.doubleCatch}
-                    onChange={(e) =>
-                      updateManualField('doubleCatch', toNumberValue(e.target.value))
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
-
-                <label className="space-y-1 md:col-span-2">
-                  <div className="text-sm font-medium">떼낚시</div>
-                  <input
-                    type="number"
-                    value={manualForm.schoolFishing}
-                    onChange={(e) =>
-                      updateManualField('schoolFishing', toNumberValue(e.target.value))
-                    }
-                    className="w-full rounded-lg border p-2"
-                  />
-                </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setManualJobTab('fishing')}
+                  className={tabClass(manualJobTab === 'fishing')}
+                >
+                  낚시
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualJobTab('farming')}
+                  className={tabClass(manualJobTab === 'farming')}
+                >
+                  농사
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualJobTab('mining')}
+                  className={tabClass(manualJobTab === 'mining')}
+                >
+                  채광
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualJobTab('cooking')}
+                  className={tabClass(manualJobTab === 'cooking')}
+                >
+                  요리
+                </button>
               </div>
+
+              {manualJobTab === 'fishing' && (
+                <div className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <NumberField
+                      label="낚시 레벨"
+                      value={manualForm.fishing.level}
+                      onChange={(value) => updateJobLevel('fishing', value)}
+                    />
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <h4 className="text-base font-semibold">스킬 레벨</h4>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <NumberField
+                        label="보물 감지"
+                        value={manualForm.fishing.skills.treasureDetection}
+                        onChange={(value) =>
+                          updateJobSkill('fishing', 'treasureDetection', value)
+                        }
+                      />
+                      <NumberField
+                        label="소문난 미끼"
+                        value={manualForm.fishing.skills.famousBait}
+                        onChange={(value) =>
+                          updateJobSkill('fishing', 'famousBait', value)
+                        }
+                      />
+                      <NumberField
+                        label="낚싯줄 장력"
+                        value={manualForm.fishing.skills.lineTension}
+                        onChange={(value) =>
+                          updateJobSkill('fishing', 'lineTension', value)
+                        }
+                      />
+                      <NumberField
+                        label="쌍걸이"
+                        value={manualForm.fishing.skills.doubleCatch}
+                        onChange={(value) =>
+                          updateJobSkill('fishing', 'doubleCatch', value)
+                        }
+                      />
+                      <NumberField
+                        label="떼낚시"
+                        value={manualForm.fishing.skills.schoolFishing}
+                        onChange={(value) =>
+                          updateJobSkill('fishing', 'schoolFishing', value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <h4 className="text-base font-semibold">도감 효과</h4>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <NumberField
+                        label="일반 물고기 감소비율"
+                        step="0.1"
+                        value={manualForm.fishing.codex.normalFishReduction}
+                        onChange={(value) =>
+                          updateJobCodex('fishing', 'normalFishReduction', value)
+                        }
+                      />
+                      <NumberField
+                        label="기척 시간 감소"
+                        step="0.1"
+                        value={manualForm.fishing.codex.nibbleTimeReduction}
+                        onChange={(value) =>
+                          updateJobCodex('fishing', 'nibbleTimeReduction', value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {manualJobTab === 'farming' && (
+                <div className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <NumberField
+                      label="농사 레벨"
+                      value={manualForm.farming.level}
+                      onChange={(value) => updateJobLevel('farming', value)}
+                    />
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <h4 className="text-base font-semibold">스킬 레벨</h4>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <NumberField
+                        label="풍년의 축복"
+                        value={manualForm.farming.skills.blessingOfHarvest}
+                        onChange={(value) =>
+                          updateJobSkill('farming', 'blessingOfHarvest', value)
+                        }
+                      />
+                      <NumberField
+                        label="비옥한 토양"
+                        value={manualForm.farming.skills.fertileSoil}
+                        onChange={(value) =>
+                          updateJobSkill('farming', 'fertileSoil', value)
+                        }
+                      />
+                      <NumberField
+                        label="개간의 서약"
+                        value={manualForm.farming.skills.oathOfCultivation}
+                        onChange={(value) =>
+                          updateJobSkill('farming', 'oathOfCultivation', value)
+                        }
+                      />
+                      <NumberField
+                        label="수확의 손길"
+                        value={manualForm.farming.skills.handOfHarvest}
+                        onChange={(value) =>
+                          updateJobSkill('farming', 'handOfHarvest', value)
+                        }
+                      />
+                      <NumberField
+                        label="되뿌리기"
+                        value={manualForm.farming.skills.reseeding}
+                        onChange={(value) =>
+                          updateJobSkill('farming', 'reseeding', value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <h4 className="text-base font-semibold">도감 효과</h4>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <NumberField
+                        label="일반 작물 감소비율"
+                        step="0.1"
+                        value={manualForm.farming.codex.normalCropReduction}
+                        onChange={(value) =>
+                          updateJobCodex('farming', 'normalCropReduction', value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {manualJobTab === 'mining' && (
+                <div className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <NumberField
+                      label="채광 레벨"
+                      value={manualForm.mining.level}
+                      onChange={(value) => updateJobLevel('mining', value)}
+                    />
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <h4 className="text-base font-semibold">스킬 레벨</h4>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <NumberField
+                        label="단련된 곡괭이"
+                        value={manualForm.mining.skills.temperedPickaxe}
+                        onChange={(value) =>
+                          updateJobSkill('mining', 'temperedPickaxe', value)
+                        }
+                      />
+                      <NumberField
+                        label="광맥 감각"
+                        value={manualForm.mining.skills.veinSense}
+                        onChange={(value) =>
+                          updateJobSkill('mining', 'veinSense', value)
+                        }
+                      />
+                      <NumberField
+                        label="광맥 흐름"
+                        value={manualForm.mining.skills.veinFlow}
+                        onChange={(value) =>
+                          updateJobSkill('mining', 'veinFlow', value)
+                        }
+                      />
+                      <NumberField
+                        label="광맥 탐지"
+                        value={manualForm.mining.skills.veinDetection}
+                        onChange={(value) =>
+                          updateJobSkill('mining', 'veinDetection', value)
+                        }
+                      />
+                      <NumberField
+                        label="폭발적인 채광"
+                        value={manualForm.mining.skills.explosiveMining}
+                        onChange={(value) =>
+                          updateJobSkill('mining', 'explosiveMining', value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <h4 className="text-base font-semibold">도감 효과</h4>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <NumberField
+                        label="채광 딜레이 감소"
+                        step="0.1"
+                        value={manualForm.mining.codex.miningDelayReduction}
+                        onChange={(value) =>
+                          updateJobCodex('mining', 'miningDelayReduction', value)
+                        }
+                      />
+                      <NumberField
+                        label="채광 데미지 증가"
+                        step="0.1"
+                        value={manualForm.mining.codex.miningDamageIncrease}
+                        onChange={(value) =>
+                          updateJobCodex('mining', 'miningDamageIncrease', value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {manualJobTab === 'cooking' && (
+                <div className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <NumberField
+                      label="요리 레벨"
+                      value={manualForm.cooking.level}
+                      onChange={(value) => updateJobLevel('cooking', value)}
+                    />
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <h4 className="text-base font-semibold">스킬 레벨</h4>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <NumberField
+                        label="손질 달인"
+                        value={manualForm.cooking.skills.preparationMaster}
+                        onChange={(value) =>
+                          updateJobSkill('cooking', 'preparationMaster', value)
+                        }
+                      />
+                      <NumberField
+                        label="맛의 균형"
+                        value={manualForm.cooking.skills.balanceOfTaste}
+                        onChange={(value) =>
+                          updateJobSkill('cooking', 'balanceOfTaste', value)
+                        }
+                      />
+                      <NumberField
+                        label="미식가"
+                        value={manualForm.cooking.skills.gourmet}
+                        onChange={(value) =>
+                          updateJobSkill('cooking', 'gourmet', value)
+                        }
+                      />
+                      <NumberField
+                        label="즉시 완성"
+                        value={manualForm.cooking.skills.instantCompletion}
+                        onChange={(value) =>
+                          updateJobSkill('cooking', 'instantCompletion', value)
+                        }
+                      />
+                      <NumberField
+                        label="연회 준비"
+                        value={manualForm.cooking.skills.banquetPreparation}
+                        onChange={(value) =>
+                          updateJobSkill('cooking', 'banquetPreparation', value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border p-4">
+                    <h4 className="text-base font-semibold">도감 효과</h4>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <NumberField
+                        label="요리 등급업 확률"
+                        step="0.1"
+                        value={manualForm.cooking.codex.cookingGradeUpChance}
+                        onChange={(value) =>
+                          updateJobCodex('cooking', 'cookingGradeUpChance', value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -1027,27 +1338,34 @@ export default function ProfilePage() {
         )}
       </section>
 
-      {/* =========================
-          저장 결과 미리보기
-         ========================= */}
       {parsedPreview && (
         <section className="space-y-4 rounded-xl border bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold">저장 결과 미리보기</h2>
 
           <div className="grid gap-4 md:grid-cols-2">
-            {/* 기본 정보 */}
             <div className="rounded-xl border p-4">
               <h3 className="mb-2 font-semibold">기본 정보</h3>
               <div>명성 레벨: {parsedPreview.reputationLevel ?? '-'}</div>
               <div>낚시 레벨: {previewFishingJob?.level ?? '-'}</div>
               <div>농사 레벨: {previewFarmingJob?.level ?? '-'}</div>
+              <div>채광 레벨: {previewMiningJob?.level ?? '-'}</div>
+              <div>요리 레벨: {previewCookingJob?.level ?? '-'}</div>
             </div>
 
-            {/* 낚시 스킬 */}
+            <div className="rounded-xl border p-4">
+              <h3 className="mb-2 font-semibold">공통 스탯 확인</h3>
+              <div className="text-sm">행운: {formatStatValue(previewFishingJob?.stats?.luck)}</div>
+              <div className="text-sm">감각: {formatStatValue(previewFishingJob?.stats?.sense)}</div>
+              <div className="text-sm">손재주: {formatStatValue(previewCookingJob?.stats?.dexterity)}</div>
+              <div className="text-sm">노련함: {formatStatValue(previewCookingJob?.stats?.mastery)}</div>
+              <div className="text-sm">인내력: {formatStatValue(previewFishingJob?.stats?.endurance)}</div>
+              <div className="text-sm">카리스마: {formatStatValue(previewFishingJob?.stats?.charisma)}</div>
+            </div>
+
             <div className="rounded-xl border p-4">
               <h3 className="mb-2 font-semibold">낚시 스킬</h3>
               {previewFishingSkills.length === 0 ? (
-                <div className="text-sm text-gray-500">파싱된 낚시 스킬 없음</div>
+                <div className="text-sm text-gray-500">저장된 낚시 스킬 없음</div>
               ) : (
                 <ul className="space-y-1 text-sm">
                   {previewFishingSkills.map((skill) => (
@@ -1059,11 +1377,10 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {/* 농사 스킬 */}
             <div className="rounded-xl border p-4">
               <h3 className="mb-2 font-semibold">농사 스킬</h3>
               {previewFarmingSkills.length === 0 ? (
-                <div className="text-sm text-gray-500">파싱된 농사 스킬 없음</div>
+                <div className="text-sm text-gray-500">저장된 농사 스킬 없음</div>
               ) : (
                 <ul className="space-y-1 text-sm">
                   {previewFarmingSkills.map((skill) => (
@@ -1075,63 +1392,41 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {/* 전체 skills 원본 */}
             <div className="rounded-xl border p-4">
+              <h3 className="mb-2 font-semibold">채광 스킬</h3>
+              {previewMiningSkills.length === 0 ? (
+                <div className="text-sm text-gray-500">저장된 채광 스킬 없음</div>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {previewMiningSkills.map((skill) => (
+                    <li key={skill.key}>
+                      {skill.label}: Lv.{skill.level}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border p-4">
+              <h3 className="mb-2 font-semibold">요리 스킬</h3>
+              {previewCookingSkills.length === 0 ? (
+                <div className="text-sm text-gray-500">저장된 요리 스킬 없음</div>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {previewCookingSkills.map((skill) => (
+                    <li key={skill.key}>
+                      {skill.label}: Lv.{skill.level}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border p-4 md:col-span-2">
               <h3 className="mb-2 font-semibold">전체 skills 원본</h3>
               <pre className="whitespace-pre-wrap text-sm">
                 {JSON.stringify(parsedPreview.skills ?? {}, null, 2)}
               </pre>
-            </div>
-
-            {/* 낚시 스탯 */}
-            <div className="rounded-xl border p-4">
-              <h3 className="mb-2 font-semibold">낚시 - 행운</h3>
-              <div className="text-sm">
-                {formatStatValue(previewFishingJob?.stats?.luck)}
-              </div>
-            </div>
-
-            <div className="rounded-xl border p-4">
-              <h3 className="mb-2 font-semibold">낚시 - 감각</h3>
-              <div className="text-sm">
-                {formatStatValue(previewFishingJob?.stats?.sense)}
-              </div>
-            </div>
-
-            <div className="rounded-xl border p-4">
-              <h3 className="mb-2 font-semibold">낚시 - 어획량 증가율</h3>
-              <div className="text-sm">
-                {formatStatValue(previewFishingJob?.stats?.fishingYieldBonus)}
-              </div>
-            </div>
-
-            <div className="rounded-xl border p-4">
-              <h3 className="mb-2 font-semibold">낚시 - 일반 물고기 감소비율</h3>
-              <div className="text-sm">
-                {formatStatValue(previewFishingJob?.stats?.normalFishReduction)}
-              </div>
-            </div>
-
-            <div className="rounded-xl border p-4 md:col-span-2">
-              <h3 className="mb-2 font-semibold">낚시 - 기척 시간 감소</h3>
-              <div className="text-sm">
-                {formatStatValue(previewFishingJob?.stats?.nibbleTimeReduction)}
-              </div>
-            </div>
-
-            {/* 농사 공통 스탯도 같이 확인 가능하게 출력 */}
-            <div className="rounded-xl border p-4">
-              <h3 className="mb-2 font-semibold">농사 - 행운</h3>
-              <div className="text-sm">
-                {formatStatValue(previewFarmingJob?.stats?.luck)}
-              </div>
-            </div>
-
-            <div className="rounded-xl border p-4">
-              <h3 className="mb-2 font-semibold">농사 - 감각</h3>
-              <div className="text-sm">
-                {formatStatValue(previewFarmingJob?.stats?.sense)}
-              </div>
             </div>
           </div>
         </section>

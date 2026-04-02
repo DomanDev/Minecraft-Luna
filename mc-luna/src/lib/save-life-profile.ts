@@ -3,6 +3,7 @@
 import { supabase } from "@/src/lib/supabase";
 import { parseLifeProfile } from "@/src/lib/parser";
 import {
+  type JobKey,
   type ManualLifeProfileInput,
   type ParsedLifeProfile,
   normalizeManualLifeProfileInput,
@@ -113,21 +114,8 @@ function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
 /**
  * parser 내부 영문 skill key -> DB의 skill_name_ko 매핑
  *
- * 이유:
- * - 현재 parser 결과는
- *   parsed.skills.fishing.treasureDetection = 3
- *   같은 내부 영문 key 구조를 사용
- *
- * - 하지만 DB의 skill_definitions는
- *   보통 skill_name_ko(한글명) 기준으로 정의되어 있음
- *
- * 따라서:
- * 내부 key -> DB에 저장된 실제 한글 스킬명
- * 매핑이 필요함
- *
  * 주의:
  * - skill_definitions.skill_name_ko 값과 정확히 일치해야 함
- * - 띄어쓰기까지 맞는 게 가장 안전함
  */
 const SKILL_KEY_TO_KOREAN_NAME: Record<string, string> = {
   // 낚시
@@ -143,24 +131,26 @@ const SKILL_KEY_TO_KOREAN_NAME: Record<string, string> = {
   oathOfCultivation: "개간의 서약",
   handOfHarvest: "수확의 손길",
   reseeding: "되뿌리기",
+
+  // 채광
+  temperedPickaxe: '단련된 곡괭이',
+  veinSense: '광맥 감각',
+  veinFlow: '광맥 흐름',
+  veinDetection: '광맥 탐지',
+  explosiveMining: '폭발적인 채광',
+
+  // 요리
+  preparationMaster: '손질 달인',
+  balanceOfTaste: '맛의 균형',
+  gourmet: '미식가',
+  instantCompletion: '즉시 완성',
+  banquetPreparation: '연회 준비',
 };
 
 /**
  * 내부 JobKey -> skill_definitions.job_code 매핑
- *
- * 이유:
- * - ParsedLifeProfile 쪽은 fishing / farming 같은 영문 key를 씀
- * - skill_definitions 테이블은 보통 job_code 컬럼으로 직업 구분
- * - DB에 저장된 job_code 값과 맞춰야 정확히 조회 가능
- *
- * 현재 추정:
- * - 낚시 -> fishing
- * - 농사 -> farming
- *
- * 만약 DB에서 job_code가 "fish", "farm"처럼 다르게 저장되어 있다면
- * 아래 값만 수정하면 됨
  */
-const JOB_KEY_TO_DB_JOB_CODE: Record<string, string> = {
+const JOB_KEY_TO_DB_JOB_CODE: Record<JobKey, string> = {
   fishing: "fishing",
   farming: "farming",
   mining: "mining",
@@ -171,16 +161,6 @@ const JOB_KEY_TO_DB_JOB_CODE: Record<string, string> = {
 
 /**
  * life_profile_imports 저장 row 생성
- *
- * 역할:
- * - 어떤 방식으로 프로필이 들어왔는지 이력을 남김
- *
- * 현재 안전 정책:
- * - imported: 실제 rawText 저장
- * - manual: raw_text NOT NULL 제약과 충돌하지 않게 "[manual input]" 저장
- *
- * 만약 나중에 DB에서 raw_text nullable로 바꿨다면
- * manual일 때 null 저장으로 바꿔도 됨
  */
 function buildImportHistoryRow(params: {
   userId: string;
@@ -191,35 +171,47 @@ function buildImportHistoryRow(params: {
   return {
     user_id: params.userId,
     raw_text:
-      params.inputMethod === "manual"
-        ? "[manual input]"
-        : (params.rawText ?? ""),
+      params.inputMethod === "manual" ? "[manual input]" : (params.rawText ?? ""),
     parsed_json: params.parsed,
     input_method: params.inputMethod,
   };
 }
 
 /**
+ * ParsedLifeProfile 안에 실제로 존재하는 job key만 추출
+ *
+ * 예:
+ * - jobs.fishing 이 있으면 "fishing" 포함
+ * - jobs.farming 이 있으면 "farming" 포함
+ */
+function getParsedJobKeys(parsed: ParsedLifeProfile): JobKey[] {
+  return (Object.entries(parsed.jobs) as Array<[JobKey, ParsedLifeProfile["jobs"][JobKey]]>)
+    .filter(([, jobValue]) => Boolean(jobValue))
+    .map(([jobKey]) => jobKey);
+}
+
+/**
  * user_skill_levels에 넣을 row 목록 생성
  *
- * 현재 DB 구조 기준:
- * - user_skill_levels는 job_key / skill_key를 직접 저장하지 않음
- * - skill_definitions에서 skill_id를 찾은 뒤
- *   user_id + skill_id + skill_level 형태로 저장해야 함
+ * 이번 수정의 핵심:
+ * - imported 저장일 때는 "파싱된 직업"의 모든 추적 스킬을 기준으로 row를 만든다.
+ * - 이번 텍스트에 없는 스킬은 0으로 저장한다.
  *
- * 처리 순서:
- * 1) parsed.skills를 전부 순회
- * 2) 내부 영문 skill key를 한글 skill_name_ko로 변환
- * 3) skill_definitions에서 해당 스킬 정의 조회
- * 4) 찾은 definition.id를 skill_id로 사용해서 row 생성
+ * 왜 이렇게 바꾸는가?
+ * - 기존 코드는 "이번에 파싱된 스킬만 upsert" 했기 때문에
+ *   이전에 저장된 스킬값이 그대로 남는 문제가 있었다.
+ * - 붙여넣기(import)는 사실상 '현재 상태 스냅샷'이므로
+ *   파싱된 직업에 대해서는 누락된 스킬도 0으로 덮어써야 자연스럽다.
  */
 async function buildSkillRowsFromDefinitions(
   userId: string,
   parsed: ParsedLifeProfile,
+  options?: {
+    zeroFillMissingForParsedJobs?: boolean;
+  },
 ) {
-  /**
-   * 최종적으로 user_skill_levels에 upsert할 row 목록
-   */
+  const zeroFillMissingForParsedJobs = options?.zeroFillMissingForParsedJobs ?? false;
+
   const rows: Array<{
     user_id: string;
     skill_id: string;
@@ -227,86 +219,93 @@ async function buildSkillRowsFromDefinitions(
     updated_at: string;
   }> = [];
 
+  const parsedJobKeys = getParsedJobKeys(parsed);
+
+  if (parsedJobKeys.length === 0) {
+    return rows;
+  }
+
   /**
-   * 현재 parsed.skills에 실제 들어있는 직업만 순회
+   * 파싱된 job key를 DB job_code로 변환
+   */
+  const dbJobCodes = parsedJobKeys
+    .map((jobKey) => JOB_KEY_TO_DB_JOB_CODE[jobKey])
+    .filter(Boolean);
+
+  if (dbJobCodes.length === 0) {
+    return rows;
+  }
+
+  /**
+   * 파싱된 직업 전체의 skill_definitions를 한 번에 조회
    *
    * 예:
-   * parsed.skills.fishing
-   * parsed.skills.farming
+   * - 이번 텍스트가 낚시/농사 정보를 포함하면
+   *   fishing, farming의 정의를 모두 가져옴
    */
+  const { data: allDefinitions, error: definitionsError } = await supabase
+    .from("skill_definitions")
+    .select("id, skill_name_ko, job_code")
+    .in("job_code", dbJobCodes);
+
+  if (definitionsError) {
+    throw new Error(`skill_definitions 전체 조회 실패: ${definitionsError.message}`);
+  }
+
+  const definitionList = allDefinitions ?? [];
+
+  /**
+   * (job_code + skill_name_ko) 조합으로 빠르게 찾기 위한 맵
+   */
+  const definitionMap = new Map(
+    definitionList.map((definition) => [
+      `${definition.job_code}::${definition.skill_name_ko}`,
+      definition,
+    ]),
+  );
+
+  /**
+   * 1) imported 저장일 때:
+   *    파싱된 직업에 속한 모든 정의를 일단 0으로 row 생성
+   *
+   * 이렇게 해야 이번 텍스트에 없는 스킬도 0으로 덮어쓸 수 있다.
+   */
+  if (zeroFillMissingForParsedJobs) {
+    for (const definition of definitionList) {
+      rows.push({
+        user_id: userId,
+        skill_id: definition.id,
+        skill_level: 0,
+        updated_at: new Date().toISOString(),
+      });
+    }
+  }
+
+  /**
+   * 2) 실제 parsed된 스킬 값으로 덮어쓰기
+   *
+   * - zeroFillMissingForParsedJobs = true 이면
+   *   이미 들어간 0 row를 실제 레벨 값으로 교체
+   *
+   * - false 이면
+   *   기존 방식처럼 "실제로 있는 스킬만" row 생성
+   */
+  const rowIndexBySkillId = new Map<string, number>(
+    rows.map((row, index) => [row.skill_id, index]),
+  );
+
   for (const [jobKey, skillMap] of Object.entries(parsed.skills)) {
     if (!skillMap) continue;
 
-    const dbJobCode = JOB_KEY_TO_DB_JOB_CODE[jobKey];
+    const dbJobCode = JOB_KEY_TO_DB_JOB_CODE[jobKey as JobKey];
     if (!dbJobCode) continue;
 
-    /**
-     * 이 직업에 대해 실제로 저장할 스킬 이름 목록만 뽑음
-     *
-     * 예:
-     * treasureDetection -> 보물 감지
-     * lineTension -> 낚싯줄 장력
-     */
-    const koreanSkillNames = Object.keys(skillMap)
-      .map((skillKey) => SKILL_KEY_TO_KOREAN_NAME[skillKey])
-      .filter(Boolean);
-
-    /**
-     * 저장할 스킬이 없으면 다음 직업으로 넘어감
-     */
-    if (koreanSkillNames.length === 0) {
-      continue;
-    }
-
-    /**
-     * skill_definitions에서
-     * - 해당 직업(job_code)
-     * - 해당 스킬명(skill_name_ko)
-     * 에 해당하는 정의 목록 조회
-     *
-     * 주의:
-     * 네 기존 레포 구조 기준으로는
-     * skill_definitions에서 id, skill_name_ko, job_code를 읽는 방식이 맞았음
-     */
-    const { data: skillDefinitions, error: skillDefinitionsError } = await supabase
-      .from("skill_definitions")
-      .select("id, skill_name_ko, job_code")
-      .eq("job_code", dbJobCode)
-      .in("skill_name_ko", koreanSkillNames);
-
-    if (skillDefinitionsError) {
-      throw new Error(`skill_definitions 조회 실패: ${skillDefinitionsError.message}`);
-    }
-
-    /**
-     * 조회된 정의를 "한글 스킬명 -> definition" 맵으로 바꿔두면
-     * 이후 lookup이 편해짐
-     */
-    const definitionMap = new Map(
-      (skillDefinitions ?? []).map((definition) => [
-        definition.skill_name_ko,
-        definition,
-      ]),
-    );
-
-    /**
-     * 실제 parsed된 스킬들을 순회하면서
-     * 대응되는 skill_id를 찾아 row 생성
-     */
     for (const [skillKey, level] of Object.entries(skillMap)) {
       const koreanSkillName = SKILL_KEY_TO_KOREAN_NAME[skillKey];
       if (!koreanSkillName) continue;
 
-      const definition = definitionMap.get(koreanSkillName);
+      const definition = definitionMap.get(`${dbJobCode}::${koreanSkillName}`);
 
-      /**
-       * definition이 없다는 건
-       * parser에는 있는데 DB skill_definitions에는 아직 등록 안 된 스킬이라는 뜻
-       *
-       * 이 경우 전체 저장을 터뜨릴 수도 있지만,
-       * 우선은 다른 데이터 저장은 되게 하고
-       * 콘솔 경고만 남기고 건너뛰는 방식이 실전에서 더 편함
-       */
       if (!definition) {
         console.warn(
           `[save-life-profile] skill_definitions에 없는 스킬이라 건너뜀: ${jobKey} / ${skillKey} / ${koreanSkillName}`,
@@ -314,12 +313,23 @@ async function buildSkillRowsFromDefinitions(
         continue;
       }
 
-      rows.push({
-        user_id: userId,
-        skill_id: definition.id,
-        skill_level: toSafeNumber(level),
-        updated_at: new Date().toISOString(),
-      });
+      const existingIndex = rowIndexBySkillId.get(definition.id);
+
+      if (existingIndex != null) {
+        rows[existingIndex] = {
+          ...rows[existingIndex],
+          skill_level: toSafeNumber(level),
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        rows.push({
+          user_id: userId,
+          skill_id: definition.id,
+          skill_level: toSafeNumber(level),
+          updated_at: new Date().toISOString(),
+        });
+        rowIndexBySkillId.set(definition.id, rows.length - 1);
+      }
     }
   }
 
@@ -328,11 +338,6 @@ async function buildSkillRowsFromDefinitions(
 
 /**
  * 실제 DB 저장 전용 함수
- *
- * 중요:
- * - auth.getUser()를 내부에서 직접 호출하지 않음
- * - 상위 컴포넌트(useAuth)에서 확보한 userId를 그대로 사용
- * - 이렇게 해야 Supabase auth lock 충돌 가능성을 줄일 수 있음
  *
  * 역할:
  * 1) life_profile_imports 저장
@@ -369,8 +374,6 @@ export async function saveParsedLifeProfile(params: {
 
   /**
    * 2) 낚시 프로필 저장
-   *
-   * parsed.jobs.fishing이 있을 때만 저장
    */
   if (parsed.jobs.fishing) {
     const fishingRow = buildFishingProfileRow(userId, parsed);
@@ -388,8 +391,6 @@ export async function saveParsedLifeProfile(params: {
 
   /**
    * 3) 농사 프로필 저장
-   *
-   * parsed.jobs.farming이 있을 때만 저장
    */
   if (parsed.jobs.farming) {
     const farmingRow = buildFarmingProfileRow(userId, parsed);
@@ -408,23 +409,22 @@ export async function saveParsedLifeProfile(params: {
   /**
    * 4) 스킬 저장
    *
-   * 현재 DB 구조 기준:
-   * - user_skill_levels에는 skill_id, skill_level을 저장
-   * - skill_id는 skill_definitions에서 찾아와야 함
+   * imported:
+   * - 파싱된 직업의 추적 스킬 전체를 기준으로 저장
+   * - 없는 스킬은 0으로 저장
+   *
+   * manual:
+   * - 현재 입력한 값만 저장
+   * - 나중에 직접 입력을 직업별 탭 구조로 바꿀 때도 이 동작이 더 자연스럽다
    */
-  const skillRows = await buildSkillRowsFromDefinitions(userId, parsed);
+  const skillRows = await buildSkillRowsFromDefinitions(userId, parsed, {
+    zeroFillMissingForParsedJobs: params.inputMethod === "imported",
+  });
 
   if (skillRows.length > 0) {
     const { error: skillsUpsertError } = await supabase
       .from("user_skill_levels")
       .upsert(skillRows, {
-        /**
-         * 현재 레포 기준 기존 구조는 user_id + skill_id 조합으로 upsert하는 형태였음
-         *
-         * 즉,
-         * 같은 유저가 같은 스킬을 다시 저장하면 update 되고
-         * 없으면 insert 됨
-         */
         onConflict: "user_id,skill_id",
       });
 
@@ -441,9 +441,6 @@ export async function saveParsedLifeProfile(params: {
  * - ./생활 정보 원문 텍스트를 parser로 파싱
  * - DB 저장
  * - 저장 완료 후 ParsedLifeProfile 반환
- *
- * 반환 이유:
- * - profile/page.tsx에서 preview로 바로 보여주기 위함
  */
 export async function saveLifeProfileFromText(
   userId: string,
