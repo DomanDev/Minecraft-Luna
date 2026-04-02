@@ -34,27 +34,14 @@ const cropOptions: { value: FarmingCropType; label: string }[] = [
   { value: "pomegranate", label: "석류" },
 ];
 
-type ThirstMin = 15 | 10 | 5 | 1 | 0;
+type ThirstMin = 15 | 10 | 5 | 1;
 
 const thirstMinOptions: { value: string; label: string }[] = [
   { value: "15", label: "15 이상 유지" },
   { value: "10", label: "10 이상 유지" },
   { value: "5", label: "5 이상 유지" },
   { value: "1", label: "1 이상 유지" },
-  { value: "0", label: "0 이상 유지" },
 ];
-
-const THIRST_MIN_WEIGHTS: Record<ThirstMin, number> = {
-  15: 1,
-  10: 0.75,
-  5: 0.5,
-  1: 0.25,
-  0: 0,
-};
-
-function getWeightedThirstValue(thirstMin: ThirstMin): number {
-  return thirstMin * THIRST_MIN_WEIGHTS[thirstMin];
-}
 
 const INITIAL_FORM = {
   luck: 0,
@@ -72,7 +59,7 @@ const INITIAL_FORM = {
   oathOfCultivation: 0,
   handOfHarvest: 0,
   reseeding: 0,
-  thirstMin: 0 as ThirstMin,
+  thirstMin: 10 as ThirstMin,
   cropType: "cabbage" as FarmingCropType,
   normalPrice: 4,
   advancedPrice: 9,
@@ -98,7 +85,7 @@ function createInitialCalculationInput(): FarmingCalculationInput {
     },
     environment: {
       potCount: initialMaxPots,
-      thirst: getWeightedThirstValue(INITIAL_FORM.thirstMin),
+      thirstMin: INITIAL_FORM.thirstMin,
       cropType: INITIAL_FORM.cropType,
     },
     prices: {
@@ -176,10 +163,6 @@ export default function FarmingCalculatorPage() {
     return OATH_OF_CULTIVATION_MAX_POTS[oathOfCultivation] ?? 96;
   }, [oathOfCultivation]);
 
-  const weightedThirstValue = useMemo(() => {
-    return getWeightedThirstValue(thirstMin);
-  }, [thirstMin]);
-
   const isProUser = planType === "pro";
   const disableProfileFields = profileLoaded && !isProUser;
 
@@ -199,7 +182,7 @@ export default function FarmingCalculatorPage() {
       },
       environment: {
         potCount: maxPotCountBySkill,
-        thirst: weightedThirstValue,
+        thirstMin,
         cropType,
       },
       prices: {
@@ -251,7 +234,7 @@ export default function FarmingCalculatorPage() {
          * 사용자가 현재 계산기에서 선택해둔 값을 유지한다.
          */
         potCount: nextMaxPotCount,
-        thirst: weightedThirstValue,
+        thirstMin,
         cropType,
       },
       prices: {
@@ -423,7 +406,7 @@ export default function FarmingCalculatorPage() {
         loadingProfileRef.current = false;
       }
     },
-    [cropType, normalPrice, advancedPrice, rarePrice, weightedThirstValue],
+    [cropType, normalPrice, advancedPrice, rarePrice, thirstMin],
   );
 
   useEffect(() => {
@@ -479,7 +462,7 @@ export default function FarmingCalculatorPage() {
     handOfHarvest,
     reseeding,
     maxPotCountBySkill,
-    weightedThirstValue,
+    thirstMin,
     cropType,
     normalPrice,
     advancedPrice,
@@ -727,11 +710,11 @@ export default function FarmingCalculatorPage() {
           <ResultCard title="등급 가중치 / 확률">
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span>풍년의 축복-일반 작물 감소비율</span>
+                <span>[풍년의 축복]일반 작물 감소비율</span>
                 <span>{formatNumber(result.intermediate.skillNormalReduction, 2)}</span>
               </div>
               <div className="flex justify-between">
-                <span>도감-일반 작물 감소비율</span>
+                <span>[도감]일반 작물 감소비율</span>
                 <span>{formatNumber(result.intermediate.codexNormalReduction, 2)}</span>
               </div>
               <div className="flex justify-between">
@@ -772,14 +755,6 @@ export default function FarmingCalculatorPage() {
           <ResultCard title="중간 계산값">
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span>선택 갈증 최소치</span>
-                <span>{thirstMin} 이상 유지</span>
-              </div>
-              <div className="flex justify-between">
-                <span>계산 반영 갈증값</span>
-                <span>{formatNumber(weightedThirstValue, 2)}</span>
-              </div>
-              <div className="flex justify-between">
                 <span>씨앗 드롭률</span>
                 <span>{formatNumber(result.intermediate.seedDropRatePercent, 2)}%</span>
               </div>
@@ -788,23 +763,31 @@ export default function FarmingCalculatorPage() {
                 <span>{formatNumber(result.intermediate.fertileSoilRatePercent, 2)}%</span>
               </div>
               <div className="flex justify-between">
-                <span>작물 2개 드롭률</span>
+                <span>유효 갈증 계수</span>
+                <span>{formatNumber(result.intermediate.effectiveThirstMultiplier, 4)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>작물 2개 드롭률(갈증 적용 후)</span>
+                <span>{formatNumber(result.intermediate.effectiveThirstValue, 2)}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span>작물 2개 드롭률(감각 적용 후)</span>
                 <span>{formatNumber(result.intermediate.doubleDropRatePercent, 2)}%</span>
               </div>
               <div className="flex justify-between">
-                <span>화분통 1개당 기대 수확 판정 횟수</span>
+                <span>수확 1회당 작물 개수</span>
+                <span>{formatNumber(result.intermediate.expectedCropsPerHarvestAttempt, 2)}개</span>
+              </div>
+              <div className="flex justify-between">
+                <span>화분통 1개당 재배 횟수</span>
                 <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerPot, 2)}회</span>
               </div>
               <div className="flex justify-between">
-                <span>1사이클당 총 기대 수확 판정 횟수</span>
+                <span>1사이클당 총 재배 횟수</span>
                 <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerCycle, 2)}회</span>
               </div>
               <div className="flex justify-between">
-                <span>수확 1회당 기대 작물 개수</span>
-                <span>{Math.floor(result.intermediate.expectedCropsPerHarvestAttempt).toLocaleString()}개</span>
-              </div>
-              <div className="flex justify-between">
-                <span>1사이클 총 기대 작물 개수</span>
+                <span>1사이클당 총 작물 개수(작물 개수x재배 횟수)</span>
                 <span>{Math.floor(result.intermediate.expectedTotalCropsPerCycle).toLocaleString()}개</span>
               </div>
             </div>

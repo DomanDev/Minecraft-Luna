@@ -1,6 +1,7 @@
 // src/lib/save-life-profile.ts
 
 import { supabase } from "@/src/lib/supabase";
+import { BLESSING_OF_HARVEST_NORMAL_REDUCTION } from "@/src/lib/farming/skillTables";
 import { parseLifeProfile } from "@/src/lib/parser";
 import {
   type JobKey,
@@ -33,6 +34,23 @@ function toSafeNumber(value: number | undefined | null): number {
   }
   return value;
 }
+
+/**
+ * 풍년의 축복 레벨에 따른 일반 작물 감소비율 반환
+ *
+ * 주의:
+ * - 농사 계산기(calc.ts / skillTables.ts)에서 사용하는 값과
+ *   동일한 기준이어야 한다.
+ * - 현재 프로젝트 정책상 풍년의 축복 감소값은
+ *   스킬 레벨로 계산하고,
+ *   farming_profiles.normal_crop_reduction_total 에는
+ *   "도감/기타로 인한 감소분만" 저장한다.
+ */
+function getBlessingOfHarvestReduction(level: number): number {
+  const safeLevel = toSafeNumber(level);
+  return BLESSING_OF_HARVEST_NORMAL_REDUCTION[safeLevel] ?? 0;
+}
+
 
 /**
  * 낚시 프로필 row 생성
@@ -92,6 +110,49 @@ function buildFishingProfileRow(userId: string, parsed: ParsedLifeProfile) {
 function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
   const farmingJob = parsed.jobs.farming;
   const farmingStats = farmingJob?.stats ?? {};
+  const farmingSkills = parsed.skills.farming ?? {};
+
+  /**
+   * /생활 정보의 [스탯 정보]에 표시되는 "일반 작물 감소비율 total" 값은
+   * 풍년의 축복 스킬 효과 + 도감/장비 등 기타 감소분이 합쳐진 값일 수 있다.
+   *
+   * 하지만 계산기에서는
+   * - 풍년의 축복 감소값: 스킬 레벨로 별도 계산
+   * - 도감 감소값: farming_profiles.normal_crop_reduction_total 에서 불러옴
+   *
+   * 구조이므로, 저장 단계에서 "풍년의 축복 감소값"을 제외한
+   * 도감/기타 감소분만 farming_profiles에 저장해야 한다.
+   */
+  const parsedNormalCropReductionTotal = toSafeNumber(
+    farmingStats.normalCropReduction?.total,
+  );
+
+  const blessingOfHarvestLevel = toSafeNumber(
+    farmingSkills.blessingOfHarvest,
+  );
+
+  /**
+   * 풍년의 축복 레벨에 따른 일반 작물 감소비율
+   *
+   * 주의:
+   * - 아래 함수(getBlessingOfHarvestReduction)는
+   *   farming/skillTables.ts 기준과 동일해야 한다.
+   * - 가장 좋은 방법은 save-life-profile.ts 상단에서
+   *   BLESSING_OF_HARVEST_NORMAL_REDUCTION 을 import 해서 사용하는 것이다.
+   */
+  const blessingOfHarvestReduction =
+    getBlessingOfHarvestReduction(blessingOfHarvestLevel);
+
+  /**
+   * 최종적으로 farming_profiles 에 저장할 값은
+   * "도감/기타 일반 작물 감소비율"만 남긴다.
+   *
+   * 음수가 되면 의미가 없으므로 0 미만은 잘라낸다.
+   */
+  const codexNormalCropReductionTotal = Math.max(
+    0,
+    parsedNormalCropReductionTotal - blessingOfHarvestReduction,
+  );
 
   return {
     user_id: userId,
@@ -110,20 +171,20 @@ function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
     /**
      * 농사 도감 효과
      * - 일반 작물 감소비율
-     * 계산기에서 자동 불러오려면 farming_profiles에도 저장되어 있어야 한다.
+     *
+     * 저장 정책:
+     * - /생활 정보 total 값을 그대로 저장하지 않음
+     * - total - 풍년의 축복 감소값
+     *   => "도감/기타 감소분만" 저장
+     *
+     * 참고:
+     * - 현재 /생활 정보 원문만으로는 base/temp/equip를 정확히 다시 분리하기 어려워
+     *   우선 계산기에서 필요한 최종 도감 감소 총합만 맞춘다.
      */
-    normal_crop_reduction_base: toSafeNumber(
-      farmingStats.normalCropReduction?.base,
-    ),
-    normal_crop_reduction_temp: toSafeNumber(
-      farmingStats.normalCropReduction?.temp,
-    ),
-    normal_crop_reduction_equip: toSafeNumber(
-      farmingStats.normalCropReduction?.equip,
-    ),
-    normal_crop_reduction_total: toSafeNumber(
-      farmingStats.normalCropReduction?.total,
-    ),
+    normal_crop_reduction_base: 0,
+    normal_crop_reduction_temp: 0,
+    normal_crop_reduction_equip: codexNormalCropReductionTotal,
+    normal_crop_reduction_total: codexNormalCropReductionTotal,
 
     updated_at: new Date().toISOString(),
   };

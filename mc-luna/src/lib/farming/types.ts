@@ -103,6 +103,8 @@ export interface FarmingSkills {
   reseeding: number;
 }
 
+export type FarmingThirstMin = 15 | 10 | 5 | 1;
+
 /**
  * 농사 환경 정보
  */
@@ -110,8 +112,8 @@ export interface FarmingEnvironment {
   /** 총 화분통 수 */
   potCount: number;
 
-  /** 갈증값(예: 5 -> 5%) */
-  thirst: number;
+  /** 갈증 최소치 드롭다운 값 */
+  thirstMin: FarmingThirstMin;
 
   /** 작물 종류 */
   cropType: FarmingCropType;
@@ -158,6 +160,9 @@ export interface FarmingIntermediateResult {
   codexNormalReduction: number;
   totalNormalReduction: number;
 
+  // 갈증 관련 근거
+  effectiveThirstMultiplier: number;
+  effectiveThirstValue: number;
 
   // 기타 확률
   seedDropRatePercent: number;
