@@ -14,12 +14,6 @@ import ResultCard from "@/src/components/calculator/ResultCard";
 
 import { calculateCooking } from "@/src/lib/cooking/calc";
 import { COOKING_RECIPES, getCookingRecipe } from "@/src/lib/cooking/recipes";
-import {
-  BALANCE_OF_TASTE_DURATION_BONUS,
-  BANQUET_PREPARATION_TABLE,
-  INSTANT_COMPLETION_TABLE,
-  PREPARATION_MASTER_TIME_REDUCTION,
-} from "@/src/lib/cooking/skillTables";
 import type {
   CookingCalculationInput,
   CookingCalculationResult,
@@ -34,7 +28,20 @@ const recipeOptions = COOKING_RECIPES.map((recipe) => ({
 const INITIAL_FORM = {
   mastery: 0,
   dexterity: 0,
+
+  /**
+   * 도감 효과
+   * - 프로필에서 자동 불러오며 계산에 반영
+   * - UI에서는 read-only
+   */
   cookingGradeUpChance: 0,
+
+  /**
+   * 현재 프로필 구조에 아직 별도 자동 연동 컬럼이 없을 수 있으므로
+   * 일단 계산기 내부 입력값으로 둔다.
+   */
+  additionalCookTimeReductionPercent: 0,
+  additionalFoodDurationBonusPercent: 0,
 
   preparationMaster: 0,
   balanceOfTaste: 0,
@@ -43,14 +50,13 @@ const INITIAL_FORM = {
   banquetPreparation: 0,
 
   recipeId: "ssambap" as CookingRecipeId,
-  useInstantCompletion: false,
-  useBanquetPreparation: false,
-
   normalDishPrice: 100,
-  specialDishPrice: 150,
+  specialDishPrice: 500,
+
+  ingredientUnitPrices: {} as Record<string, number>,
 };
 
-function buildInitialIngredientPrices(recipeId: CookingRecipeId): Record<string, number> {
+function createInitialIngredientPrices(recipeId: CookingRecipeId): Record<string, number> {
   const recipe = getCookingRecipe(recipeId);
   return recipe.ingredients.reduce<Record<string, number>>((acc, ingredient) => {
     acc[ingredient.id] = 0;
@@ -60,10 +66,14 @@ function buildInitialIngredientPrices(recipeId: CookingRecipeId): Record<string,
 
 function createInitialCalculationInput(): CookingCalculationInput {
   return {
+    recipeId: INITIAL_FORM.recipeId,
     stats: {
       mastery: INITIAL_FORM.mastery,
       dexterity: INITIAL_FORM.dexterity,
       cookingGradeUpChance: INITIAL_FORM.cookingGradeUpChance,
+      additionalCookTimeReductionPercent: INITIAL_FORM.additionalCookTimeReductionPercent,
+      additionalFoodDurationBonusPercent:
+        INITIAL_FORM.additionalFoodDurationBonusPercent,
     },
     skills: {
       preparationMaster: INITIAL_FORM.preparationMaster,
@@ -72,15 +82,10 @@ function createInitialCalculationInput(): CookingCalculationInput {
       instantCompletion: INITIAL_FORM.instantCompletion,
       banquetPreparation: INITIAL_FORM.banquetPreparation,
     },
-    environment: {
-      recipeId: INITIAL_FORM.recipeId,
-      useInstantCompletion: INITIAL_FORM.useInstantCompletion,
-      useBanquetPreparation: INITIAL_FORM.useBanquetPreparation,
-    },
     prices: {
       normalDishPrice: INITIAL_FORM.normalDishPrice,
       specialDishPrice: INITIAL_FORM.specialDishPrice,
-      ingredientUnitPrices: buildInitialIngredientPrices(INITIAL_FORM.recipeId),
+      ingredientUnitPrices: createInitialIngredientPrices(INITIAL_FORM.recipeId),
     },
   };
 }
@@ -96,9 +101,9 @@ function formatPercent(value: number, digits = 2): string {
   return `${formatNumber(value, digits)}%`;
 }
 
-function formatSeconds(value: number | null): string {
+function formatSeconds(value: number | null, digits = 1): string {
   if (value == null) return "-";
-  return `${formatNumber(value, 0)}초`;
+  return `${formatNumber(value, digits)}초`;
 }
 
 function syncIngredientPrices(
@@ -125,15 +130,15 @@ export default function CookingCalculatorPage() {
   const [mastery, setMastery] = useState(INITIAL_FORM.mastery);
   const [dexterity, setDexterity] = useState(INITIAL_FORM.dexterity);
 
-  /**
-   * 도감 효과
-   * - 요리 등급업 확률
-   * - 프로필에서 자동 불러오며 계산에 반영
-   * - 직접 수정은 비활성
-   */
   const [cookingGradeUpChance, setCookingGradeUpChance] = useState(
     INITIAL_FORM.cookingGradeUpChance
   );
+
+  const [additionalCookTimeReductionPercent, setAdditionalCookTimeReductionPercent] =
+    useState(INITIAL_FORM.additionalCookTimeReductionPercent);
+
+  const [additionalFoodDurationBonusPercent, setAdditionalFoodDurationBonusPercent] =
+    useState(INITIAL_FORM.additionalFoodDurationBonusPercent);
 
   const [preparationMaster, setPreparationMaster] = useState(
     INITIAL_FORM.preparationMaster
@@ -150,15 +155,8 @@ export default function CookingCalculatorPage() {
   );
 
   const [recipeId, setRecipeId] = useState<CookingRecipeId>(INITIAL_FORM.recipeId);
-  const [useInstantCompletion, setUseInstantCompletion] = useState(
-    INITIAL_FORM.useInstantCompletion
-  );
-  const [useBanquetPreparation, setUseBanquetPreparation] = useState(
-    INITIAL_FORM.useBanquetPreparation
-  );
-
   const [ingredientUnitPrices, setIngredientUnitPrices] = useState<Record<string, number>>(
-    buildInitialIngredientPrices(INITIAL_FORM.recipeId)
+    createInitialIngredientPrices(INITIAL_FORM.recipeId)
   );
   const [normalDishPrice, setNormalDishPrice] = useState(INITIAL_FORM.normalDishPrice);
   const [specialDishPrice, setSpecialDishPrice] = useState(INITIAL_FORM.specialDishPrice);
@@ -169,15 +167,19 @@ export default function CookingCalculatorPage() {
   const [isDirty, setIsDirty] = useState(false);
 
   const selectedRecipe = useMemo(() => getCookingRecipe(recipeId), [recipeId]);
+
   const isProUser = planType === "pro";
   const disableProfileFields = profileLoaded && !isProUser;
 
   const buildCalculationInput = (): CookingCalculationInput => {
     return {
+      recipeId,
       stats: {
         mastery,
         dexterity,
         cookingGradeUpChance,
+        additionalCookTimeReductionPercent,
+        additionalFoodDurationBonusPercent,
       },
       skills: {
         preparationMaster,
@@ -185,11 +187,6 @@ export default function CookingCalculatorPage() {
         gourmet,
         instantCompletion,
         banquetPreparation,
-      },
-      environment: {
-        recipeId,
-        useInstantCompletion,
-        useBanquetPreparation,
       },
       prices: {
         normalDishPrice,
@@ -199,123 +196,207 @@ export default function CookingCalculatorPage() {
     };
   };
 
-  const loadProfileToCalculator = useCallback(async () => {
-    if (loadingProfileRef.current) return;
-    loadingProfileRef.current = true;
+  const buildCalculationInputFromProfile = (params: {
+    mastery: number;
+    dexterity: number;
+    cookingGradeUpChance: number;
+    preparationMaster: number;
+    balanceOfTaste: number;
+    gourmet: number;
+    instantCompletion: number;
+    banquetPreparation: number;
+  }): CookingCalculationInput => {
+    return {
+      recipeId,
+      stats: {
+        mastery: params.mastery,
+        dexterity: params.dexterity,
+        cookingGradeUpChance: params.cookingGradeUpChance,
+        additionalCookTimeReductionPercent,
+        additionalFoodDurationBonusPercent,
+      },
+      skills: {
+        preparationMaster: params.preparationMaster,
+        balanceOfTaste: params.balanceOfTaste,
+        gourmet: params.gourmet,
+        instantCompletion: params.instantCompletion,
+        banquetPreparation: params.banquetPreparation,
+      },
+      prices: {
+        normalDishPrice,
+        specialDishPrice,
+        ingredientUnitPrices,
+      },
+    };
+  };
 
-    try {
-      let user = null;
+  const loadProfileToCalculator = useCallback(
+    async (options?: { autoCalculate?: boolean }) => {
+      if (loadingProfileRef.current) return;
+      loadingProfileRef.current = true;
 
-      for (let i = 0; i < 5; i++) {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
+      try {
+        let user = null;
 
-        if (error) {
-          console.warn("getSession 실패:", error.message);
+        for (let i = 0; i < 5; i++) {
+          const {
+            data: { session },
+            error,
+          } = await supabase.auth.getSession();
+
+          if (error) {
+            console.warn("getSession 실패:", error.message);
+          }
+
+          if (session?.user) {
+            user = session.user;
+            break;
+          }
+
+          if (i < 4) {
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          }
         }
 
-        if (session?.user) {
-          user = session.user;
-          break;
+        if (!user) {
+          setPlanType(null);
+          setProfileLoaded(false);
+          return;
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
+        const { data: profileRow, error: profileError } = await supabase
+          .from("profiles")
+          .select("plan_type")
+          .eq("id", user.id)
+          .single();
 
-      if (!user) {
-        setPlanType(null);
-        setProfileLoaded(false);
-        return;
-      }
+        if (profileError) {
+          console.warn("profiles 조회 실패:", profileError.message);
+          return;
+        }
 
-      const { data: profileRow, error: profileError } = await supabase
-        .from("profiles")
-        .select("plan_type")
-        .eq("id", user.id)
-        .single();
+        const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
 
-      if (profileError) {
-        console.warn("profiles 조회 실패:", profileError.message);
-        return;
-      }
+        const { data: cookingProfile, error: cookingProfileError } = await supabase
+          .from("cooking_profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
 
-      const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
+        if (cookingProfileError || !cookingProfile) {
+          console.warn("cooking_profiles 조회 실패:", cookingProfileError?.message);
+          setPlanType(nextPlanType);
+          setProfileLoaded(false);
+          return;
+        }
 
-      const { data: cookingProfile, error: cookingProfileError } = await supabase
-        .from("cooking_profiles")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+        const { data: skillLevels, error: skillLevelsError } = await supabase
+          .from("user_skill_levels")
+          .select("skill_id, skill_level")
+          .eq("user_id", user.id);
 
-      if (cookingProfileError || !cookingProfile) {
-        console.warn("cooking_profiles 조회 실패:", cookingProfileError?.message);
-        setPlanType(nextPlanType);
-        setProfileLoaded(false);
-        return;
-      }
+        if (skillLevelsError) {
+          console.warn("user_skill_levels 조회 실패:", skillLevelsError.message);
+          return;
+        }
 
-      const { data: skillLevels, error: skillLevelsError } = await supabase
-        .from("user_skill_levels")
-        .select("skill_id, skill_level")
-        .eq("user_id", user.id);
+        const { data: skillDefinitions, error: skillDefinitionsError } = await supabase
+          .from("skill_definitions")
+          .select("id, skill_name_ko")
+          .eq("job_code", "cooking")
+          .eq("is_enabled", true);
 
-      if (skillLevelsError) {
-        console.warn("user_skill_levels 조회 실패:", skillLevelsError.message);
-        return;
-      }
+        if (skillDefinitionsError) {
+          console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
+          return;
+        }
 
-      const { data: skillDefinitions, error: skillDefinitionsError } = await supabase
-        .from("skill_definitions")
-        .select("id, skill_name_ko")
-        .eq("job_code", "cooking")
-        .eq("is_enabled", true);
+        const skillMap = Object.fromEntries(
+          (skillLevels ?? []).map((row) => {
+            const matched = (skillDefinitions ?? []).find(
+              (def) => def.id === row.skill_id
+            );
+            return [matched?.skill_name_ko ?? "", row.skill_level];
+          })
+        );
 
-      if (skillDefinitionsError) {
-        console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
-        return;
-      }
-
-      const skillMap = Object.fromEntries(
-        (skillLevels ?? []).map((row) => {
-          const matched = (skillDefinitions ?? []).find(
-            (def) => def.id === row.skill_id
-          );
-          return [matched?.skill_name_ko ?? "", row.skill_level];
-        })
-      );
-
-      setMastery(Number(cookingProfile.mastery_total ?? INITIAL_FORM.mastery));
-      setDexterity(Number(cookingProfile.dexterity_total ?? INITIAL_FORM.dexterity));
-      setCookingGradeUpChance(
-        Number(
+        const nextMastery = Number(cookingProfile.mastery_total ?? INITIAL_FORM.mastery);
+        const nextDexterity = Number(
+          cookingProfile.dexterity_total ?? INITIAL_FORM.dexterity
+        );
+        const nextCookingGradeUpChance = Number(
           cookingProfile.cooking_grade_up_chance_total ??
             INITIAL_FORM.cookingGradeUpChance
-        )
-      );
+        );
 
-      setPreparationMaster(
-        Number(skillMap["손질 달인"] ?? INITIAL_FORM.preparationMaster)
-      );
-      setBalanceOfTaste(
-        Number(skillMap["맛의 균형"] ?? INITIAL_FORM.balanceOfTaste)
-      );
-      setGourmet(Number(skillMap["미식가"] ?? INITIAL_FORM.gourmet));
-      setInstantCompletion(
-        Number(skillMap["즉시 완성"] ?? INITIAL_FORM.instantCompletion)
-      );
-      setBanquetPreparation(
-        Number(skillMap["연회 준비"] ?? INITIAL_FORM.banquetPreparation)
-      );
+        const nextPreparationMaster = Number(
+          skillMap["손질 달인"] ?? INITIAL_FORM.preparationMaster
+        );
+        const nextBalanceOfTaste = Number(
+          skillMap["맛의 균형"] ?? INITIAL_FORM.balanceOfTaste
+        );
+        const nextGourmet = Number(skillMap["미식가"] ?? INITIAL_FORM.gourmet);
+        const nextInstantCompletion = Number(
+          skillMap["즉시 완성"] ?? INITIAL_FORM.instantCompletion
+        );
+        const nextBanquetPreparation = Number(
+          skillMap["연회 준비"] ?? INITIAL_FORM.banquetPreparation
+        );
 
-      setPlanType(nextPlanType);
-      setProfileLoaded(true);
-      setIsDirty(true);
-    } finally {
-      loadingProfileRef.current = false;
-    }
-  }, []);
+        setMastery(nextMastery);
+        setDexterity(nextDexterity);
+        setCookingGradeUpChance(nextCookingGradeUpChance);
+        setPreparationMaster(nextPreparationMaster);
+        setBalanceOfTaste(nextBalanceOfTaste);
+        setGourmet(nextGourmet);
+        setInstantCompletion(nextInstantCompletion);
+        setBanquetPreparation(nextBanquetPreparation);
+        setPlanType(nextPlanType);
+        setProfileLoaded(true);
+
+        if (options?.autoCalculate) {
+          const nextInput = buildCalculationInputFromProfile({
+            mastery: nextMastery,
+            dexterity: nextDexterity,
+            cookingGradeUpChance: nextCookingGradeUpChance,
+            preparationMaster: nextPreparationMaster,
+            balanceOfTaste: nextBalanceOfTaste,
+            gourmet: nextGourmet,
+            instantCompletion: nextInstantCompletion,
+            banquetPreparation: nextBanquetPreparation,
+          });
+
+          const nextResult = calculateCooking(nextInput);
+          setResult(nextResult);
+          setIsDirty(false);
+        } else {
+          setIsDirty(true);
+        }
+      } finally {
+        loadingProfileRef.current = false;
+      }
+    },
+    [
+      recipeId,
+      additionalCookTimeReductionPercent,
+      additionalFoodDurationBonusPercent,
+      normalDishPrice,
+      specialDishPrice,
+      ingredientUnitPrices,
+    ]
+  );
+
+  useEffect(() => {
+    const handleProfileUpdated = async () => {
+      await loadProfileToCalculator({ autoCalculate: true });
+    };
+
+    window.addEventListener("profileUpdated", handleProfileUpdated);
+
+    return () => {
+      window.removeEventListener("profileUpdated", handleProfileUpdated);
+    };
+  }, [loadProfileToCalculator]);
 
   useEffect(() => {
     loadProfileToCalculator();
@@ -340,55 +421,8 @@ export default function CookingCalculatorPage() {
   }, [loadProfileToCalculator]);
 
   useEffect(() => {
-    const handleProfileUpdated = async () => {
-      await loadProfileToCalculator();
-      setTimeout(() => {
-        const nextResult = calculateCooking(buildCalculationInput());
-        setResult(nextResult);
-        setIsDirty(false);
-      }, 0);
-    };
-
-    window.addEventListener("profileUpdated", handleProfileUpdated);
-
-    return () => {
-      window.removeEventListener("profileUpdated", handleProfileUpdated);
-    };
-  }, [
-    loadProfileToCalculator,
-    mastery,
-    dexterity,
-    cookingGradeUpChance,
-    preparationMaster,
-    balanceOfTaste,
-    gourmet,
-    instantCompletion,
-    banquetPreparation,
-    recipeId,
-    useInstantCompletion,
-    useBanquetPreparation,
-    normalDishPrice,
-    specialDishPrice,
-    ingredientUnitPrices,
-  ]);
-
-  useEffect(() => {
     setIngredientUnitPrices((prev) => syncIngredientPrices(recipeId, prev));
   }, [recipeId]);
-
-  useEffect(() => {
-    if (instantCompletion <= 0 && useInstantCompletion) {
-      setUseInstantCompletion(false);
-      setIsDirty(true);
-    }
-  }, [instantCompletion, useInstantCompletion]);
-
-  useEffect(() => {
-    if (banquetPreparation <= 0 && useBanquetPreparation) {
-      setUseBanquetPreparation(false);
-      setIsDirty(true);
-    }
-  }, [banquetPreparation, useBanquetPreparation]);
 
   const handleCalculate = useCallback(() => {
     const nextResult = calculateCooking(buildCalculationInput());
@@ -398,17 +432,17 @@ export default function CookingCalculatorPage() {
     mastery,
     dexterity,
     cookingGradeUpChance,
+    additionalCookTimeReductionPercent,
+    additionalFoodDurationBonusPercent,
     preparationMaster,
     balanceOfTaste,
     gourmet,
     instantCompletion,
     banquetPreparation,
     recipeId,
-    useInstantCompletion,
-    useBanquetPreparation,
+    ingredientUnitPrices,
     normalDishPrice,
     specialDishPrice,
-    ingredientUnitPrices,
   ]);
 
   const handleReset = () => {
@@ -418,6 +452,12 @@ export default function CookingCalculatorPage() {
     setMastery(INITIAL_FORM.mastery);
     setDexterity(INITIAL_FORM.dexterity);
     setCookingGradeUpChance(INITIAL_FORM.cookingGradeUpChance);
+    setAdditionalCookTimeReductionPercent(
+      INITIAL_FORM.additionalCookTimeReductionPercent
+    );
+    setAdditionalFoodDurationBonusPercent(
+      INITIAL_FORM.additionalFoodDurationBonusPercent
+    );
 
     setPreparationMaster(INITIAL_FORM.preparationMaster);
     setBalanceOfTaste(INITIAL_FORM.balanceOfTaste);
@@ -426,25 +466,13 @@ export default function CookingCalculatorPage() {
     setBanquetPreparation(INITIAL_FORM.banquetPreparation);
 
     setRecipeId(INITIAL_FORM.recipeId);
-    setUseInstantCompletion(INITIAL_FORM.useInstantCompletion);
-    setUseBanquetPreparation(INITIAL_FORM.useBanquetPreparation);
-
-    setIngredientUnitPrices(buildInitialIngredientPrices(INITIAL_FORM.recipeId));
+    setIngredientUnitPrices(createInitialIngredientPrices(INITIAL_FORM.recipeId));
     setNormalDishPrice(INITIAL_FORM.normalDishPrice);
     setSpecialDishPrice(INITIAL_FORM.specialDishPrice);
 
     setResult(calculateCooking(createInitialCalculationInput()));
     setIsDirty(false);
   };
-
-  const banquetInfo =
-    BANQUET_PREPARATION_TABLE[banquetPreparation] ?? BANQUET_PREPARATION_TABLE[0];
-  const instantInfo =
-    INSTANT_COMPLETION_TABLE[instantCompletion] ?? INSTANT_COMPLETION_TABLE[0];
-  const preparationReduction =
-    PREPARATION_MASTER_TIME_REDUCTION[preparationMaster] ?? 0;
-  const balanceDuration =
-    BALANCE_OF_TASTE_DURATION_BONUS[balanceOfTaste] ?? 0;
 
   return (
     <CalculatorLayout
@@ -507,6 +535,32 @@ export default function CookingCalculatorPage() {
             </div>
           </CalculatorPanel>
 
+          <CalculatorPanel title="추가 보정">
+            <div className="space-y-4">
+              <Field label="조리 단축(%)">
+                <NumberInput
+                  value={additionalCookTimeReductionPercent}
+                  min={0}
+                  onChange={(value) => {
+                    setAdditionalCookTimeReductionPercent(value);
+                    setIsDirty(true);
+                  }}
+                />
+              </Field>
+
+              <Field label="음식 효과연장(%)">
+                <NumberInput
+                  value={additionalFoodDurationBonusPercent}
+                  min={0}
+                  onChange={(value) => {
+                    setAdditionalFoodDurationBonusPercent(value);
+                    setIsDirty(true);
+                  }}
+                />
+              </Field>
+            </div>
+          </CalculatorPanel>
+
           <CalculatorPanel title="요리 스킬">
             <div className="space-y-4">
               <Field label="손질 달인">
@@ -548,15 +602,7 @@ export default function CookingCalculatorPage() {
                 />
               </Field>
 
-              <Field
-                label="즉시 완성"
-                hint={
-                  <div className="text-xs text-zinc-500">
-                    Lv.{instantCompletion} / 발동 확률 {instantInfo.chancePercent}% / 지속{" "}
-                    {instantInfo.durationSeconds}초
-                  </div>
-                }
-              >
+              <Field label="즉시 완성">
                 <NumberInput
                   value={instantCompletion}
                   min={0}
@@ -569,15 +615,7 @@ export default function CookingCalculatorPage() {
                 />
               </Field>
 
-              <Field
-                label="연회 준비"
-                hint={
-                  <div className="text-xs text-zinc-500">
-                    Lv.{banquetPreparation} / 다중 요리 확률 {banquetInfo.chancePercent}% /
-                    추가 요리 {banquetInfo.extraCount}회
-                  </div>
-                }
-              >
+              <Field label="연회 준비">
                 <NumberInput
                   value={banquetPreparation}
                   min={0}
@@ -609,41 +647,21 @@ export default function CookingCalculatorPage() {
                 <div className="font-semibold">
                   선택 요리: {selectedRecipe.name}
                 </div>
-                <div className="mt-1">{selectedRecipe.description}</div>
                 <div className="mt-1">분류: {selectedRecipe.tierLabel}</div>
+                <div className="mt-1">효과: {selectedRecipe.description}</div>
                 <div className="mt-1">
-                  기본 지속시간:{" "}
-                  {selectedRecipe.baseBuffDurationSeconds == null
-                    ? "-"
-                    : `${selectedRecipe.baseBuffDurationSeconds}초`}
+                  기본 제작 시간: {formatSeconds(selectedRecipe.baseCraftTimeSeconds)}
+                </div>
+                <div className="mt-1">
+                  기본 성공 확률: {formatPercent(selectedRecipe.baseSuccessChancePercent)}
+                </div>
+                <div className="mt-1">
+                  기본 일품 확률: {formatPercent(selectedRecipe.baseSpecialChancePercent)}
+                </div>
+                <div className="mt-1">
+                  기본 지속시간: {formatSeconds(selectedRecipe.baseDurationSeconds, 0)}
                 </div>
               </div>
-
-              <label className="flex items-center gap-2 text-sm text-zinc-700">
-                <input
-                  type="checkbox"
-                  checked={useBanquetPreparation}
-                  disabled={banquetPreparation <= 0}
-                  onChange={(e) => {
-                    setUseBanquetPreparation(e.target.checked);
-                    setIsDirty(true);
-                  }}
-                />
-                연회 준비 발동 상태로 계산
-              </label>
-
-              <label className="flex items-center gap-2 text-sm text-zinc-700">
-                <input
-                  type="checkbox"
-                  checked={useInstantCompletion}
-                  disabled={instantCompletion <= 0}
-                  onChange={(e) => {
-                    setUseInstantCompletion(e.target.checked);
-                    setIsDirty(true);
-                  }}
-                />
-                즉시 완성 발동 상태 참고 표시
-              </label>
             </div>
           </CalculatorPanel>
 
@@ -652,7 +670,7 @@ export default function CookingCalculatorPage() {
               {selectedRecipe.ingredients.map((ingredient) => (
                 <Field
                   key={ingredient.id}
-                  label={`${ingredient.name} (${ingredient.quantity}개 필요)`}
+                  label={`${ingredient.name} (${ingredient.quantity}개)`}
                 >
                   <NumberInput
                     value={ingredientUnitPrices[ingredient.id] ?? 0}
@@ -712,74 +730,73 @@ export default function CookingCalculatorPage() {
       }
       right={
         <div className="space-y-4">
-          <ResultCard title="등급 확률">
+          <ResultCard title="레시피 기본값">
             <div className="space-y-2 text-sm text-zinc-700">
-              <div>손재주-등급업 확률: {formatPercent(result.intermediate.dexteritySpecialChancePercent)}</div>
-              <div>도감-요리 등급업 확률: {formatPercent(result.intermediate.codexSpecialChancePercent)}</div>
-              <div>미식가-고등급 확률: {formatPercent(result.intermediate.gourmetSpecialChancePercent)}</div>
+              <div>기본 일품 확률: {formatPercent(result.baseSpecialChancePercent)}</div>
+              <div>기본 성공 확률: {formatPercent(result.baseSuccessChancePercent)}</div>
+              <div>기본 제작 시간: {formatSeconds(result.baseCraftTimeSeconds)}</div>
+              <div>기본 유지 시간: {formatSeconds(result.baseDurationSeconds, 0)}</div>
+            </div>
+          </ResultCard>
+
+          <ResultCard title="등급 / 성공 확률">
+            <div className="space-y-2 text-sm text-zinc-700">
+              <div>[도감] 요리 등급업 확률 {formatPercent(result.codexGradeUpChancePercent)}</div>
+              <div>[손재주] 등급업 보정 {formatPercent(result.dexterityGradeUpChancePercent)}</div>
+              <div>[미식가] 등급업 보정 {formatPercent(result.gourmetGradeUpChancePercent)}</div>
               <div className="border-t border-zinc-200 pt-2 font-medium text-zinc-900">
-                일반 요리 확률: {formatPercent(result.intermediate.totalNormalChancePercent)}
+                최종 일반 확률: {formatPercent(result.finalNormalChancePercent)}
               </div>
               <div className="font-medium text-zinc-900">
-                일품 요리 확률: {formatPercent(result.intermediate.totalSpecialChancePercent)}
+                최종 일품 확률: {formatPercent(result.finalSpecialChancePercent)}
               </div>
-            </div>
-          </ResultCard>
 
-          <ResultCard title="추가 제작 / 성공 판정">
-            <div className="space-y-2 text-sm text-zinc-700">
-              <div>노련함 기반 성공률: {formatPercent(result.intermediate.masterySuccessRatePercent)}</div>
-              <div>연회 준비 발동 확률: {formatPercent(result.intermediate.banquetChancePercent)}</div>
-              <div>연회 준비 추가 횟수: {result.intermediate.banquetExtraCount}회</div>
-              <div className="border-t border-zinc-200 pt-2 font-medium text-zinc-900">
-                1회 제작 기대 산출량: {formatNumber(result.intermediate.expectedOutputMultiplier, 4)}개
+              <div className="border-t border-zinc-200 pt-2">
+                [노련함] 성공 보정 {formatPercent(result.masterySuccessBonusPercent)}
               </div>
-              <div>일반 기대 개수: {formatNumber(result.expectedNormalCount, 4)}개</div>
-              <div>일품 기대 개수: {formatNumber(result.expectedSpecialCount, 4)}개</div>
-              <div>총 기대 개수: {formatNumber(result.expectedTotalOutputCount, 4)}개</div>
-            </div>
-          </ResultCard>
-
-          <ResultCard title="시간 / 지속시간 참고">
-            <div className="space-y-2 text-sm text-zinc-700">
-              <div>손재주-시간 감소율: {formatPercent(result.intermediate.dexterityTimeReductionPercent)}</div>
-              <div>손질 달인-시간 감소율: {formatPercent(result.intermediate.preparationTimeReductionPercent)}</div>
               <div className="font-medium text-zinc-900">
-                최종 상대 시간 감소율: {formatPercent(result.intermediate.relativeCookTimeReductionPercent)}
-              </div>
-              <div>상대 시간 배율: {formatNumber(result.intermediate.relativeCookTimeMultiplier, 4)}배</div>
-              <div className="border-t border-zinc-200 pt-2">
-                맛의 균형 지속시간 증가: {formatPercent(balanceDuration)}
-              </div>
-              <div>기본 버프 지속시간: {formatSeconds(result.intermediate.baseBuffDurationSeconds)}</div>
-              <div>최종 버프 지속시간: {formatSeconds(result.intermediate.finalBuffDurationSeconds)}</div>
-              <div className="border-t border-zinc-200 pt-2">
-                즉시 완성 확률: {useInstantCompletion ? formatPercent(instantInfo.chancePercent) : "비활성"}
+                최종 성공 확률: {formatPercent(result.finalSuccessChancePercent)}
               </div>
             </div>
           </ResultCard>
 
-          <ResultCard title="비용 / 기대수익">
+          <ResultCard title="시간 / 유지시간">
             <div className="space-y-2 text-sm text-zinc-700">
-              <div>재료 원가: {formatNumber(result.intermediate.ingredientCostPerCraft)}원</div>
-              <div>기대 매출: {formatNumber(result.expectedRevenuePerCraft)}원</div>
+              <div>[손재주] 시간 감소 {formatSeconds(result.dexterityTimeReductionSeconds)}</div>
+              <div>[손질 달인] 추가 감소 {formatPercent(result.preparationMasterReductionPercent)}</div>
+              <div>[조리 단축] 적용값 {formatPercent(result.additionalCookTimeReductionPercent)}</div>
+              <div className="border-t border-zinc-200 pt-2 font-medium text-zinc-900">
+                최종 제작 시간: {formatSeconds(result.finalCraftTimeSeconds)}
+              </div>
+
+              <div className="border-t border-zinc-200 pt-2">
+                [음식 효과연장] {formatPercent(result.additionalFoodDurationBonusPercent)}
+              </div>
+              <div>[맛의 균형] {formatPercent(result.balanceOfTasteBonusPercent)}</div>
+              <div className="font-medium text-zinc-900">
+                최종 유지 시간: {formatSeconds(result.finalDurationSeconds, 0)}
+              </div>
+            </div>
+          </ResultCard>
+
+          <ResultCard title="기대 수익">
+            <div className="space-y-2 text-sm text-zinc-700">
+              <div>재료 원가: {formatNumber(result.ingredientCostPerCraft)}셀</div>
+              <div>1회 기대 매출: {formatNumber(result.expectedRevenuePerCraft)}셀</div>
               <div className="font-semibold text-zinc-900">
-                기대 순이익: {formatNumber(result.expectedNetProfitPerCraft)}원
+                1회 기대 순이익: {formatNumber(result.expectedNetProfitPerCraft)}셀
+              </div>
+              <div className="border-t border-zinc-200 pt-2 font-semibold text-zinc-900">
+                시간당 기대 순이익: {formatNumber(result.expectedNetProfitPerHour)}셀
               </div>
             </div>
           </ResultCard>
 
-          <ResultCard title="v1 계산 기준 메모">
+          <ResultCard title="메모">
             <div className="space-y-2 text-sm text-zinc-700">
-              <div>
-                - 현재 계산기는 일반 vs 일품 2버킷 구조로 계산합니다.
-              </div>
-              <div>
-                - 은별/금별을 따로 나누고 싶다면 다음 단계에서 일품 내부를 2단계로 분리하면 됩니다.
-              </div>
-              <div>
-                - 손재주/노련함의 정확한 서버식이 위키에 공개되지 않은 부분은 calc.ts 상단 상수로 분리해 두었습니다.
-              </div>
+              <div>- 현재 계산기는 “일반 결과물 vs 일품(희귀) 결과물” 2버킷으로 계산합니다.</div>
+              <div>- 네 첨부 이미지 기준 희귀 결과물이 실제로 일품 요리에 해당하므로 시세 입력도 그 기준으로 받습니다.</div>
+              <div>- 즉시 완성 / 연회 준비는 현재 수익식에 직접 반영하지 않고, 프로필 구조와 확장성을 위해 값만 연동합니다.</div>
             </div>
           </ResultCard>
         </div>

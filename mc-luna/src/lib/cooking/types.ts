@@ -1,5 +1,3 @@
-// src/lib/cooking/types.ts
-
 export type CookingRecipeId =
   | "ssambap"
   | "cornJeon"
@@ -27,92 +25,73 @@ export interface CookingIngredient {
 export interface CookingRecipe {
   id: CookingRecipeId;
   name: string;
-  tierLabel: "일반 요리" | "고급 요리";
+  tierLabel: "일반 요리" | "고급 요리" | "주스";
   description: string;
-  baseBuffDurationSeconds: number | null;
+  baseDurationSeconds: number | null;
+  baseCraftTimeSeconds: number;
+  baseSuccessChancePercent: number;
+  baseSpecialChancePercent: number;
   ingredients: CookingIngredient[];
 }
 
 export interface CookingStats {
-  /** 노련함 */
   mastery: number;
-  /** 손재주 */
   dexterity: number;
-  /** 도감 - 요리 등급업 확률 */
   cookingGradeUpChance: number;
+  additionalCookTimeReductionPercent: number;
+  additionalFoodDurationBonusPercent: number;
 }
 
 export interface CookingSkills {
-  /** 손질 달인 */
   preparationMaster: number;
-  /** 맛의 균형 */
   balanceOfTaste: number;
-  /** 미식가 */
   gourmet: number;
-  /** 즉시 완성 */
   instantCompletion: number;
-  /** 연회 준비 */
   banquetPreparation: number;
 }
 
-export interface CookingEnvironment {
-  recipeId: CookingRecipeId;
-  useInstantCompletion: boolean;
-  useBanquetPreparation: boolean;
-}
-
 export interface CookingPrices {
-  /** 일반 결과물 시세 */
   normalDishPrice: number;
-  /** 일품 결과물 시세 (v1에서는 은별/금별 통합 버킷) */
   specialDishPrice: number;
-  /** 선택한 레시피 재료별 시세 */
   ingredientUnitPrices: Record<string, number>;
 }
 
 export interface CookingCalculationInput {
+  recipeId: CookingRecipeId;
   stats: CookingStats;
   skills: CookingSkills;
-  environment: CookingEnvironment;
   prices: CookingPrices;
 }
 
-export interface CookingIntermediateResult {
+export interface CookingCalculationResult {
   recipeName: string;
   recipeTierLabel: string;
+
   ingredientCostPerCraft: number;
 
-  /** 공개 수치 */
-  gourmetSpecialChancePercent: number;
-  codexSpecialChancePercent: number;
-  banquetChancePercent: number;
-  banquetExtraCount: number;
-  balanceDurationBonusPercent: number;
-  preparationTimeReductionPercent: number;
-  instantCompletionChancePercent: number;
+  baseSpecialChancePercent: number;
+  codexGradeUpChancePercent: number;
+  dexterityGradeUpChancePercent: number;
+  gourmetGradeUpChancePercent: number;
+  finalSpecialChancePercent: number;
+  finalNormalChancePercent: number;
 
-  /** 추정/튜닝용 수치 */
-  dexteritySpecialChancePercent: number;
-  masterySuccessRatePercent: number;
-  dexterityTimeReductionPercent: number;
+  baseSuccessChancePercent: number;
+  masterySuccessBonusPercent: number;
+  finalSuccessChancePercent: number;
 
-  totalSpecialChancePercent: number;
-  totalNormalChancePercent: number;
-  expectedOutputMultiplier: number;
-  relativeCookTimeReductionPercent: number;
-  relativeCookTimeMultiplier: number;
+  baseCraftTimeSeconds: number;
+  dexterityTimeReductionSeconds: number;
+  preparationMasterReductionPercent: number;
+  additionalCookTimeReductionPercent: number;
+  finalCraftTimeSeconds: number;
 
-  baseBuffDurationSeconds: number | null;
-  finalBuffDurationSeconds: number | null;
-}
-
-export interface CookingCalculationResult {
-  intermediate: CookingIntermediateResult;
-
-  expectedNormalCount: number;
-  expectedSpecialCount: number;
-  expectedTotalOutputCount: number;
+  baseDurationSeconds: number | null;
+  balanceOfTasteBonusPercent: number;
+  additionalFoodDurationBonusPercent: number;
+  finalDurationSeconds: number | null;
 
   expectedRevenuePerCraft: number;
   expectedNetProfitPerCraft: number;
+  expectedNetProfitPerHour: number;
 }
