@@ -414,6 +414,7 @@ export default function FishingCalculatorPage() {
     ],
   );
 
+  
   useEffect(() => {
     loadProfileToCalculator();
   }, [pathname, loadProfileToCalculator]);
@@ -423,10 +424,6 @@ export default function FishingCalculatorPage() {
      * 프로필 저장 완료 이벤트를 받으면
      * 최신 낚시 프로필을 다시 읽고
      * 그 값으로 즉시 자동 계산까지 수행한다.
-     *
-     * 정리:
-     * - 기존 파일에는 동일 목적의 profileUpdated 이벤트 useEffect가 2개 있었다.
-     * - 자동 계산용 1개만 남겨 중복 리스너를 제거했다.
      */
     const handleProfileUpdated = async () => {
       await loadProfileToCalculator({ autoCalculate: true });
@@ -568,6 +565,29 @@ export default function FishingCalculatorPage() {
     rarePrice,
   ]);
 
+  useEffect(() => {
+    /**
+     * 프로필 저장 완료 이벤트를 감지하면
+     * 최신 낚시 프로필을 다시 불러오고 자동 계산까지 수행한다.
+     */
+    const handleProfileUpdated = async () => {
+      await loadProfileToCalculator();
+
+      /**
+       * 상태 반영 직후 자동 계산
+       */
+      setTimeout(() => {
+        handleCalculate();
+      }, 0);
+    };
+
+    window.addEventListener("profileUpdated", handleProfileUpdated);
+
+    return () => {
+      window.removeEventListener("profileUpdated", handleProfileUpdated);
+    };
+  }, [loadProfileToCalculator, handleCalculate]);
+
   const handleReset = () => {
     setProfileLoaded(false);
     setPlanType(null);
@@ -604,62 +624,14 @@ export default function FishingCalculatorPage() {
     setIsExpDirty(false);
   };
 
-  const selectedBait = useMemo(
-    () => baitOptions.find((item) => item.value === baitType),
-    [baitType],
-  );
-
-  const selectedGroundbait = useMemo(
-    () => groundbaitOptions.find((item) => item.value === groundbaitType),
-    [groundbaitType],
-  );
-
-  /**
-   * =========================
-   * 오른쪽 결과 패널 표시용 파생값
-   * =========================
-   *
-   * 요구사항 기준:
-   * - "실제 기척 시간(인챈트 적용)" 아래에 도감-기척 시간 감소 표시
-   * - "최종 기척 시간" = 실제 기척 시간 - 도감 효과
-   * - 시간당 값들도 이 최종 표시 시간을 기준으로 일관되게 다시 계산
-   */
-  const displayedFinalNibbleSeconds = Math.max(
-    result.catchTime.finalNibbleSeconds - nibbleTimeReduction,
-    0,
-  );
-  const displayedFinalNibbleTicks = displayedFinalNibbleSeconds * 20;
-
-  const displayedTotalCycleSeconds =
-    result.catchTime.castStartSeconds +
-    displayedFinalNibbleSeconds +
-    result.catchTime.displayBiteSeconds +
-    result.catchTime.reelInSeconds;
-
-  const cyclesPerHour =
-    displayedTotalCycleSeconds > 0 ? 3600 / displayedTotalCycleSeconds : 0;
-
-  const customFishPerHour =
-    cyclesPerHour * result.catchExpectation.finalCustomFishPerCycle;
-
-  const expectedValuePerHour =
-    cyclesPerHour * result.value.expectedValuePerCycle;
-
-  const formatLevelUpTime = (hours: number) => {
-    if (!Number.isFinite(hours) || hours < 0) return "계산 불가";
-
-    const totalMinutes = Math.ceil(hours * 60);
-    const hh = Math.floor(totalMinutes / 60);
-    const mm = totalMinutes % 60;
-    return `${hh}시간 ${mm}분`;
-  };
-
   const handleCalculateExp = () => {
-    const nextCyclesPerHour =
-      displayedTotalCycleSeconds > 0 ? 3600 / displayedTotalCycleSeconds : 0;
+    const cyclesPerHour =
+      result.catchTime.totalCycleSeconds > 0
+        ? 3600 / result.catchTime.totalCycleSeconds
+        : 0;
 
     const expFishPerHour =
-      nextCyclesPerHour * result.catchExpectation.expCatchCountPerCycle;
+      cyclesPerHour * result.catchExpectation.expCatchCountPerCycle;
 
     const nextExpPerHour = expFishPerHour * expPerFish;
 
@@ -669,7 +641,7 @@ export default function FishingCalculatorPage() {
         : Number.POSITIVE_INFINITY;
 
     setExpResult({
-      catchesPerHour: nextCyclesPerHour,
+      catchesPerHour: cyclesPerHour,
       expPerHour: nextExpPerHour,
       levelUpHours,
     });
@@ -681,6 +653,33 @@ export default function FishingCalculatorPage() {
     setRemainingExp(0);
     setExpResult(null);
     setIsExpDirty(false);
+  };
+
+  const selectedBait = useMemo(
+    () => baitOptions.find((item) => item.value === baitType),
+    [baitType],
+  );
+
+  const selectedGroundbait = useMemo(
+    () => groundbaitOptions.find((item) => item.value === groundbaitType),
+    [groundbaitType],
+  );
+
+  const cyclesPerHour =
+    result.catchTime.totalCycleSeconds > 0
+      ? 3600 / result.catchTime.totalCycleSeconds
+      : 0;
+
+  const customFishPerHour =
+    cyclesPerHour * result.catchExpectation.finalCustomFishPerCycle;
+
+  const formatLevelUpTime = (hours: number) => {
+    if (!Number.isFinite(hours) || hours < 0) return "계산 불가";
+
+    const totalMinutes = Math.ceil(hours * 60);
+    const hh = Math.floor(totalMinutes / 60);
+    const mm = totalMinutes % 60;
+    return `${hh}시간 ${mm}분`;
   };
 
   return (
@@ -1019,59 +1018,10 @@ export default function FishingCalculatorPage() {
       }
       right={
         <CalculatorPanel title="계산 결과">
-          <ResultCard title="낚시 시간">
+          <ResultCard title="등급 가중치 / 확률">
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span>낚싯대 던지는 시간</span>
-                <span>{formatNumber(result.catchTime.castStartSeconds, 2)}초</span>
-              </div>
-              <div className="flex justify-between">
-                <span>표시 기척 시간(인챈트 미적용)</span>
-                <span>
-                  {formatNumber(result.catchTime.displayNibbleSeconds, 2)}초 (
-                  {formatNumber(result.catchTime.displayNibbleTicks, 2)}틱)
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>실제 기척 시간(인챈트 적용)</span>
-                <span>
-                  {formatNumber(result.catchTime.finalNibbleSeconds, 2)}초 (
-                  {formatNumber(result.catchTime.finalNibbleTicks, 2)}틱)
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>[도감]기척 시간 감소</span>
-                <span>{formatNumber(nibbleTimeReduction, 2)}초</span>
-              </div>
-              <div className="flex justify-between">
-                <span>최종 기척 시간</span>
-                <span>
-                  {formatNumber(displayedFinalNibbleSeconds, 2)}초 (
-                  {formatNumber(displayedFinalNibbleTicks, 2)}틱)
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>표시 입질 시간</span>
-                <span>
-                  {formatNumber(result.catchTime.displayBiteSeconds, 2)}초 (
-                  {formatNumber(result.catchTime.displayBiteTicks, 2)}틱)
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>건져올리는 시간</span>
-                <span>{formatNumber(result.catchTime.reelInSeconds, 2)}초</span>
-              </div>
-              <div className="flex justify-between">
-                <span>※최종 1회 낚시 시간(던짐+기척+입질+건져올림)</span>
-                <span>{formatNumber(displayedTotalCycleSeconds, 2)}초</span>
-              </div>
-            </div>
-          </ResultCard>
-
-          <ResultCard title="등급 확률">
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>[도감]일반 물고기 감소비율</span>
+                <span>도감-일반 물고기 감소비율</span>
                 <span>{formatNumber(normalFishReduction, 2)}</span>
               </div>
               <div className="flex justify-between">
@@ -1111,13 +1061,19 @@ export default function FishingCalculatorPage() {
               </div>
               <div className="flex justify-between">
                 <span>희귀 확률</span>
-                <span>{formatRatioPercent(result.gradeRatio.probabilityRare, 2)}</span>
+                <span>
+                  {formatRatioPercent(result.gradeRatio.probabilityRare, 2)}
+                </span>
               </div>
             </div>
           </ResultCard>
 
-          <ResultCard title="결과물 확률">
+          <ResultCard title="중간 계산값">
             <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>도감-기척 시간 감소</span>
+                <span>{formatNumber(nibbleTimeReduction, 2)}</span>
+              </div>
               <div className="flex justify-between">
                 <span>바닐라 결과물 확률</span>
                 <span>{formatPercent(result.value.vanillaChancePercent, 2)}</span>
@@ -1126,11 +1082,6 @@ export default function FishingCalculatorPage() {
                 <span>커스텀 물고기 확률</span>
                 <span>{formatPercent(result.value.customFishChancePercent, 2)}</span>
               </div>
-            </div>
-          </ResultCard>
-
-          <ResultCard title="기대 획득량">
-            <div className="space-y-2">
               <div className="flex justify-between">
                 <span>더블 캐치 확률</span>
                 <span>
@@ -1141,57 +1092,62 @@ export default function FishingCalculatorPage() {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>낚시 1회당 기대 커스텀 물고기 수</span>
-                <span>
-                  {formatNumber(
-                    result.catchExpectation.finalCustomFishPerCatch,
-                    3,
-                  )}
-                  마리
-                </span>
-              </div>
-              <div className="flex justify-between">
                 <span>2회 낚시 확률</span>
                 <span>
                   {formatPercent(result.catchExpectation.doubleCastChancePercent, 2)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>1사이클당 기대 낚시 횟수</span>
+                <span>낚시 1회당 기대 커스텀 물고기 수</span>
                 <span>
-                  {formatNumber(result.catchExpectation.catchCountPerCycle, 3)}회
+                  {formatNumber(
+                    result.catchExpectation.finalCustomFishPerCatch,
+                    2,
+                  )}
+                  마리
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>최종 기대 획득량(물고기 수 x 낚시 횟수)</span>
+                <span>1사이클당 기대 낚시 횟수</span>
                 <span>
-                  {formatNumber(
-                    result.catchExpectation.finalCustomFishPerCycle,
-                    3,
-                  )}
-                  개
+                  {formatNumber(result.catchExpectation.catchCountPerCycle, 2)}회
                 </span>
+              </div>
+              <div className="flex justify-between">
+                <span>1회 전체 사이클 시간</span>
+                <span>{formatNumber(result.catchTime.totalCycleSeconds, 2)}초</span>
               </div>
             </div>
           </ResultCard>
 
-          <ResultCard title="기대 수익">
+          <ResultCard title="기대 결과">
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span>물고기 1마리 기대가치</span>
-                <span>{formatNumber(result.value.expectedValuePerFish, 2)}셀</span>
-              </div>
-              <div className="flex justify-between">
-                <span>낚시 1회당 기대 수익</span>
-                <span>{formatNumber(result.value.expectedValuePerCycle, 2)}셀</span>
-              </div>
-              <div className="flex justify-between">
                 <span>시간당 낚시 횟수</span>
-                <span>{Math.floor(cyclesPerHour).toString()}회</span>
+                <span>{formatNumber(cyclesPerHour, 2)}회</span>
               </div>
               <div className="flex justify-between">
-                <span>시간당 기대 수익</span>
-                <span>{Math.floor(expectedValuePerHour).toString()}셀</span>
+                <span>시간당 커스텀 물고기 수</span>
+                <span>{formatNumber(customFishPerHour, 2)}마리</span>
+              </div>
+              <div className="flex justify-between">
+                <span>커스텀 물고기 1마리 기대 가치</span>
+                <span>{formatNumber(result.value.expectedValuePerFish, 2)}원</span>
+              </div>
+              <div className="flex justify-between">
+                <span>1사이클 기대 수익</span>
+                <span>{formatNumber(result.value.expectedValuePerCycle, 2)}원</span>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-blue-900">
+                    시간당 기대 수익
+                  </span>
+                  <span className="text-lg font-bold text-blue-700">
+                    {formatNumber(result.value.expectedValuePerHour, 2)}원
+                  </span>
+                </div>
               </div>
             </div>
           </ResultCard>
@@ -1235,13 +1191,13 @@ export default function FishingCalculatorPage() {
                 경험치 입력값이 변경되었습니다.
               </div>
             )}
-            <br></br>
+
             {expResult && (
               <ResultCard title="경험치 결과">
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span>시간당 획득 경험치</span>
-                    <span>{Math.floor(expResult.expPerHour).toString()} exp</span>
+                    <span>{formatNumber(expResult.expPerHour, 2)} exp</span>
                   </div>
                   <div className="flex justify-between">
                     <span>레벨업까지 예상 시간</span>

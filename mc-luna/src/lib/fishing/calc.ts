@@ -251,6 +251,8 @@ export function calculateCatchTime(
     finalBiteTicks: round(finalBiteTicks),
     finalNibbleSeconds: round(finalNibbleSeconds),
     finalBiteSeconds: round(finalBiteSeconds),
+    castStartSeconds: round(castStartSeconds),
+    reelInSeconds: round(reelInSeconds),
     waitSeconds: round(waitSeconds),
     totalCycleSeconds: round(totalCycleSeconds),
   };

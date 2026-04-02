@@ -194,7 +194,7 @@ export interface CatchTimeResult {
   baseBiteTicks: number;
   afterSenseNibbleTicks: number;
   afterSenseBiteTicks: number;
-
+  
   /** 루나서버 상단 표시 기준 (인챈트 미적용) */
   displayNibbleTicks: number;
   displayBiteTicks: number;
@@ -230,6 +230,8 @@ export interface CatchTimeResult {
   finalNibbleSeconds: number;
   finalBiteSeconds: number;
 
+  castStartSeconds: number;
+  reelInSeconds: number;
   waitSeconds: number;
   totalCycleSeconds: number;
 }

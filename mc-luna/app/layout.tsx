@@ -35,8 +35,13 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-[var(--background)] text-[var(--foreground)] antialiased`}
       >
         <GlobalHeader />
+
+        {/* 
+          페이지 본문은 한 번만 렌더링해야 한다.
+          기존 코드처럼 children을 두 번 렌더링하면
+          페이지가 중복 마운트되어 이벤트/상태가 꼬일 수 있다.
+        */}
         <div className="mx-auto w-full max-w-7xl">{children}</div>
-        {children}
 
         {/* 
           전역 토스트 렌더러

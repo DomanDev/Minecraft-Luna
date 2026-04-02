@@ -651,8 +651,9 @@ export default function ProfilePage() {
       setSaveMessage("");
 
       if (!user) {
-        setSaveMessage("사용자 정보를 불러올 수 없습니다.");
-        toast.error("사용자 정보를 불러올 수 없습니다.");
+        const message = "사용자 정보를 불러올 수 없습니다.";
+        setSaveMessage(message);
+        toast.error(message);
         return;
       }
 
@@ -681,7 +682,7 @@ export default function ProfilePage() {
        * 둘 다 표시
        */
       setSaveMessage("생활 정보 가져오기 저장 완료");
-      toast.success("생활 정보가 저장되었고 계산기에 자동 반영됩니다.");
+      toast.success("생활 정보가 저장되었으며, 계산기에 자동 반영됩니다.");
     } catch (error) {
       const message =
         error instanceof Error
@@ -701,8 +702,9 @@ export default function ProfilePage() {
       setSaveMessage("");
 
       if (!user) {
-        setSaveMessage("사용자 정보를 불러올 수 없습니다.");
-        toast.error("사용자 정보를 불러올 수 없습니다.");
+        const message = "사용자 정보를 불러올 수 없습니다.";
+        setSaveMessage(message);
+        toast.error(message);
         return;
       }
 
@@ -721,7 +723,7 @@ export default function ProfilePage() {
       window.dispatchEvent(new Event("profileUpdated"));
 
       setSaveMessage("직접 입력 프로필 저장 완료");
-      toast.success("프로필이 저장되었고 계산기에 자동 반영됩니다.");
+      toast.success("프로필이 저장되었으며, 계산기에 자동 반영됩니다.");
     } catch (error) {
       const message =
         error instanceof Error

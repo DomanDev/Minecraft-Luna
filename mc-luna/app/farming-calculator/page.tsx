@@ -284,8 +284,10 @@ export default function FarmingCalculatorPage() {
             user = session.user;
             break;
           }
-
-          await new Promise((resolve) => setTimeout(resolve, 200));
+          
+          if (i < 4) {
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          }
         }
 
         if (!user) {
