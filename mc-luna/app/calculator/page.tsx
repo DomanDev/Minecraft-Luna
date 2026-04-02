@@ -78,7 +78,7 @@ const INITIAL_FORM = {
 
   normalPrice: 10,
   advancedPrice: 20,
-  rarePrice: 35,
+  rarePrice: 40,
 };
 
 /**
