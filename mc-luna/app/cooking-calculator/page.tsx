@@ -196,211 +196,165 @@ export default function CookingCalculatorPage() {
     };
   };
 
-  const buildCalculationInputFromProfile = (params: {
-    mastery: number;
-    dexterity: number;
-    cookingGradeUpChance: number;
-    preparationMaster: number;
-    balanceOfTaste: number;
-    gourmet: number;
-    instantCompletion: number;
-    banquetPreparation: number;
-  }): CookingCalculationInput => {
-    return {
-      recipeId,
-      stats: {
-        mastery: params.mastery,
-        dexterity: params.dexterity,
-        cookingGradeUpChance: params.cookingGradeUpChance,
-        additionalCookTimeReductionPercent,
-        additionalFoodDurationBonusPercent,
-      },
-      skills: {
-        preparationMaster: params.preparationMaster,
-        balanceOfTaste: params.balanceOfTaste,
-        gourmet: params.gourmet,
-        instantCompletion: params.instantCompletion,
-        banquetPreparation: params.banquetPreparation,
-      },
-      prices: {
-        normalDishPrice,
-        specialDishPrice,
-        ingredientUnitPrices,
-      },
-    };
-  };
+  const loadProfileToCalculator = useCallback(async () => {
+    if (loadingProfileRef.current) return;
+    loadingProfileRef.current = true;
 
-  const loadProfileToCalculator = useCallback(
-    async (options?: { autoCalculate?: boolean }) => {
-      if (loadingProfileRef.current) return;
-      loadingProfileRef.current = true;
+    try {
+      let user = null;
 
-      try {
-        let user = null;
+      for (let i = 0; i < 5; i++) {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
 
-        for (let i = 0; i < 5; i++) {
-          const {
-            data: { session },
-            error,
-          } = await supabase.auth.getSession();
-
-          if (error) {
-            console.warn("getSession 실패:", error.message);
-          }
-
-          if (session?.user) {
-            user = session.user;
-            break;
-          }
-
-          if (i < 4) {
-            await new Promise((resolve) => setTimeout(resolve, 200));
-          }
+        if (error) {
+          console.warn("getSession 실패:", error.message);
         }
 
-        if (!user) {
-          setPlanType(null);
-          setProfileLoaded(false);
-          return;
+        if (session?.user) {
+          user = session.user;
+          break;
         }
 
-        const { data: profileRow, error: profileError } = await supabase
-          .from("profiles")
-          .select("plan_type")
-          .eq("id", user.id)
-          .single();
-
-        if (profileError) {
-          console.warn("profiles 조회 실패:", profileError.message);
-          return;
+        if (i < 4) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
         }
-
-        const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
-
-        const { data: cookingProfile, error: cookingProfileError } = await supabase
-          .from("cooking_profiles")
-          .select("*")
-          .eq("user_id", user.id)
-          .single();
-
-        if (cookingProfileError || !cookingProfile) {
-          console.warn("cooking_profiles 조회 실패:", cookingProfileError?.message);
-          setPlanType(nextPlanType);
-          setProfileLoaded(false);
-          return;
-        }
-
-        const { data: skillLevels, error: skillLevelsError } = await supabase
-          .from("user_skill_levels")
-          .select("skill_id, skill_level")
-          .eq("user_id", user.id);
-
-        if (skillLevelsError) {
-          console.warn("user_skill_levels 조회 실패:", skillLevelsError.message);
-          return;
-        }
-
-        const { data: skillDefinitions, error: skillDefinitionsError } = await supabase
-          .from("skill_definitions")
-          .select("id, skill_name_ko")
-          .eq("job_code", "cooking")
-          .eq("is_enabled", true);
-
-        if (skillDefinitionsError) {
-          console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
-          return;
-        }
-
-        const skillMap = Object.fromEntries(
-          (skillLevels ?? []).map((row) => {
-            const matched = (skillDefinitions ?? []).find(
-              (def) => def.id === row.skill_id
-            );
-            return [matched?.skill_name_ko ?? "", row.skill_level];
-          })
-        );
-
-        const nextMastery = Number(cookingProfile.mastery_total ?? INITIAL_FORM.mastery);
-        const nextDexterity = Number(
-          cookingProfile.dexterity_total ?? INITIAL_FORM.dexterity
-        );
-        const nextCookingGradeUpChance = Number(
-          cookingProfile.cooking_grade_up_chance_total ??
-            INITIAL_FORM.cookingGradeUpChance
-        );
-
-        const nextPreparationMaster = Number(
-          skillMap["손질 달인"] ?? INITIAL_FORM.preparationMaster
-        );
-        const nextBalanceOfTaste = Number(
-          skillMap["맛의 균형"] ?? INITIAL_FORM.balanceOfTaste
-        );
-        const nextGourmet = Number(skillMap["미식가"] ?? INITIAL_FORM.gourmet);
-        const nextInstantCompletion = Number(
-          skillMap["즉시 완성"] ?? INITIAL_FORM.instantCompletion
-        );
-        const nextBanquetPreparation = Number(
-          skillMap["연회 준비"] ?? INITIAL_FORM.banquetPreparation
-        );
-
-        setMastery(nextMastery);
-        setDexterity(nextDexterity);
-        setCookingGradeUpChance(nextCookingGradeUpChance);
-        setPreparationMaster(nextPreparationMaster);
-        setBalanceOfTaste(nextBalanceOfTaste);
-        setGourmet(nextGourmet);
-        setInstantCompletion(nextInstantCompletion);
-        setBanquetPreparation(nextBanquetPreparation);
-        setPlanType(nextPlanType);
-        setProfileLoaded(true);
-
-        if (options?.autoCalculate) {
-          const nextInput = buildCalculationInputFromProfile({
-            mastery: nextMastery,
-            dexterity: nextDexterity,
-            cookingGradeUpChance: nextCookingGradeUpChance,
-            preparationMaster: nextPreparationMaster,
-            balanceOfTaste: nextBalanceOfTaste,
-            gourmet: nextGourmet,
-            instantCompletion: nextInstantCompletion,
-            banquetPreparation: nextBanquetPreparation,
-          });
-
-          const nextResult = calculateCooking(nextInput);
-          setResult(nextResult);
-          setIsDirty(false);
-        } else {
-          setIsDirty(true);
-        }
-      } finally {
-        loadingProfileRef.current = false;
       }
-    },
-    [
-      recipeId,
-      additionalCookTimeReductionPercent,
-      additionalFoodDurationBonusPercent,
-      normalDishPrice,
-      specialDishPrice,
-      ingredientUnitPrices,
-    ]
-  );
 
-  useEffect(() => {
-    const handleProfileUpdated = async () => {
-      await loadProfileToCalculator({ autoCalculate: true });
-    };
+      if (!user) {
+        setPlanType(null);
+        setProfileLoaded(false);
+        return;
+      }
 
-    window.addEventListener("profileUpdated", handleProfileUpdated);
+      const { data: profileRow, error: profileError } = await supabase
+        .from("profiles")
+        .select("plan_type")
+        .eq("id", user.id)
+        .single();
 
-    return () => {
-      window.removeEventListener("profileUpdated", handleProfileUpdated);
-    };
-  }, [loadProfileToCalculator]);
+      if (profileError) {
+        console.warn("profiles 조회 실패:", profileError.message);
+        return;
+      }
 
-  useEffect(() => {
-    loadProfileToCalculator();
-  }, [pathname, loadProfileToCalculator]);
+      const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
+
+      const { data: cookingProfile, error: cookingProfileError } = await supabase
+        .from("cooking_profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (cookingProfileError || !cookingProfile) {
+        console.warn("cooking_profiles 조회 실패:", cookingProfileError?.message);
+        setPlanType(nextPlanType);
+        setProfileLoaded(false);
+        return;
+      }
+
+      const { data: skillLevels, error: skillLevelsError } = await supabase
+        .from("user_skill_levels")
+        .select("skill_id, skill_level")
+        .eq("user_id", user.id);
+
+      if (skillLevelsError) {
+        console.warn("user_skill_levels 조회 실패:", skillLevelsError.message);
+        return;
+      }
+
+      const { data: skillDefinitions, error: skillDefinitionsError } = await supabase
+        .from("skill_definitions")
+        .select("id, skill_name_ko")
+        .eq("job_code", "cooking")
+        .eq("is_enabled", true);
+
+      if (skillDefinitionsError) {
+        console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
+        return;
+      }
+
+      const skillMap = Object.fromEntries(
+        (skillLevels ?? []).map((row) => {
+          const matched = (skillDefinitions ?? []).find(
+            (def) => def.id === row.skill_id,
+          );
+          return [matched?.skill_name_ko ?? "", row.skill_level];
+        }),
+      );
+
+      const nextMastery = Number(cookingProfile.mastery_total ?? INITIAL_FORM.mastery);
+      const nextDexterity = Number(
+        cookingProfile.dexterity_total ?? INITIAL_FORM.dexterity,
+      );
+      const nextCookingGradeUpChance = Number(
+        cookingProfile.cooking_grade_up_chance_total ??
+          INITIAL_FORM.cookingGradeUpChance,
+      );
+
+      const nextPreparationMaster = Number(
+        skillMap["손질 달인"] ?? INITIAL_FORM.preparationMaster,
+      );
+      const nextBalanceOfTaste = Number(
+        skillMap["맛의 균형"] ?? INITIAL_FORM.balanceOfTaste,
+      );
+      const nextGourmet = Number(skillMap["미식가"] ?? INITIAL_FORM.gourmet);
+      const nextInstantCompletion = Number(
+        skillMap["즉시 완성"] ?? INITIAL_FORM.instantCompletion,
+      );
+      const nextBanquetPreparation = Number(
+        skillMap["연회 준비"] ?? INITIAL_FORM.banquetPreparation,
+      );
+
+      setMastery(nextMastery);
+      setDexterity(nextDexterity);
+      setCookingGradeUpChance(nextCookingGradeUpChance);
+      setPreparationMaster(nextPreparationMaster);
+      setBalanceOfTaste(nextBalanceOfTaste);
+      setGourmet(nextGourmet);
+      setInstantCompletion(nextInstantCompletion);
+      setBanquetPreparation(nextBanquetPreparation);
+      setPlanType(nextPlanType);
+      setProfileLoaded(true);
+
+      const nextResult = calculateCooking({
+        recipeId,
+        stats: {
+          mastery: nextMastery,
+          dexterity: nextDexterity,
+          cookingGradeUpChance: nextCookingGradeUpChance,
+          additionalCookTimeReductionPercent,
+          additionalFoodDurationBonusPercent,
+        },
+        skills: {
+          preparationMaster: nextPreparationMaster,
+          balanceOfTaste: nextBalanceOfTaste,
+          gourmet: nextGourmet,
+          instantCompletion: nextInstantCompletion,
+          banquetPreparation: nextBanquetPreparation,
+        },
+        prices: {
+          normalDishPrice,
+          specialDishPrice,
+          ingredientUnitPrices,
+        },
+      });
+
+      setResult(nextResult);
+      setIsDirty(false);
+    } finally {
+      loadingProfileRef.current = false;
+    }
+  }, [
+    recipeId,
+    additionalCookTimeReductionPercent,
+    additionalFoodDurationBonusPercent,
+    normalDishPrice,
+    specialDishPrice,
+    ingredientUnitPrices,
+  ]);
 
   useEffect(() => {
     const {

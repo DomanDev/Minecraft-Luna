@@ -663,17 +663,7 @@ export default function ProfilePage() {
        * 3) 저장된 결과(parsed)를 preview에 반영
        */
       const parsed = await saveLifeProfileFromText(user.id, rawText);
-
       setParsedPreview(parsed);
-
-      /**
-       * 중요:
-       * - 여기서 profileUpdated 이벤트를 발생시킨다.
-       * - 이유: saveLifeProfileFromText()가 정상 종료되었다는 것은
-       *   내부 DB 저장이 모두 성공했다는 뜻이므로,
-       *   이제 계산기 페이지가 최신 프로필을 다시 읽어도 안전하다.
-       */
-      window.dispatchEvent(new Event("profileUpdated"));
 
       /**
        * 저장 완료 메시지
@@ -682,13 +672,12 @@ export default function ProfilePage() {
        * 둘 다 표시
        */
       setSaveMessage("생활 정보 가져오기 저장 완료");
-      toast.success("생활 정보가 저장되었으며, 계산기에 자동 반영됩니다.");
+      toast.success("생활 정보가 저장되었습니다.");
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : "가져오기 저장 중 오류가 발생했습니다.";
-
       setSaveMessage(message);
       toast.error(message);
     } finally {
@@ -715,12 +704,6 @@ export default function ProfilePage() {
       const parsed = await saveManualLifeProfile(user.id, manualInput);
 
       setParsedPreview(parsed);
-
-      /**
-       * 저장 성공 직후 계산기 페이지들에게
-       * "프로필이 갱신됐다"는 이벤트를 보낸다.
-       */
-      window.dispatchEvent(new Event("profileUpdated"));
 
       setSaveMessage("직접 입력 프로필 저장 완료");
       toast.success("프로필이 저장되었으며, 계산기에 자동 반영됩니다.");

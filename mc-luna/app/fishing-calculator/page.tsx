@@ -241,203 +241,184 @@ export default function FishingCalculatorPage() {
   } | null>(null);
   const [isExpDirty, setIsExpDirty] = useState(false);
 
-  const loadProfileToCalculator = useCallback(
-    async (options?: { autoCalculate?: boolean }) => {
-      if (loadingProfileRef.current) return;
-      loadingProfileRef.current = true;
+  const loadProfileToCalculator = useCallback(async () => {
+    if (loadingProfileRef.current) return;
+    loadingProfileRef.current = true;
 
-      try {
-        let user = null;
+    try {
+      let user = null;
 
-        for (let i = 0; i < 5; i++) {
-          const {
-            data: { session },
-            error,
-          } = await supabase.auth.getSession();
+      for (let i = 0; i < 5; i++) {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
 
-          if (error) {
-            console.warn("getSession 실패:", error.message);
-          }
-
-          if (session?.user) {
-            user = session.user;
-            break;
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 200));
+        if (error) {
+          console.warn("getSession 실패:", error.message);
         }
 
-        if (!user) {
-          setPlanType(null);
-          setProfileLoaded(false);
-          return;
+        if (session?.user) {
+          user = session.user;
+          break;
         }
 
-        const { data: profileRow, error: profileError } = await supabase
-          .from("profiles")
-          .select("plan_type")
-          .eq("id", user.id)
-          .single();
-
-        if (profileError) {
-          console.warn("profiles 조회 실패:", profileError.message);
-          return;
-        }
-
-        const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
-
-        const { data: fishingProfile, error: fishingProfileError } = await supabase
-          .from("fishing_profiles")
-          .select("*")
-          .eq("user_id", user.id)
-          .single();
-
-        if (fishingProfileError || !fishingProfile) {
-          console.warn("fishing_profiles 조회 실패:", fishingProfileError?.message);
-          setPlanType(nextPlanType);
-          setProfileLoaded(false);
-          return;
-        }
-
-        const { data: skillLevels, error: skillLevelsError } = await supabase
-          .from("user_skill_levels")
-          .select("skill_id, skill_level")
-          .eq("user_id", user.id);
-
-        if (skillLevelsError) {
-          console.warn("user_skill_levels 조회 실패:", skillLevelsError.message);
-          return;
-        }
-
-        const { data: skillDefinitions, error: skillDefinitionsError } =
-          await supabase
-            .from("skill_definitions")
-            .select("id, skill_name_ko")
-            .eq("job_code", "fishing")
-            .eq("is_enabled", true);
-
-        if (skillDefinitionsError) {
-          console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
-          return;
-        }
-
-        const skillMap = Object.fromEntries(
-          (skillLevels ?? []).map((row) => {
-            const matched = (skillDefinitions ?? []).find(
-              (def) => def.id === row.skill_id,
-            );
-            return [matched?.skill_name_ko ?? "", row.skill_level];
-          }),
-        );
-
-        /**
-         * DB에서 읽은 최신값 확정
-         */
-        const nextLuck = Number(fishingProfile.luck_total ?? INITIAL_FORM.luck);
-        const nextSense = Number(fishingProfile.sense_total ?? INITIAL_FORM.sense);
-        const nextNormalFishReduction = Number(
-          fishingProfile.normal_fish_reduction_total ??
-            INITIAL_FORM.normalFishReduction,
-        );
-        const nextNibbleTimeReduction = Number(
-          fishingProfile.nibble_time_reduction_total ??
-            INITIAL_FORM.nibbleTimeReduction,
-        );
-
-        const nextRumoredBait = Number(
-          skillMap["소문난 미끼"] ?? INITIAL_FORM.rumoredBait,
-        );
-        const nextLineTension = Number(
-          skillMap["낚싯줄 장력"] ?? INITIAL_FORM.lineTension,
-        );
-        const nextDoubleHook = Number(
-          skillMap["쌍걸이"] ?? INITIAL_FORM.doubleHook,
-        );
-        const nextSchoolFishing = Number(
-          skillMap["떼낚시"] ?? INITIAL_FORM.schoolFishing,
-        );
-
-        /**
-         * UI 표시용 state 반영
-         */
-        setLuck(nextLuck);
-        setSense(nextSense);
-        setNormalFishReduction(nextNormalFishReduction);
-        setNibbleTimeReduction(nextNibbleTimeReduction);
-        setRumoredBait(nextRumoredBait);
-        setLineTension(nextLineTension);
-        setDoubleHook(nextDoubleHook);
-        setSchoolFishing(nextSchoolFishing);
-
-        setPlanType(nextPlanType);
-        setProfileLoaded(true);
-
-        /**
-         * 자동 계산
-         * - state 반영을 기다리지 않고
-         *   방금 읽은 최신 프로필 값으로 바로 계산
-         */
-        if (options?.autoCalculate) {
-          const nextInput = buildCalculationInputFromProfile({
-            luck: nextLuck,
-            sense: nextSense,
-            normalFishReduction: nextNormalFishReduction,
-            nibbleTimeReduction: nextNibbleTimeReduction,
-            rumoredBait: nextRumoredBait,
-            lineTension: nextLineTension,
-            doubleHook: nextDoubleHook,
-            schoolFishing: nextSchoolFishing,
-          });
-
-          const nextResult = calculateFishing(nextInput);
-          setResult(nextResult);
-          setIsDirty(false);
-        } else {
-          setIsDirty(true);
-        }
-      } finally {
-        loadingProfileRef.current = false;
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
-    },
-    [
-      timeOfDay,
-      pondState,
-      baitType,
-      groundbaitType,
-      lureEnchantLevel,
-      thirstMin,
-      useDoubleHook,
-      useSchoolFishing,
-      normalPrice,
-      advancedPrice,
-      rarePrice,
-    ],
-  );
+
+      if (!user) {
+        setPlanType(null);
+        setProfileLoaded(false);
+        return;
+      }
+
+      const { data: profileRow, error: profileError } = await supabase
+        .from("profiles")
+        .select("plan_type")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) {
+        console.warn("profiles 조회 실패:", profileError.message);
+        return;
+      }
+
+      const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
+
+      const { data: fishingProfile, error: fishingProfileError } = await supabase
+        .from("fishing_profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (fishingProfileError || !fishingProfile) {
+        console.warn("fishing_profiles 조회 실패:", fishingProfileError?.message);
+        setPlanType(nextPlanType);
+        setProfileLoaded(false);
+        return;
+      }
+
+      const { data: skillLevels, error: skillLevelsError } = await supabase
+        .from("user_skill_levels")
+        .select("skill_id, skill_level")
+        .eq("user_id", user.id);
+
+      if (skillLevelsError) {
+        console.warn("user_skill_levels 조회 실패:", skillLevelsError.message);
+        return;
+      }
+
+      const { data: skillDefinitions, error: skillDefinitionsError } =
+        await supabase
+          .from("skill_definitions")
+          .select("id, skill_name_ko")
+          .eq("job_code", "fishing")
+          .eq("is_enabled", true);
+
+      if (skillDefinitionsError) {
+        console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
+        return;
+      }
+
+      const skillMap = Object.fromEntries(
+        (skillLevels ?? []).map((row) => {
+          const matched = (skillDefinitions ?? []).find(
+            (def) => def.id === row.skill_id,
+          );
+          return [matched?.skill_name_ko ?? "", row.skill_level];
+        }),
+      );
+
+      const nextLuck = Number(fishingProfile.luck_total ?? INITIAL_FORM.luck);
+      const nextSense = Number(fishingProfile.sense_total ?? INITIAL_FORM.sense);
+      const nextNormalFishReduction = Number(
+        fishingProfile.normal_fish_reduction_total ?? INITIAL_FORM.normalFishReduction,
+      );
+      const nextNibbleTimeReduction = Number(
+        fishingProfile.nibble_time_reduction_total ?? INITIAL_FORM.nibbleTimeReduction,
+      );
+
+      const nextRumoredBait = Number(
+        skillMap["소문난 미끼"] ?? INITIAL_FORM.rumoredBait,
+      );
+      const nextLineTension = Number(
+        skillMap["낚싯줄 장력"] ?? INITIAL_FORM.lineTension,
+      );
+      const nextDoubleHook = Number(
+        skillMap["쌍걸이"] ?? INITIAL_FORM.doubleHook,
+      );
+      const nextSchoolFishing = Number(
+        skillMap["떼낚시"] ?? INITIAL_FORM.schoolFishing,
+      );
+
+      setLuck(nextLuck);
+      setSense(nextSense);
+      setNormalFishReduction(nextNormalFishReduction);
+      setNibbleTimeReduction(nextNibbleTimeReduction);
+      setRumoredBait(nextRumoredBait);
+      setLineTension(nextLineTension);
+      setDoubleHook(nextDoubleHook);
+      setSchoolFishing(nextSchoolFishing);
+
+      setPlanType(nextPlanType);
+      setProfileLoaded(true);
+
+      /**
+       * 초기 진입/재진입 시에만 결과도 최신 프로필 기준으로 맞춰 둔다.
+       * 사용자가 이후 계산기에서 수정한 값은 강제로 다시 덮어쓰지 않는다.
+       */
+      const nextResult = calculateFishing({
+        stats: {
+          luck: nextLuck,
+          sense: nextSense,
+          normalFishReduction: nextNormalFishReduction,
+          nibbleTimeReduction: nextNibbleTimeReduction,
+        },
+        skills: {
+          rumoredBait: nextRumoredBait,
+          lineTension: nextLineTension,
+          doubleHook: nextDoubleHook,
+          schoolFishing: nextSchoolFishing,
+        },
+        environment: {
+          timeOfDay,
+          pondState,
+          baitType,
+          groundbaitType,
+          lureEnchantLevel,
+          thirstMin,
+          useDoubleHook,
+          useSchoolFishing,
+        },
+        prices: {
+          normal: normalPrice,
+          advanced: advancedPrice,
+          rare: rarePrice,
+        },
+      });
+
+      setResult(nextResult);
+      setIsDirty(false);
+    } finally {
+      loadingProfileRef.current = false;
+    }
+  }, [
+    timeOfDay,
+    pondState,
+    baitType,
+    groundbaitType,
+    lureEnchantLevel,
+    thirstMin,
+    useDoubleHook,
+    useSchoolFishing,
+    normalPrice,
+    advancedPrice,
+    rarePrice,
+  ]);
 
   useEffect(() => {
     loadProfileToCalculator();
   }, [pathname, loadProfileToCalculator]);
-
-  useEffect(() => {
-    /**
-     * 프로필 저장 완료 이벤트를 받으면
-     * 최신 낚시 프로필을 다시 읽고
-     * 그 값으로 즉시 자동 계산까지 수행한다.
-     *
-     * 정리:
-     * - 기존 파일에는 동일 목적의 profileUpdated 이벤트 useEffect가 2개 있었다.
-     * - 자동 계산용 1개만 남겨 중복 리스너를 제거했다.
-     */
-    const handleProfileUpdated = async () => {
-      await loadProfileToCalculator({ autoCalculate: true });
-    };
-
-    window.addEventListener("profileUpdated", handleProfileUpdated);
-
-    return () => {
-      window.removeEventListener("profileUpdated", handleProfileUpdated);
-    };
-  }, [loadProfileToCalculator]);
 
   const isProUser = planType === "pro";
   const disableProfileFields = profileLoaded && !isProUser;
@@ -473,58 +454,6 @@ export default function FishingCalculatorPage() {
         schoolFishing,
       },
       environment: {
-        timeOfDay,
-        pondState,
-        baitType,
-        groundbaitType,
-        lureEnchantLevel,
-        thirstMin,
-        useDoubleHook,
-        useSchoolFishing,
-      },
-      prices: {
-        normal: normalPrice,
-        advanced: advancedPrice,
-        rare: rarePrice,
-      },
-    };
-  };
-
-  /**
-   * 프로필에서 읽은 최신 값으로
-   * 낚시 계산 입력 객체를 직접 만든다.
-   *
-   * 목적:
-   * - state 반영 지연 때문에
-   *   자동 계산이 이전 값으로 도는 문제를 막기 위함
-   */
-  const buildCalculationInputFromProfile = (params: {
-    luck: number;
-    sense: number;
-    normalFishReduction: number;
-    nibbleTimeReduction: number;
-    rumoredBait: number;
-    lineTension: number;
-    doubleHook: number;
-    schoolFishing: number;
-  }): FishingCalculationInput => {
-    return {
-      stats: {
-        luck: params.luck,
-        sense: params.sense,
-        normalFishReduction: params.normalFishReduction,
-        nibbleTimeReduction: params.nibbleTimeReduction,
-      },
-      skills: {
-        rumoredBait: params.rumoredBait,
-        lineTension: params.lineTension,
-        doubleHook: params.doubleHook,
-        schoolFishing: params.schoolFishing,
-      },
-      environment: {
-        /**
-         * 계산기에서 사용자가 현재 선택해둔 낚시 환경값은 유지
-         */
         timeOfDay,
         pondState,
         baitType,
