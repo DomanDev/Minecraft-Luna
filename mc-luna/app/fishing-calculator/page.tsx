@@ -1189,10 +1189,17 @@ export default function FishingCalculatorPage() {
                 <span>시간당 낚시 횟수</span>
                 <span>{Math.floor(cyclesPerHour).toString()}회</span>
               </div>
-              <div className="flex justify-between">
-                <span>시간당 기대 수익</span>
-                <span>{Math.floor(expectedValuePerHour).toString()}셀</span>
-              </div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-blue-900">
+                    시간당 기대 수익
+                  </span>
+                <span className="text-lg font-bold text-blue-700">
+                  {Math.floor(expectedValuePerHour).toString()}셀
+                </span>
+                </div>
             </div>
           </ResultCard>
 

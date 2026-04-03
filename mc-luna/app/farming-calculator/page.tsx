@@ -523,7 +523,7 @@ export default function FarmingCalculatorPage() {
     <CalculatorLayout
       title="농사 계산기"
       left={
-        <CalculatorPanel title="능력치 정보">
+        <CalculatorPanel title="입력값">
           {profileLoaded && (
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
                   <p className="font-semibold">프로필 데이터를 불러왔습니다.</p>

@@ -478,28 +478,63 @@ export default function CookingCalculatorPage() {
     <CalculatorLayout
       title="요리 계산기"
       left={
-        <div className="space-y-6">
+        <CalculatorPanel title="입력값">
           {profileLoaded && (
-            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-              <div className="font-semibold">프로필 데이터를 불러왔습니다.</div>
-              <div className="mt-1">플랜: {isProUser ? "Pro" : "Free"}</div>
-              <div className="mt-1">
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              <p className="font-semibold">프로필 데이터를 불러왔습니다.</p>
+              <p className="mt-1">플랜: {isProUser ? "Pro" : "Free"}</p>
+              <p className="mt-1">
                 {isProUser
                   ? "→ 프로필 기반 요리 스탯/스킬 값을 수정할 수 있습니다."
                   : "→ 프로필에서 불러온 요리 스탯/스킬 값은 수정할 수 없습니다. (Pro 전용)"}
-              </div>
-              <div className="mt-2 text-xs text-blue-700">
+              </p>
+              <p className="mt-2 text-xs text-gray-600">
                 * 도감-요리 등급업 확률은 항상 회색 비활성 입력으로 표시됩니다.
-              </div>
+              </p>
             </div>
           )}
 
-          <CalculatorPanel title="요리 스탯">
-            <div className="space-y-4">
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">요리 정보</h3>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Field label="요리 선택">
+                <SelectInput
+                  value={recipeId}
+                  onChange={(value) => {
+                    setRecipeId(value as CookingRecipeId);
+                    setIsDirty(true);
+                  }}
+                  options={recipeOptions}
+                />
+              </Field>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+              <div className="font-semibold">선택 요리: {selectedRecipe.name}</div>
+              <div className="mt-1">분류: {selectedRecipe.tierLabel}</div>
+              <div className="mt-1">효과: {selectedRecipe.description}</div>
+              <div className="mt-1">
+                기본 제작 시간: {formatSeconds(selectedRecipe.baseCraftTimeSeconds)}
+              </div>
+              <div className="mt-1">
+                기본 성공 확률: {formatPercent(selectedRecipe.baseSuccessChancePercent)}
+              </div>
+              <div className="mt-1">
+                기본 일품 확률: {formatPercent(selectedRecipe.baseSpecialChancePercent)}
+              </div>
+              <div className="mt-1">
+                기본 지속시간: {formatSeconds(selectedRecipe.baseDurationSeconds, 0)}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">요리 스탯</h3>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="노련함">
                 <NumberInput
                   value={mastery}
-                  min={0}
                   onChange={(value) => {
                     setMastery(value);
                     setIsDirty(true);
@@ -511,7 +546,6 @@ export default function CookingCalculatorPage() {
               <Field label="손재주">
                 <NumberInput
                   value={dexterity}
-                  min={0}
                   onChange={(value) => {
                     setDexterity(value);
                     setIsDirty(true);
@@ -520,27 +554,22 @@ export default function CookingCalculatorPage() {
                 />
               </Field>
             </div>
-          </CalculatorPanel>
+          </div>
 
-          <CalculatorPanel title="도감 효과">
-            <div className="space-y-4">
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">도감 / 추가 효과</h3>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="요리 등급업 확률">
                 <NumberInput
                   value={cookingGradeUpChance}
-                  min={0}
-                  disabled
                   onChange={() => {}}
+                  disabled
                 />
               </Field>
-            </div>
-          </CalculatorPanel>
 
-          <CalculatorPanel title="추가 보정">
-            <div className="space-y-4">
               <Field label="조리 단축(%)">
                 <NumberInput
                   value={additionalCookTimeReductionPercent}
-                  min={0}
                   onChange={(value) => {
                     setAdditionalCookTimeReductionPercent(value);
                     setIsDirty(true);
@@ -551,7 +580,6 @@ export default function CookingCalculatorPage() {
               <Field label="음식 효과연장(%)">
                 <NumberInput
                   value={additionalFoodDurationBonusPercent}
-                  min={0}
                   onChange={(value) => {
                     setAdditionalFoodDurationBonusPercent(value);
                     setIsDirty(true);
@@ -559,15 +587,14 @@ export default function CookingCalculatorPage() {
                 />
               </Field>
             </div>
-          </CalculatorPanel>
+          </div>
 
-          <CalculatorPanel title="요리 스킬">
-            <div className="space-y-4">
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">요리 스킬</h3>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="손질 달인">
                 <NumberInput
                   value={preparationMaster}
-                  min={0}
-                  max={30}
                   onChange={(value) => {
                     setPreparationMaster(value);
                     setIsDirty(true);
@@ -579,8 +606,6 @@ export default function CookingCalculatorPage() {
               <Field label="맛의 균형">
                 <NumberInput
                   value={balanceOfTaste}
-                  min={0}
-                  max={30}
                   onChange={(value) => {
                     setBalanceOfTaste(value);
                     setIsDirty(true);
@@ -592,8 +617,6 @@ export default function CookingCalculatorPage() {
               <Field label="미식가">
                 <NumberInput
                   value={gourmet}
-                  min={0}
-                  max={30}
                   onChange={(value) => {
                     setGourmet(value);
                     setIsDirty(true);
@@ -603,70 +626,22 @@ export default function CookingCalculatorPage() {
               </Field>
 
               <Field label="즉시 완성">
-                <NumberInput
-                  value={instantCompletion}
-                  min={0}
-                  max={30}
-                  onChange={(value) => {
-                    setInstantCompletion(value);
-                    setIsDirty(true);
-                  }}
-                  disabled={disableProfileFields}
-                />
+                <div className="w-full rounded-xl border bg-gray-100 px-3 py-2 text-gray-700">
+                  Lv.{instantCompletion}
+                </div>
               </Field>
 
               <Field label="연회 준비">
-                <NumberInput
-                  value={banquetPreparation}
-                  min={0}
-                  max={30}
-                  onChange={(value) => {
-                    setBanquetPreparation(value);
-                    setIsDirty(true);
-                  }}
-                  disabled={disableProfileFields}
-                />
+                <div className="w-full rounded-xl border bg-gray-100 px-3 py-2 text-gray-700">
+                  Lv.{banquetPreparation}
+                </div>
               </Field>
             </div>
-          </CalculatorPanel>
+          </div>
 
-          <CalculatorPanel title="레시피 선택">
-            <div className="space-y-4">
-              <Field label="요리">
-                <SelectInput
-                  value={recipeId}
-                  options={recipeOptions}
-                  onChange={(value) => {
-                    setRecipeId(value as CookingRecipeId);
-                    setIsDirty(true);
-                  }}
-                />
-              </Field>
-
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
-                <div className="font-semibold">
-                  선택 요리: {selectedRecipe.name}
-                </div>
-                <div className="mt-1">분류: {selectedRecipe.tierLabel}</div>
-                <div className="mt-1">효과: {selectedRecipe.description}</div>
-                <div className="mt-1">
-                  기본 제작 시간: {formatSeconds(selectedRecipe.baseCraftTimeSeconds)}
-                </div>
-                <div className="mt-1">
-                  기본 성공 확률: {formatPercent(selectedRecipe.baseSuccessChancePercent)}
-                </div>
-                <div className="mt-1">
-                  기본 일품 확률: {formatPercent(selectedRecipe.baseSpecialChancePercent)}
-                </div>
-                <div className="mt-1">
-                  기본 지속시간: {formatSeconds(selectedRecipe.baseDurationSeconds, 0)}
-                </div>
-              </div>
-            </div>
-          </CalculatorPanel>
-
-          <CalculatorPanel title="재료 시세">
-            <div className="space-y-4">
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">재료 시세</h3>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {selectedRecipe.ingredients.map((ingredient) => (
                 <Field
                   key={ingredient.id}
@@ -674,7 +649,6 @@ export default function CookingCalculatorPage() {
                 >
                   <NumberInput
                     value={ingredientUnitPrices[ingredient.id] ?? 0}
-                    min={0}
                     onChange={(value) => {
                       setIngredientUnitPrices((prev) => ({
                         ...prev,
@@ -686,14 +660,14 @@ export default function CookingCalculatorPage() {
                 </Field>
               ))}
             </div>
-          </CalculatorPanel>
+          </div>
 
-          <CalculatorPanel title="결과물 시세">
-            <div className="space-y-4">
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">결과물 시세</h3>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="일반 요리 시세">
                 <NumberInput
                   value={normalDishPrice}
-                  min={0}
                   onChange={(value) => {
                     setNormalDishPrice(value);
                     setIsDirty(true);
@@ -704,7 +678,6 @@ export default function CookingCalculatorPage() {
               <Field label="일품 요리 시세">
                 <NumberInput
                   value={specialDishPrice}
-                  min={0}
                   onChange={(value) => {
                     setSpecialDishPrice(value);
                     setIsDirty(true);
@@ -712,9 +685,9 @@ export default function CookingCalculatorPage() {
                 />
               </Field>
             </div>
-          </CalculatorPanel>
+          </div>
 
-          <div className="flex gap-3">
+          <div className="mt-6 flex flex-wrap gap-2">
             <ActionButton onClick={handleCalculate}>계산하기</ActionButton>
             <ActionButton variant="secondary" onClick={handleReset}>
               전체 초기화
@@ -722,84 +695,138 @@ export default function CookingCalculatorPage() {
           </div>
 
           {isDirty && (
-            <div className="text-sm text-amber-600">
+            <div className="mt-3 text-sm text-amber-700">
               입력값이 변경되었습니다. 계산하기를 눌러 결과를 갱신하세요.
             </div>
           )}
-        </div>
+        </CalculatorPanel>
       }
       right={
-        <div className="space-y-4">
+        <CalculatorPanel title="계산 결과">
           <ResultCard title="레시피 기본값">
-            <div className="space-y-2 text-sm text-zinc-700">
-              <div>기본 일품 확률: {formatPercent(result.baseSpecialChancePercent)}</div>
-              <div>기본 성공 확률: {formatPercent(result.baseSuccessChancePercent)}</div>
-              <div>기본 제작 시간: {formatSeconds(result.baseCraftTimeSeconds)}</div>
-              <div>기본 유지 시간: {formatSeconds(result.baseDurationSeconds, 0)}</div>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>기본 일품 확률</span>
+                <span>{formatPercent(result.baseSpecialChancePercent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>기본 성공 확률</span>
+                <span>{formatPercent(result.baseSuccessChancePercent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>기본 제작 시간</span>
+                <span>{formatSeconds(result.baseCraftTimeSeconds)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>기본 유지 시간</span>
+                <span>{formatSeconds(result.baseDurationSeconds, 0)}</span>
+              </div>
             </div>
           </ResultCard>
 
           <ResultCard title="등급 / 성공 확률">
-            <div className="space-y-2 text-sm text-zinc-700">
-              <div>[도감] 요리 등급업 확률 {formatPercent(result.codexGradeUpChancePercent)}</div>
-              <div>[손재주] 등급업 보정 {formatPercent(result.dexterityGradeUpChancePercent)}</div>
-              <div>[미식가] 등급업 보정 {formatPercent(result.gourmetGradeUpChancePercent)}</div>
-              <div className="border-t border-zinc-200 pt-2 font-medium text-zinc-900">
-                최종 일반 확률: {formatPercent(result.finalNormalChancePercent)}
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>[도감] 요리 등급업 확률</span>
+                <span>{formatPercent(result.codexGradeUpChancePercent)}</span>
               </div>
-              <div className="font-medium text-zinc-900">
-                최종 일품 확률: {formatPercent(result.finalSpecialChancePercent)}
+              <div className="flex justify-between">
+                <span>[손재주] 등급업 보정</span>
+                <span>{formatPercent(result.dexterityGradeUpChancePercent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>[미식가] 등급업 보정</span>
+                <span>{formatPercent(result.gourmetGradeUpChancePercent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>최종 일반 확률</span>
+                <span>{formatPercent(result.finalNormalChancePercent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>최종 일품 확률</span>
+                <span>{formatPercent(result.finalSpecialChancePercent)}</span>
               </div>
 
-              <div className="border-t border-zinc-200 pt-2">
-                [노련함] 성공 보정 {formatPercent(result.masterySuccessBonusPercent)}
+              <div className="flex justify-between pt-2">
+                <span>[노련함] 성공 보정</span>
+                <span>{formatPercent(result.masterySuccessBonusPercent)}</span>
               </div>
-              <div className="font-medium text-zinc-900">
-                최종 성공 확률: {formatPercent(result.finalSuccessChancePercent)}
+              <div className="flex justify-between">
+                <span>최종 성공 확률</span>
+                <span>{formatPercent(result.finalSuccessChancePercent)}</span>
               </div>
             </div>
           </ResultCard>
 
-          <ResultCard title="시간 / 유지시간">
-            <div className="space-y-2 text-sm text-zinc-700">
-              <div>[손재주] 시간 감소 {formatSeconds(result.dexterityTimeReductionSeconds)}</div>
-              <div>[손질 달인] 추가 감소 {formatPercent(result.preparationMasterReductionPercent)}</div>
-              <div>[조리 단축] 적용값 {formatPercent(result.additionalCookTimeReductionPercent)}</div>
-              <div className="border-t border-zinc-200 pt-2 font-medium text-zinc-900">
-                최종 제작 시간: {formatSeconds(result.finalCraftTimeSeconds)}
+          <ResultCard title="시간 / 지속시간">
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>[손재주] 시간 감소</span>
+                <span>{formatSeconds(result.dexterityTimeReductionSeconds)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>[손질 달인] 추가 감소</span>
+                <span>{formatPercent(result.preparationMasterReductionPercent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>[조리 단축] 적용값</span>
+                <span>{formatPercent(result.additionalCookTimeReductionPercent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>최종 제작 시간</span>
+                <span>{formatSeconds(result.finalCraftTimeSeconds)}</span>
               </div>
 
-              <div className="border-t border-zinc-200 pt-2">
-                [음식 효과연장] {formatPercent(result.additionalFoodDurationBonusPercent)}
+              <div className="flex justify-between pt-2">
+                <span>[음식 효과연장]</span>
+                <span>{formatPercent(result.additionalFoodDurationBonusPercent)}</span>
               </div>
-              <div>[맛의 균형] {formatPercent(result.balanceOfTasteBonusPercent)}</div>
-              <div className="font-medium text-zinc-900">
-                최종 유지 시간: {formatSeconds(result.finalDurationSeconds, 0)}
+              <div className="flex justify-between">
+                <span>[맛의 균형]</span>
+                <span>{formatPercent(result.balanceOfTasteBonusPercent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>최종 유지 시간</span>
+                <span>{formatSeconds(result.finalDurationSeconds, 0)}</span>
               </div>
             </div>
           </ResultCard>
 
           <ResultCard title="기대 수익">
-            <div className="space-y-2 text-sm text-zinc-700">
-              <div>재료 원가: {formatNumber(result.ingredientCostPerCraft)}셀</div>
-              <div>1회 기대 매출: {formatNumber(result.expectedRevenuePerCraft)}셀</div>
-              <div className="font-semibold text-zinc-900">
-                1회 기대 순이익: {formatNumber(result.expectedNetProfitPerCraft)}셀
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>재료 원가</span>
+                <span>{formatNumber(result.ingredientCostPerCraft)}셀</span>
               </div>
-              <div className="border-t border-zinc-200 pt-2 font-semibold text-zinc-900">
-                시간당 기대 순이익: {formatNumber(result.expectedNetProfitPerHour)}셀
+              <div className="flex justify-between">
+                <span>1회 기대 매출</span>
+                <span>{formatNumber(result.expectedRevenuePerCraft)}셀</span>
+              </div>
+              <div className="flex justify-between">
+                <span>1회 기대 순이익</span>
+                <span>{formatNumber(result.expectedNetProfitPerCraft)}셀</span>
+              </div>
+              <div className="flex justify-between">
+                <span>시간당 기대 순이익</span>
+                <span>{formatNumber(result.expectedNetProfitPerHour)}셀</span>
               </div>
             </div>
           </ResultCard>
 
-          <ResultCard title="메모">
-            <div className="space-y-2 text-sm text-zinc-700">
-              <div>- 현재 계산기는 “일반 결과물 vs 일품(희귀) 결과물” 2버킷으로 계산합니다.</div>
-              <div>- 네 첨부 이미지 기준 희귀 결과물이 실제로 일품 요리에 해당하므로 시세 입력도 그 기준으로 받습니다.</div>
-              <div>- 즉시 완성 / 연회 준비는 현재 수익식에 직접 반영하지 않고, 프로필 구조와 확장성을 위해 값만 연동합니다.</div>
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">메모</h3>
+
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+              <div>- 현재 계산기는 "일반 결과물 vs 일품(희귀) 결과물" 2버킷으로 계산합니다.</div>
+              <div className="mt-2">
+                - 네 첨부 이미지 기준 희귀 결과물이 실제로 일품 요리에 해당하므로 시세 입력도 그 기준으로 받습니다.
+              </div>
+              <div className="mt-2">
+                - 즉시 완성 / 연회 준비는 현재 수익식에 직접 반영하지 않고, 프로필 연동 및 확장 대비용으로만 보관합니다.
+              </div>
             </div>
-          </ResultCard>
-        </div>
+          </div>
+        </CalculatorPanel>
       }
     />
   );
