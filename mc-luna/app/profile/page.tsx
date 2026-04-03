@@ -706,7 +706,7 @@ export default function ProfilePage() {
       setParsedPreview(parsed);
 
       setSaveMessage("직접 입력 프로필 저장 완료");
-      toast.success("프로필이 저장되었으며, 계산기에 자동 반영됩니다.");
+      toast.success("프로필이 저장되었습니다.");
     } catch (error) {
       const message =
         error instanceof Error

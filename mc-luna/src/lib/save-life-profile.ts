@@ -51,7 +51,6 @@ function getBlessingOfHarvestReduction(level: number): number {
   return BLESSING_OF_HARVEST_NORMAL_REDUCTION[safeLevel] ?? 0;
 }
 
-
 /**
  * 낚시 프로필 row 생성
  *
@@ -126,7 +125,6 @@ function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
   const parsedNormalCropReductionTotal = toSafeNumber(
     farmingStats.normalCropReduction?.total,
   );
-
   const blessingOfHarvestLevel = toSafeNumber(
     farmingSkills.blessingOfHarvest,
   );
@@ -191,6 +189,87 @@ function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
 }
 
 /**
+ * 요리 프로필 row 생성
+ *
+ * 역할:
+ * - ParsedLifeProfile 내부의 jobs.cooking 데이터를
+ *   cooking_profiles 테이블 row 형태로 변환
+ *
+ * 주의:
+ * - 현재 요리 계산기에서 실제로 사용하는 핵심 값은
+ *   mastery_total, dexterity_total, cooking_grade_up_chance_total 이지만,
+ *   이후 확장성과 프로필 표시 일관성을 위해
+ *   공통 스탯 6종을 모두 cooking_profiles에 저장한다.
+ * - /생활 정보 원문 또는 manual 입력 구조상
+ *   각 값의 base/temp/equip 분리가 가능한 경우 그대로 저장하고,
+ *   값이 없으면 0으로 안전하게 처리한다.
+ */
+function buildCookingProfileRow(userId: string, parsed: ParsedLifeProfile) {
+  const cookingJob = parsed.jobs.cooking;
+  const cookingStats = cookingJob?.stats ?? {};
+
+  return {
+    user_id: userId,
+    level: toSafeNumber(cookingJob?.level),
+
+    luck_base: toSafeNumber(cookingStats.luck?.base),
+    luck_temp: toSafeNumber(cookingStats.luck?.temp),
+    luck_equip: toSafeNumber(cookingStats.luck?.equip),
+    luck_total: toSafeNumber(cookingStats.luck?.total),
+
+    sense_base: toSafeNumber(cookingStats.sense?.base),
+    sense_temp: toSafeNumber(cookingStats.sense?.temp),
+    sense_equip: toSafeNumber(cookingStats.sense?.equip),
+    sense_total: toSafeNumber(cookingStats.sense?.total),
+
+    endurance_base: toSafeNumber(cookingStats.endurance?.base),
+    endurance_temp: toSafeNumber(cookingStats.endurance?.temp),
+    endurance_equip: toSafeNumber(cookingStats.endurance?.equip),
+    endurance_total: toSafeNumber(cookingStats.endurance?.total),
+
+    mastery_base: toSafeNumber(cookingStats.mastery?.base),
+    mastery_temp: toSafeNumber(cookingStats.mastery?.temp),
+    mastery_equip: toSafeNumber(cookingStats.mastery?.equip),
+    mastery_total: toSafeNumber(cookingStats.mastery?.total),
+
+    dexterity_base: toSafeNumber(cookingStats.dexterity?.base),
+    dexterity_temp: toSafeNumber(cookingStats.dexterity?.temp),
+    dexterity_equip: toSafeNumber(cookingStats.dexterity?.equip),
+    dexterity_total: toSafeNumber(cookingStats.dexterity?.total),
+
+    charisma_base: toSafeNumber(cookingStats.charisma?.base),
+    charisma_temp: toSafeNumber(cookingStats.charisma?.temp),
+    charisma_equip: toSafeNumber(cookingStats.charisma?.equip),
+    charisma_total: toSafeNumber(cookingStats.charisma?.total),
+
+    /**
+     * 요리 도감 효과
+     * - 요리 등급업 확률
+     *
+     * 저장 정책:
+     * - 현재 요리 계산기에서는 total 값을 직접 사용하므로
+     *   base/temp/equip/total을 가능한 범위에서 그대로 저장한다.
+     * - manual 입력에서는 보통 total 중심으로 들어오더라도
+     *   normalize 단계에서 맞춰진 값을 그대로 반영한다.
+     */
+    cooking_grade_up_chance_base: toSafeNumber(
+      cookingStats.cookingGradeUpChance?.base,
+    ),
+    cooking_grade_up_chance_temp: toSafeNumber(
+      cookingStats.cookingGradeUpChance?.temp,
+    ),
+    cooking_grade_up_chance_equip: toSafeNumber(
+      cookingStats.cookingGradeUpChance?.equip,
+    ),
+    cooking_grade_up_chance_total: toSafeNumber(
+      cookingStats.cookingGradeUpChance?.total,
+    ),
+
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/**
  * parser 내부 영문 skill key -> DB의 skill_name_ko 매핑
  *
  * 주의:
@@ -212,18 +291,18 @@ const SKILL_KEY_TO_KOREAN_NAME: Record<string, string> = {
   reseeding: "되뿌리기",
 
   // 채광
-  temperedPickaxe: '단련된 곡괭이',
-  veinSense: '광맥 감각',
-  veinFlow: '광맥 흐름',
-  veinDetection: '광맥 탐지',
-  explosiveMining: '폭발적인 채광',
+  temperedPickaxe: "단련된 곡괭이",
+  veinSense: "광맥 감각",
+  veinFlow: "광맥 흐름",
+  veinDetection: "광맥 탐지",
+  explosiveMining: "폭발적인 채광",
 
   // 요리
-  preparationMaster: '손질 달인',
-  balanceOfTaste: '맛의 균형',
-  gourmet: '미식가',
-  instantCompletion: '즉시 완성',
-  banquetPreparation: '연회 준비',
+  preparationMaster: "손질 달인",
+  balanceOfTaste: "맛의 균형",
+  gourmet: "미식가",
+  instantCompletion: "즉시 완성",
+  banquetPreparation: "연회 준비",
 };
 
 /**
@@ -249,8 +328,7 @@ function buildImportHistoryRow(params: {
 }) {
   return {
     user_id: params.userId,
-    raw_text:
-      params.inputMethod === "manual" ? "[manual input]" : (params.rawText ?? ""),
+    raw_text: params.inputMethod === "manual" ? "[manual input]" : (params.rawText ?? ""),
     parsed_json: params.parsed,
     input_method: params.inputMethod,
   };
@@ -264,7 +342,9 @@ function buildImportHistoryRow(params: {
  * - jobs.farming 이 있으면 "farming" 포함
  */
 function getParsedJobKeys(parsed: ParsedLifeProfile): JobKey[] {
-  return (Object.entries(parsed.jobs) as Array<[JobKey, ParsedLifeProfile["jobs"][JobKey]]>)
+  return (Object.entries(parsed.jobs) as Array<
+    [JobKey, ParsedLifeProfile["jobs"][JobKey]]
+  >)
     .filter(([, jobValue]) => Boolean(jobValue))
     .map(([jobKey]) => jobKey);
 }
@@ -285,11 +365,10 @@ function getParsedJobKeys(parsed: ParsedLifeProfile): JobKey[] {
 async function buildSkillRowsFromDefinitions(
   userId: string,
   parsed: ParsedLifeProfile,
-  options?: {
-    zeroFillMissingForParsedJobs?: boolean;
-  },
+  options?: { zeroFillMissingForParsedJobs?: boolean },
 ) {
-  const zeroFillMissingForParsedJobs = options?.zeroFillMissingForParsedJobs ?? false;
+  const zeroFillMissingForParsedJobs =
+    options?.zeroFillMissingForParsedJobs ?? false;
 
   const rows: Array<{
     user_id: string;
@@ -361,53 +440,47 @@ async function buildSkillRowsFromDefinitions(
   }
 
   /**
-   * 2) 실제 parsed된 스킬 값으로 덮어쓰기
+   * 2) 실제 parsed.skills 값으로 row를 덮어쓴다.
    *
-   * - zeroFillMissingForParsedJobs = true 이면
-   *   이미 들어간 0 row를 실제 레벨 값으로 교체
-   *
-   * - false 이면
-   *   기존 방식처럼 "실제로 있는 스킬만" row 생성
+   * manual 저장이든 imported 저장이든
+   * 이번에 들어온 스킬 값은 여기서 최종 반영된다.
    */
-  const rowIndexBySkillId = new Map<string, number>(
-    rows.map((row, index) => [row.skill_id, index]),
-  );
-
-  for (const [jobKey, skillMap] of Object.entries(parsed.skills)) {
+  for (const [jobKey, skillMap] of Object.entries(parsed.skills) as Array<
+    [JobKey, ParsedLifeProfile["skills"][JobKey]]
+  >) {
     if (!skillMap) continue;
 
-    const dbJobCode = JOB_KEY_TO_DB_JOB_CODE[jobKey as JobKey];
+    const dbJobCode = JOB_KEY_TO_DB_JOB_CODE[jobKey];
     if (!dbJobCode) continue;
 
     for (const [skillKey, level] of Object.entries(skillMap)) {
-      const koreanSkillName = SKILL_KEY_TO_KOREAN_NAME[skillKey];
-      if (!koreanSkillName) continue;
+      const koreanName = SKILL_KEY_TO_KOREAN_NAME[skillKey];
+      if (!koreanName) continue;
 
-      const definition = definitionMap.get(`${dbJobCode}::${koreanSkillName}`);
+      const definition = definitionMap.get(`${dbJobCode}::${koreanName}`);
 
       if (!definition) {
         console.warn(
-          `[save-life-profile] skill_definitions에 없는 스킬이라 건너뜀: ${jobKey} / ${skillKey} / ${koreanSkillName}`,
+          `[save-life-profile] skill_definitions 매칭 실패: ${dbJobCode} / ${koreanName}`,
         );
         continue;
       }
 
-      const existingIndex = rowIndexBySkillId.get(definition.id);
+      const existingIndex = rows.findIndex(
+        (row) => row.skill_id === definition.id,
+      );
 
-      if (existingIndex != null) {
-        rows[existingIndex] = {
-          ...rows[existingIndex],
-          skill_level: toSafeNumber(level),
-          updated_at: new Date().toISOString(),
-        };
+      const nextRow = {
+        user_id: userId,
+        skill_id: definition.id,
+        skill_level: toSafeNumber(level),
+        updated_at: new Date().toISOString(),
+      };
+
+      if (existingIndex >= 0) {
+        rows[existingIndex] = nextRow;
       } else {
-        rows.push({
-          user_id: userId,
-          skill_id: definition.id,
-          skill_level: toSafeNumber(level),
-          updated_at: new Date().toISOString(),
-        });
-        rowIndexBySkillId.set(definition.id, rows.length - 1);
+        rows.push(nextRow);
       }
     }
   }
@@ -416,110 +489,118 @@ async function buildSkillRowsFromDefinitions(
 }
 
 /**
- * 실제 DB 저장 전용 함수
+ * ParsedLifeProfile 전체를 DB에 저장
  *
- * 역할:
- * 1) life_profile_imports 저장
- * 2) fishing_profiles upsert
- * 3) farming_profiles upsert
- * 4) user_skill_levels upsert
+ * 저장 대상:
+ * - life_profile_imports
+ * - fishing_profiles (있으면)
+ * - farming_profiles (있으면)
+ * - cooking_profiles (있으면)
+ * - user_skill_levels
  */
 export async function saveParsedLifeProfile(params: {
   userId: string;
   parsed: ParsedLifeProfile;
   inputMethod: SaveLifeProfileInputMethod;
   rawText?: string | null;
-}): Promise<void> {
-  const userId = params.userId;
-  const parsed = params.parsed;
+}) {
+  const { userId, parsed, inputMethod } = params;
 
   /**
-   * 1) 입력 이력 저장
+   * 1) import/manual 이력 저장
    */
-  const importHistoryRow = buildImportHistoryRow({
+  const importRow = buildImportHistoryRow({
     userId,
     parsed,
-    inputMethod: params.inputMethod,
+    inputMethod,
     rawText: params.rawText ?? null,
   });
 
-  const { error: importInsertError } = await supabase
+  const { error: importError } = await supabase
     .from("life_profile_imports")
-    .insert(importHistoryRow);
+    .insert(importRow);
 
-  if (importInsertError) {
-    throw new Error(`life_profile_imports 저장 실패: ${importInsertError.message}`);
+  if (importError) {
+    throw new Error(`life_profile_imports 저장 실패: ${importError.message}`);
   }
 
   /**
-   * 2) 낚시 프로필 저장
+   * 2) 직업별 프로필 테이블 저장
    */
   if (parsed.jobs.fishing) {
     const fishingRow = buildFishingProfileRow(userId, parsed);
 
-    const { error: fishingUpsertError } = await supabase
+    const { error: fishingError } = await supabase
       .from("fishing_profiles")
-      .upsert(fishingRow, {
-        onConflict: "user_id",
-      });
+      .upsert(fishingRow, { onConflict: "user_id" });
 
-    if (fishingUpsertError) {
-      throw new Error(`fishing_profiles 저장 실패: ${fishingUpsertError.message}`);
+    if (fishingError) {
+      throw new Error(`fishing_profiles 저장 실패: ${fishingError.message}`);
     }
   }
 
-  /**
-   * 3) 농사 프로필 저장
-   */
   if (parsed.jobs.farming) {
     const farmingRow = buildFarmingProfileRow(userId, parsed);
 
-    const { error: farmingUpsertError } = await supabase
+    const { error: farmingError } = await supabase
       .from("farming_profiles")
-      .upsert(farmingRow, {
-        onConflict: "user_id",
-      });
+      .upsert(farmingRow, { onConflict: "user_id" });
 
-    if (farmingUpsertError) {
-      throw new Error(`farming_profiles 저장 실패: ${farmingUpsertError.message}`);
+    if (farmingError) {
+      throw new Error(`farming_profiles 저장 실패: ${farmingError.message}`);
     }
   }
 
   /**
-   * 4) 스킬 저장
+   * 요리 프로필 저장
+   *
+   * 조건:
+   * - ParsedLifeProfile 안에 jobs.cooking 이 실제로 있을 때만 저장
+   *
+   * 역할:
+   * - cooking_profiles 테이블에 현재 요리 스탯/도감 값을 upsert
+   * - 이후 요리 계산기 페이지 진입 시
+   *   mastery_total / dexterity_total / cooking_grade_up_chance_total 등을
+   *   자동으로 불러올 수 있게 한다.
+   */
+  if (parsed.jobs.cooking) {
+    const cookingRow = buildCookingProfileRow(userId, parsed);
+
+    const { error: cookingError } = await supabase
+      .from("cooking_profiles")
+      .upsert(cookingRow, { onConflict: "user_id" });
+
+    if (cookingError) {
+      throw new Error(`cooking_profiles 저장 실패: ${cookingError.message}`);
+    }
+  }
+
+  /**
+   * 3) user_skill_levels 저장
    *
    * imported:
-   * - 파싱된 직업의 추적 스킬 전체를 기준으로 저장
-   * - 없는 스킬은 0으로 저장
+   * - 파싱된 직업의 전체 추적 스킬을 기준으로 0-fill 후 upsert
    *
    * manual:
-   * - 현재 입력한 값만 저장
-   * - 나중에 직접 입력을 직업별 탭 구조로 바꿀 때도 이 동작이 더 자연스럽다
+   * - 직접 입력된 스킬만 기준으로 upsert
    */
   const skillRows = await buildSkillRowsFromDefinitions(userId, parsed, {
-    zeroFillMissingForParsedJobs: params.inputMethod === "imported",
+    zeroFillMissingForParsedJobs: inputMethod === "imported",
   });
 
   if (skillRows.length > 0) {
-    const { error: skillsUpsertError } = await supabase
+    const { error: skillsError } = await supabase
       .from("user_skill_levels")
-      .upsert(skillRows, {
-        onConflict: "user_id,skill_id",
-      });
+      .upsert(skillRows, { onConflict: "user_id,skill_id" });
 
-    if (skillsUpsertError) {
-      throw new Error(`user_skill_levels 저장 실패: ${skillsUpsertError.message}`);
+    if (skillsError) {
+      throw new Error(`user_skill_levels 저장 실패: ${skillsError.message}`);
     }
   }
 }
 
 /**
- * import 저장 함수
- *
- * 역할:
- * - ./생활 정보 원문 텍스트를 parser로 파싱
- * - DB 저장
- * - 저장 완료 후 ParsedLifeProfile 반환
+ * ./생활 정보 원문 텍스트 -> 파싱 -> 저장
  */
 export async function saveLifeProfileFromText(
   userId: string,
@@ -538,12 +619,7 @@ export async function saveLifeProfileFromText(
 }
 
 /**
- * manual 저장 함수
- *
- * 역할:
- * - 직접 입력 폼 데이터를 표준 ParsedLifeProfile 구조로 변환
- * - DB 저장
- * - 저장 완료 후 ParsedLifeProfile 반환
+ * 프로필 페이지 직접 입력값 -> ParsedLifeProfile 정규화 -> 저장
  */
 export async function saveManualLifeProfile(
   userId: string,

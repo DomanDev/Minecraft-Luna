@@ -56,7 +56,9 @@ const INITIAL_FORM = {
   ingredientUnitPrices: {} as Record<string, number>,
 };
 
-function createInitialIngredientPrices(recipeId: CookingRecipeId): Record<string, number> {
+function createInitialIngredientPrices(
+  recipeId: CookingRecipeId,
+): Record<string, number> {
   const recipe = getCookingRecipe(recipeId);
   return recipe.ingredients.reduce<Record<string, number>>((acc, ingredient) => {
     acc[ingredient.id] = 0;
@@ -71,7 +73,8 @@ function createInitialCalculationInput(): CookingCalculationInput {
       mastery: INITIAL_FORM.mastery,
       dexterity: INITIAL_FORM.dexterity,
       cookingGradeUpChance: INITIAL_FORM.cookingGradeUpChance,
-      additionalCookTimeReductionPercent: INITIAL_FORM.additionalCookTimeReductionPercent,
+      additionalCookTimeReductionPercent:
+        INITIAL_FORM.additionalCookTimeReductionPercent,
       additionalFoodDurationBonusPercent:
         INITIAL_FORM.additionalFoodDurationBonusPercent,
     },
@@ -108,7 +111,7 @@ function formatSeconds(value: number | null, digits = 1): string {
 
 function syncIngredientPrices(
   recipeId: CookingRecipeId,
-  current: Record<string, number>
+  current: Record<string, number>,
 ): Record<string, number> {
   const recipe = getCookingRecipe(recipeId);
   const next: Record<string, number> = {};
@@ -131,7 +134,7 @@ export default function CookingCalculatorPage() {
   const [dexterity, setDexterity] = useState(INITIAL_FORM.dexterity);
 
   const [cookingGradeUpChance, setCookingGradeUpChance] = useState(
-    INITIAL_FORM.cookingGradeUpChance
+    INITIAL_FORM.cookingGradeUpChance,
   );
 
   const [additionalCookTimeReductionPercent, setAdditionalCookTimeReductionPercent] =
@@ -141,28 +144,28 @@ export default function CookingCalculatorPage() {
     useState(INITIAL_FORM.additionalFoodDurationBonusPercent);
 
   const [preparationMaster, setPreparationMaster] = useState(
-    INITIAL_FORM.preparationMaster
+    INITIAL_FORM.preparationMaster,
   );
   const [balanceOfTaste, setBalanceOfTaste] = useState(
-    INITIAL_FORM.balanceOfTaste
+    INITIAL_FORM.balanceOfTaste,
   );
   const [gourmet, setGourmet] = useState(INITIAL_FORM.gourmet);
   const [instantCompletion, setInstantCompletion] = useState(
-    INITIAL_FORM.instantCompletion
+    INITIAL_FORM.instantCompletion,
   );
   const [banquetPreparation, setBanquetPreparation] = useState(
-    INITIAL_FORM.banquetPreparation
+    INITIAL_FORM.banquetPreparation,
   );
 
   const [recipeId, setRecipeId] = useState<CookingRecipeId>(INITIAL_FORM.recipeId);
   const [ingredientUnitPrices, setIngredientUnitPrices] = useState<Record<string, number>>(
-    createInitialIngredientPrices(INITIAL_FORM.recipeId)
+    createInitialIngredientPrices(INITIAL_FORM.recipeId),
   );
   const [normalDishPrice, setNormalDishPrice] = useState(INITIAL_FORM.normalDishPrice);
   const [specialDishPrice, setSpecialDishPrice] = useState(INITIAL_FORM.specialDishPrice);
 
   const [result, setResult] = useState<CookingCalculationResult>(() =>
-    calculateCooking(createInitialCalculationInput())
+    calculateCooking(createInitialCalculationInput()),
   );
   const [isDirty, setIsDirty] = useState(false);
 
@@ -357,6 +360,10 @@ export default function CookingCalculatorPage() {
   ]);
 
   useEffect(() => {
+    loadProfileToCalculator();
+  }, [pathname, loadProfileToCalculator]);
+
+  useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -407,10 +414,10 @@ export default function CookingCalculatorPage() {
     setDexterity(INITIAL_FORM.dexterity);
     setCookingGradeUpChance(INITIAL_FORM.cookingGradeUpChance);
     setAdditionalCookTimeReductionPercent(
-      INITIAL_FORM.additionalCookTimeReductionPercent
+      INITIAL_FORM.additionalCookTimeReductionPercent,
     );
     setAdditionalFoodDurationBonusPercent(
-      INITIAL_FORM.additionalFoodDurationBonusPercent
+      INITIAL_FORM.additionalFoodDurationBonusPercent,
     );
 
     setPreparationMaster(INITIAL_FORM.preparationMaster);
@@ -657,29 +664,12 @@ export default function CookingCalculatorPage() {
       }
       right={
         <CalculatorPanel title="계산 결과">
-          <ResultCard title="레시피 기본값">
+          <ResultCard title="등급 확률 / 성공 확률">
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>기본 일품 확률</span>
                 <span>{formatPercent(result.baseSpecialChancePercent)}</span>
               </div>
-              <div className="flex justify-between">
-                <span>기본 성공 확률</span>
-                <span>{formatPercent(result.baseSuccessChancePercent)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>기본 제작 시간</span>
-                <span>{formatSeconds(result.baseCraftTimeSeconds)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>기본 유지 시간</span>
-                <span>{formatSeconds(result.baseDurationSeconds, 0)}</span>
-              </div>
-            </div>
-          </ResultCard>
-
-          <ResultCard title="등급 / 성공 확률">
-            <div className="space-y-2">
               <div className="flex justify-between">
                 <span>[도감] 요리 등급업 확률</span>
                 <span>{formatPercent(result.codexGradeUpChancePercent)}</span>
@@ -700,8 +690,11 @@ export default function CookingCalculatorPage() {
                 <span>최종 일품 확률</span>
                 <span>{formatPercent(result.finalSpecialChancePercent)}</span>
               </div>
-
-              <div className="flex justify-between pt-2">
+              <div className="flex justify-between">
+                <span>기본 성공 확률</span>
+                <span>{formatPercent(result.baseSuccessChancePercent)}</span>
+              </div>
+              <div className="flex justify-between">
                 <span>[노련함] 성공 보정</span>
                 <span>{formatPercent(result.masterySuccessBonusPercent)}</span>
               </div>
@@ -712,8 +705,12 @@ export default function CookingCalculatorPage() {
             </div>
           </ResultCard>
 
-          <ResultCard title="시간 / 지속시간">
+          <ResultCard title="중간 계산값">
             <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>기본 제작 시간</span>
+                <span>{formatSeconds(result.baseCraftTimeSeconds)}</span>
+              </div>
               <div className="flex justify-between">
                 <span>[손재주] 시간 감소</span>
                 <span>{formatSeconds(result.dexterityTimeReductionSeconds)}</span>
@@ -730,8 +727,11 @@ export default function CookingCalculatorPage() {
                 <span>최종 제작 시간</span>
                 <span>{formatSeconds(result.finalCraftTimeSeconds)}</span>
               </div>
-
-              <div className="flex justify-between pt-2">
+              <div className="flex justify-between">
+                <span>기본 유지 시간</span>
+                <span>{formatSeconds(result.baseDurationSeconds, 0)}</span>
+              </div>
+              <div className="flex justify-between">
                 <span>[음식 효과연장]</span>
                 <span>{formatPercent(result.additionalFoodDurationBonusPercent)}</span>
               </div>
@@ -746,7 +746,7 @@ export default function CookingCalculatorPage() {
             </div>
           </ResultCard>
 
-          <ResultCard title="기대 수익">
+          <ResultCard title="기대 결과">
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>재료 원가</span>
@@ -760,9 +760,16 @@ export default function CookingCalculatorPage() {
                 <span>1회 기대 순이익</span>
                 <span>{formatNumber(result.expectedNetProfitPerCraft)}셀</span>
               </div>
-              <div className="flex justify-between">
-                <span>시간당 기대 순이익</span>
-                <span>{formatNumber(result.expectedNetProfitPerHour)}셀</span>
+
+              <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-blue-900">
+                    시간당 기대 순이익
+                  </span>
+                  <span className="text-lg font-bold text-blue-700">
+                    {Math.floor(result.expectedNetProfitPerHour).toLocaleString()}셀
+                  </span>
+                </div>
               </div>
             </div>
           </ResultCard>
@@ -771,9 +778,11 @@ export default function CookingCalculatorPage() {
             <h3 className="mb-3 text-lg font-semibold">메모</h3>
 
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
-              <div>- 현재 계산기는 "일반 결과물 vs 일품(희귀) 결과물" 2버킷으로 계산합니다.</div>
+              <div>
+                - 현재 계산기는 "일반 결과물 vs 일품(희귀) 결과물" 2버킷으로 계산합니다.
+              </div>
               <div className="mt-2">
-                - 네 첨부 이미지 기준 희귀 결과물이 실제로 일품 요리에 해당하므로 시세 입력도 그 기준으로 받습니다.
+                - 첨부 이미지 기준 희귀 결과물이 실제로 일품 요리에 해당하므로 시세 입력도 그 기준으로 받습니다.
               </div>
               <div className="mt-2">
                 - 즉시 완성 / 연회 준비는 현재 수익식에 직접 반영하지 않고, 프로필 연동 및 확장 대비용으로만 보관합니다.
