@@ -21,6 +21,10 @@ import type {
  *
  * 4) 요리 성공 확률
  *    = 기본 확률 + (0.3 * 노련함)
+ *
+ * 5) 희귀 재료 보너스
+ *    - 레시피별 규칙에 따라 효과/지속시간 증가
+ *    - 현재 v1은 "희귀 재료 라인 1개당"으로 계산
  */
 
 /**
@@ -33,105 +37,21 @@ import type {
  */
 
 const PREPARATION_MASTER_REDUCTION_PERCENT: Record<number, number> = {
-  0: 0,
-  1: 1,
-  2: 2,
-  3: 3,
-  4: 4,
-  5: 5,
-  6: 6,
-  7: 7,
-  8: 8,
-  9: 9,
-  10: 10,
-  11: 12,
-  12: 13,
-  13: 15,
-  14: 16,
-  15: 18,
-  16: 19,
-  17: 21,
-  18: 22,
-  19: 24,
-  20: 25,
-  21: 28,
-  22: 30,
-  23: 33,
-  24: 35,
-  25: 38,
-  26: 40,
-  27: 43,
-  28: 45,
-  29: 48,
-  30: 50,
+  0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10,
+  11: 12, 12: 13, 13: 15, 14: 16, 15: 18, 16: 19, 17: 21, 18: 22, 19: 24, 20: 25,
+  21: 28, 22: 30, 23: 33, 24: 35, 25: 38, 26: 40, 27: 43, 28: 45, 29: 48, 30: 50,
 };
 
 const BALANCE_OF_TASTE_DURATION_BONUS_PERCENT: Record<number, number> = {
-  0: 0,
-  1: 1,
-  2: 2,
-  3: 3,
-  4: 4,
-  5: 5,
-  6: 6,
-  7: 7,
-  8: 8,
-  9: 9,
-  10: 10,
-  11: 12,
-  12: 14,
-  13: 16,
-  14: 18,
-  15: 20,
-  16: 22,
-  17: 24,
-  18: 26,
-  19: 28,
-  20: 30,
-  21: 34,
-  22: 38,
-  23: 42,
-  24: 46,
-  25: 50,
-  26: 54,
-  27: 58,
-  28: 62,
-  29: 66,
-  30: 70,
+  0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10,
+  11: 12, 12: 14, 13: 16, 14: 18, 15: 20, 16: 22, 17: 24, 18: 26, 19: 28, 20: 30,
+  21: 34, 22: 38, 23: 42, 24: 46, 25: 50, 26: 54, 27: 58, 28: 62, 29: 66, 30: 70,
 };
 
 const GOURMET_GRADE_UP_BONUS_PERCENT: Record<number, number> = {
-  0: 0,
-  1: 1,
-  2: 2,
-  3: 3,
-  4: 4,
-  5: 5,
-  6: 6,
-  7: 7,
-  8: 8,
-  9: 9,
-  10: 10,
-  11: 11,
-  12: 12,
-  13: 14,
-  14: 16,
-  15: 18,
-  16: 20,
-  17: 22,
-  18: 24,
-  19: 26,
-  20: 28,
-  21: 31,
-  22: 34,
-  23: 37,
-  24: 40,
-  25: 43,
-  26: 46,
-  27: 49,
-  28: 52,
-  29: 56,
-  30: 60,
+  0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10,
+  11: 11, 12: 12, 13: 14, 14: 16, 15: 18, 16: 20, 17: 22, 18: 24, 19: 26, 20: 28,
+  21: 31, 22: 34, 23: 37, 24: 40, 25: 43, 26: 46, 27: 49, 28: 52, 29: 56, 30: 60,
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -144,7 +64,7 @@ function round(value: number, digits = 4): number {
 }
 
 export function calculateCooking(
-  input: CookingCalculationInput
+  input: CookingCalculationInput,
 ): CookingCalculationResult {
   const recipe = getCookingRecipe(input.recipeId);
 
@@ -176,7 +96,7 @@ export function calculateCooking(
       dexterityGradeUpChancePercent +
       gourmetGradeUpChancePercent,
     0,
-    100
+    100,
   );
 
   const finalNormalChancePercent = clamp(100 - finalSpecialChancePercent, 0, 100);
@@ -185,20 +105,18 @@ export function calculateCooking(
   const finalSuccessChancePercent = clamp(
     recipe.baseSuccessChancePercent + masterySuccessBonusPercent,
     0,
-    100
+    100,
   );
 
   /**
    * 손재주 기본 시간 감소
-   * 이미지 공식:
-   * 기본 속도 - (0.2 * 손재주) * (1 - 조리 단축 / 100)
    */
   const dexterityTimeReductionSeconds =
     0.2 * dexterity * (1 - additionalCookTimeReductionPercent / 100);
 
   const afterDexterityCraftTime = Math.max(
     1,
-    recipe.baseCraftTimeSeconds - dexterityTimeReductionSeconds
+    recipe.baseCraftTimeSeconds - dexterityTimeReductionSeconds,
   );
 
   /**
@@ -210,18 +128,72 @@ export function calculateCooking(
 
   const finalCraftTimeSeconds = Math.max(
     0.1,
-    afterDexterityCraftTime * (1 - preparationMasterReductionPercent / 100)
+    afterDexterityCraftTime * (1 - preparationMasterReductionPercent / 100),
   );
 
   const balanceOfTasteBonusPercent =
     BALANCE_OF_TASTE_DURATION_BONUS_PERCENT[balanceOfTaste] ?? 0;
 
+  /**
+   * 희귀 재료 선택 개수
+   * - 현재 v1에서는 "재료 라인 1개당" 카운트
+   */
+  const selectedRareIngredients = recipe.ingredients.filter(
+    (ingredient) => input.rareIngredientFlags[ingredient.id] === true,
+  );
+
+  const selectedRareIngredientCount = selectedRareIngredients.length;
+
+  let rareIngredientDurationBonusSeconds = 0;
+  const rareEffectSummaryLines: string[] = [];
+
+  for (const rule of recipe.rareBonusRules) {
+    const matchedCount = selectedRareIngredients.filter((ingredient) => {
+      if (rule.matchGroup === "any") return true;
+      return ingredient.rareBonusGroup === rule.matchGroup;
+    }).length;
+
+    if (matchedCount <= 0) continue;
+
+    const amount =
+      (rule.amountPerIngredient ?? 0) * matchedCount;
+
+    const durationBonus =
+      (rule.durationBonusSecondsPerIngredient ?? 0) * matchedCount;
+
+    rareIngredientDurationBonusSeconds += durationBonus;
+
+    if (rule.bonusType === "stat" && amount > 0) {
+      rareEffectSummaryLines.push(
+        `희귀 재료 보너스: ${rule.label} +${amount}`,
+      );
+    }
+
+    if (rule.bonusType === "recovery" && amount > 0) {
+      rareEffectSummaryLines.push(
+        `희귀 재료 보너스: ${rule.label} +${amount}`,
+      );
+    }
+
+    if (rule.bonusType === "durationOnly" && durationBonus > 0) {
+      rareEffectSummaryLines.push(
+        `희귀 재료 보너스: 지속시간 +${durationBonus}초`,
+      );
+    } else if (durationBonus > 0 && rule.bonusType !== "durationOnly") {
+      rareEffectSummaryLines.push(
+        `희귀 재료 보너스: 지속시간 +${durationBonus}초`,
+      );
+    }
+  }
+
   const finalDurationSeconds =
     recipe.baseDurationSeconds == null
       ? null
-      : recipe.baseDurationSeconds *
-        (1 + additionalFoodDurationBonusPercent / 100) *
-        (1 + balanceOfTasteBonusPercent / 100);
+      : (
+          recipe.baseDurationSeconds *
+          (1 + additionalFoodDurationBonusPercent / 100) *
+          (1 + balanceOfTasteBonusPercent / 100)
+        ) + rareIngredientDurationBonusSeconds;
 
   const expectedRevenuePerCraft =
     (finalSuccessChancePercent / 100) *
@@ -264,8 +236,12 @@ export function calculateCooking(
     baseDurationSeconds: recipe.baseDurationSeconds,
     balanceOfTasteBonusPercent: round(balanceOfTasteBonusPercent, 2),
     additionalFoodDurationBonusPercent: round(additionalFoodDurationBonusPercent, 2),
+    rareIngredientDurationBonusSeconds: round(rareIngredientDurationBonusSeconds, 2),
     finalDurationSeconds:
       finalDurationSeconds == null ? null : round(finalDurationSeconds, 2),
+
+    selectedRareIngredientCount,
+    rareEffectSummaryLines,
 
     expectedRevenuePerCraft: round(expectedRevenuePerCraft, 2),
     expectedNetProfitPerCraft: round(expectedNetProfitPerCraft, 2),

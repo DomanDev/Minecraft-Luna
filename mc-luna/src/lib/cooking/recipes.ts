@@ -10,7 +10,6 @@ import type { CookingRecipe, CookingRecipeId } from "./types";
  *    - 성공 확률 80%
  *
  * 2) 착즙 주스 2종:
- *    - 희귀 결과물 표기가 없어 기본 희귀 확률 0%
  *    - 제작 시간 14.4초
  *    - 성공 확률 90%
  *
@@ -19,7 +18,10 @@ import type { CookingRecipe, CookingRecipeId } from "./types";
  *    - 제작 시간 39.4초
  *    - 성공 확률 80%
  *
- * 위 값들은 사용자가 첨부한 인게임 이미지 기준으로 반영
+ * 4) 희귀 재료 보너스:
+ *    - 사용자가 첨부한 인게임 이미지 기준으로 반영
+ *    - "희귀 재료마다"는 현재 v1에서 "재료 라인 1개당"으로 처리
+ *      (예: 토마토 x3 은 한 재료 라인으로 1회 카운트)
  */
 
 export const COOKING_RECIPES: CookingRecipe[] = [
@@ -33,9 +35,18 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 10.3,
     ingredients: [
-      { id: "miscFish", name: "잡어", quantity: 1 },
-      { id: "lettuce", name: "상추", quantity: 2 },
-      { id: "corn", name: "옥수수", quantity: 2 },
+      { id: "miscFish", name: "잡어", quantity: 1, rareBonusGroup: "any" },
+      { id: "lettuce", name: "상추", quantity: 2, rareBonusGroup: "any" },
+      { id: "corn", name: "옥수수", quantity: 2, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "stat",
+        label: "행운",
+        amountPerIngredient: 3,
+        durationBonusSecondsPerIngredient: 200,
+      },
     ],
   },
   {
@@ -48,9 +59,18 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 10.3,
     ingredients: [
-      { id: "sardine", name: "정어리", quantity: 1 },
-      { id: "lettuce", name: "상추", quantity: 2 },
-      { id: "corn", name: "옥수수", quantity: 2 },
+      { id: "sardine", name: "정어리", quantity: 1, rareBonusGroup: "any" },
+      { id: "lettuce", name: "상추", quantity: 2, rareBonusGroup: "any" },
+      { id: "corn", name: "옥수수", quantity: 2, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "stat",
+        label: "감각",
+        amountPerIngredient: 3,
+        durationBonusSecondsPerIngredient: 200,
+      },
     ],
   },
   {
@@ -63,9 +83,18 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 10.3,
     ingredients: [
-      { id: "catfish", name: "메기", quantity: 1 },
-      { id: "cabbage", name: "양배추", quantity: 2 },
-      { id: "radish", name: "무", quantity: 2 },
+      { id: "catfish", name: "메기", quantity: 1, rareBonusGroup: "any" },
+      { id: "cabbage", name: "양배추", quantity: 2, rareBonusGroup: "any" },
+      { id: "radish", name: "무", quantity: 2, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "stat",
+        label: "노련함",
+        amountPerIngredient: 4,
+        durationBonusSecondsPerIngredient: 200,
+      },
     ],
   },
   {
@@ -78,9 +107,25 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 10.3,
     ingredients: [
-      { id: "carp", name: "잉어", quantity: 1 },
-      { id: "cabbage", name: "양배추", quantity: 2 },
-      { id: "radish", name: "무", quantity: 2 },
+      { id: "carp", name: "잉어", quantity: 1, rareBonusGroup: "fish" },
+      { id: "cabbage", name: "양배추", quantity: 2, rareBonusGroup: "crop" },
+      { id: "radish", name: "무", quantity: 2, rareBonusGroup: "crop" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "fish",
+        bonusType: "stat",
+        label: "인내력",
+        amountPerIngredient: 10,
+        durationBonusSecondsPerIngredient: 200,
+      },
+      {
+        matchGroup: "crop",
+        bonusType: "stat",
+        label: "인내력",
+        amountPerIngredient: 5,
+        durationBonusSecondsPerIngredient: 200,
+      },
     ],
   },
   {
@@ -93,9 +138,18 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 10.3,
     ingredients: [
-      { id: "miscFish", name: "잡어", quantity: 1 },
-      { id: "radish", name: "무", quantity: 2 },
-      { id: "corn", name: "옥수수", quantity: 2 },
+      { id: "miscFish", name: "잡어", quantity: 1, rareBonusGroup: "any" },
+      { id: "radish", name: "무", quantity: 2, rareBonusGroup: "any" },
+      { id: "corn", name: "옥수수", quantity: 2, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "stat",
+        label: "손재주",
+        amountPerIngredient: 3,
+        durationBonusSecondsPerIngredient: 200,
+      },
     ],
   },
   {
@@ -108,8 +162,16 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 90,
     baseSpecialChancePercent: 0,
     ingredients: [
-      { id: "corn", name: "옥수수", quantity: 1 },
-      { id: "lettuce", name: "상추", quantity: 1 },
+      { id: "corn", name: "옥수수", quantity: 1, rareBonusGroup: "any" },
+      { id: "lettuce", name: "상추", quantity: 1, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "recovery",
+        label: "회복량",
+        amountPerIngredient: 3,
+      },
     ],
   },
   {
@@ -122,9 +184,15 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 90,
     baseSpecialChancePercent: 0,
     ingredients: [
-      { id: "radish", name: "무", quantity: 2 },
-      { id: "cabbage", name: "양배추", quantity: 2 },
+      { id: "radish", name: "무", quantity: 2, rareBonusGroup: "any" },
+      { id: "cabbage", name: "양배추", quantity: 2, rareBonusGroup: "any" },
     ],
+    /**
+     * 이전에 받은 이미지에서는 희귀 재료 추가 효과 문구가 확인되지 않아
+     * 일단 v1에서는 미적용 처리.
+     * 추후 인게임 문구 확인되면 여기만 수정하면 된다.
+     */
+    rareBonusRules: [],
   },
   {
     id: "bouillabaisse",
@@ -136,10 +204,18 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 5.3,
     ingredients: [
-      { id: "redSnapper", name: "적색통돔", quantity: 1 },
-      { id: "anglerfish", name: "아귀", quantity: 1 },
-      { id: "tomato", name: "토마토", quantity: 3 },
-      { id: "pomegranate", name: "석류", quantity: 3 },
+      { id: "redSnapper", name: "적색통돔", quantity: 1, rareBonusGroup: "any" },
+      { id: "anglerfish", name: "아귀", quantity: 1, rareBonusGroup: "any" },
+      { id: "tomato", name: "토마토", quantity: 3, rareBonusGroup: "any" },
+      { id: "pomegranate", name: "석류", quantity: 3, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "durationOnly",
+        label: "지속시간",
+        durationBonusSecondsPerIngredient: 15,
+      },
     ],
   },
   {
@@ -152,10 +228,18 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 5.3,
     ingredients: [
-      { id: "tuna", name: "다랑어", quantity: 1 },
-      { id: "lobster", name: "랍스터", quantity: 1 },
-      { id: "tomato", name: "토마토", quantity: 3 },
-      { id: "pineapple", name: "파인애플", quantity: 3 },
+      { id: "tuna", name: "다랑어", quantity: 1, rareBonusGroup: "any" },
+      { id: "lobster", name: "랍스터", quantity: 1, rareBonusGroup: "any" },
+      { id: "tomato", name: "토마토", quantity: 3, rareBonusGroup: "any" },
+      { id: "pineapple", name: "파인애플", quantity: 3, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "durationOnly",
+        label: "지속시간",
+        durationBonusSecondsPerIngredient: 15,
+      },
     ],
   },
   {
@@ -168,10 +252,18 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 5.3,
     ingredients: [
-      { id: "seaBass", name: "농어", quantity: 1 },
-      { id: "mullet", name: "숭어", quantity: 1 },
-      { id: "corn", name: "옥수수", quantity: 3 },
-      { id: "tomato", name: "토마토", quantity: 3 },
+      { id: "seaBass", name: "농어", quantity: 1, rareBonusGroup: "any" },
+      { id: "mullet", name: "숭어", quantity: 1, rareBonusGroup: "any" },
+      { id: "corn", name: "옥수수", quantity: 3, rareBonusGroup: "any" },
+      { id: "tomato", name: "토마토", quantity: 3, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "durationOnly",
+        label: "지속시간",
+        durationBonusSecondsPerIngredient: 15,
+      },
     ],
   },
   {
@@ -184,10 +276,18 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 5.3,
     ingredients: [
-      { id: "blueTang", name: "블루탱", quantity: 1 },
-      { id: "clownfish", name: "흰동가리", quantity: 1 },
-      { id: "lemon", name: "레몬", quantity: 3 },
-      { id: "strawberry", name: "딸기", quantity: 3 },
+      { id: "blueTang", name: "블루탱", quantity: 1, rareBonusGroup: "any" },
+      { id: "clownfish", name: "흰동가리", quantity: 1, rareBonusGroup: "any" },
+      { id: "lemon", name: "레몬", quantity: 3, rareBonusGroup: "any" },
+      { id: "strawberry", name: "딸기", quantity: 3, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "durationOnly",
+        label: "지속시간",
+        durationBonusSecondsPerIngredient: 15,
+      },
     ],
   },
   {
@@ -200,11 +300,20 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 5.3,
     ingredients: [
-      { id: "sunfish", name: "개복치", quantity: 1 },
-      { id: "stripedSeabream", name: "줄돔", quantity: 1 },
-      { id: "swampFrog", name: "개구리", quantity: 1 },
-      { id: "banana", name: "바나나", quantity: 3 },
-      { id: "tomato", name: "토마토", quantity: 3 },
+      { id: "sunfish", name: "개복치", quantity: 1, rareBonusGroup: "any" },
+      { id: "stripedSeabream", name: "줄돔", quantity: 1, rareBonusGroup: "any" },
+      { id: "swampFrog", name: "개구리", quantity: 1, rareBonusGroup: "any" },
+      { id: "banana", name: "바나나", quantity: 3, rareBonusGroup: "any" },
+      { id: "tomato", name: "토마토", quantity: 3, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "stat",
+        label: "행운",
+        amountPerIngredient: 3,
+        durationBonusSecondsPerIngredient: 200,
+      },
     ],
   },
   {
@@ -217,10 +326,19 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 5.3,
     ingredients: [
-      { id: "mantaRay", name: "만타 가오리", quantity: 1 },
-      { id: "octopus", name: "문어", quantity: 1 },
-      { id: "pineapple", name: "파인애플", quantity: 3 },
-      { id: "orange", name: "오렌지", quantity: 3 },
+      { id: "mantaRay", name: "만타 가오리", quantity: 1, rareBonusGroup: "any" },
+      { id: "octopus", name: "문어", quantity: 1, rareBonusGroup: "any" },
+      { id: "pineapple", name: "파인애플", quantity: 3, rareBonusGroup: "any" },
+      { id: "orange", name: "오렌지", quantity: 3, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "stat",
+        label: "감각",
+        amountPerIngredient: 3,
+        durationBonusSecondsPerIngredient: 200,
+      },
     ],
   },
   {
@@ -233,10 +351,19 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 5.3,
     ingredients: [
-      { id: "salmon", name: "연어", quantity: 1 },
-      { id: "sturgeon", name: "철갑상어", quantity: 1 },
-      { id: "orange", name: "오렌지", quantity: 3 },
-      { id: "pineapple", name: "파인애플", quantity: 3 },
+      { id: "salmon", name: "연어", quantity: 1, rareBonusGroup: "any" },
+      { id: "sturgeon", name: "철갑상어", quantity: 1, rareBonusGroup: "any" },
+      { id: "orange", name: "오렌지", quantity: 3, rareBonusGroup: "any" },
+      { id: "pineapple", name: "파인애플", quantity: 3, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "stat",
+        label: "손재주",
+        amountPerIngredient: 4,
+        durationBonusSecondsPerIngredient: 200,
+      },
     ],
   },
   {
@@ -249,10 +376,19 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 5.3,
     ingredients: [
-      { id: "pike", name: "강꼬치고기", quantity: 1 },
-      { id: "goldfish", name: "금붕어", quantity: 1 },
-      { id: "pomegranate", name: "석류", quantity: 3 },
-      { id: "lemon", name: "레몬", quantity: 3 },
+      { id: "pike", name: "강꼬치고기", quantity: 1, rareBonusGroup: "any" },
+      { id: "goldfish", name: "금붕어", quantity: 1, rareBonusGroup: "any" },
+      { id: "pomegranate", name: "석류", quantity: 3, rareBonusGroup: "any" },
+      { id: "lemon", name: "레몬", quantity: 3, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "stat",
+        label: "인내력",
+        amountPerIngredient: 5,
+        durationBonusSecondsPerIngredient: 200,
+      },
     ],
   },
   {
@@ -265,10 +401,19 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseSuccessChancePercent: 80,
     baseSpecialChancePercent: 5.3,
     ingredients: [
-      { id: "blueJellyfish", name: "푸른 해파리", quantity: 1 },
-      { id: "eel", name: "뱀장어", quantity: 1 },
-      { id: "cabbage", name: "양배추", quantity: 3 },
-      { id: "radish", name: "무", quantity: 3 },
+      { id: "blueJellyfish", name: "푸른 해파리", quantity: 1, rareBonusGroup: "any" },
+      { id: "eel", name: "뱀장어", quantity: 1, rareBonusGroup: "any" },
+      { id: "cabbage", name: "양배추", quantity: 3, rareBonusGroup: "any" },
+      { id: "radish", name: "무", quantity: 3, rareBonusGroup: "any" },
+    ],
+    rareBonusRules: [
+      {
+        matchGroup: "any",
+        bonusType: "stat",
+        label: "노련함",
+        amountPerIngredient: 5,
+        durationBonusSecondsPerIngredient: 200,
+      },
     ],
   },
 ];

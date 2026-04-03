@@ -65,6 +65,16 @@ function createInitialIngredientPrices(
   }, {});
 }
 
+function createInitialRareIngredientFlags(
+  recipeId: CookingRecipeId,
+): Record<string, boolean> {
+  const recipe = getCookingRecipe(recipeId);
+  return recipe.ingredients.reduce<Record<string, boolean>>((acc, ingredient) => {
+    acc[ingredient.id] = false;
+    return acc;
+  }, {});
+}
+
 function createInitialCalculationInput(): CookingCalculationInput {
   return {
     recipeId: INITIAL_FORM.recipeId,
@@ -89,6 +99,7 @@ function createInitialCalculationInput(): CookingCalculationInput {
       specialDishPrice: INITIAL_FORM.specialDishPrice,
       ingredientUnitPrices: createInitialIngredientPrices(INITIAL_FORM.recipeId),
     },
+    rareIngredientFlags: createInitialRareIngredientFlags(INITIAL_FORM.recipeId),
   };
 }
 
@@ -122,8 +133,21 @@ function syncIngredientPrices(
   return next;
 }
 
+function syncRareIngredientFlags(
+  recipeId: CookingRecipeId,
+  current: Record<string, boolean>,
+): Record<string, boolean> {
+  const recipe = getCookingRecipe(recipeId);
+  const next: Record<string, boolean> = {};
+
+  recipe.ingredients.forEach((ingredient) => {
+    next[ingredient.id] = current[ingredient.id] ?? false;
+  });
+
+  return next;
+}
+
 export default function CookingCalculatorPage() {
-  const pathname = usePathname();
   const loadingProfileRef = useRef(false);
   const hasLoadedProfileRef = useRef(false);
 
@@ -161,6 +185,10 @@ export default function CookingCalculatorPage() {
   const [ingredientUnitPrices, setIngredientUnitPrices] = useState<Record<string, number>>(
     createInitialIngredientPrices(INITIAL_FORM.recipeId),
   );
+  const [rareIngredientFlags, setRareIngredientFlags] = useState<Record<string, boolean>>(
+    createInitialRareIngredientFlags(INITIAL_FORM.recipeId),
+  );
+
   const [normalDishPrice, setNormalDishPrice] = useState(INITIAL_FORM.normalDishPrice);
   const [specialDishPrice, setSpecialDishPrice] = useState(INITIAL_FORM.specialDishPrice);
 
@@ -196,6 +224,7 @@ export default function CookingCalculatorPage() {
         specialDishPrice,
         ingredientUnitPrices,
       },
+      rareIngredientFlags,
     };
   };
 
@@ -349,6 +378,7 @@ export default function CookingCalculatorPage() {
           specialDishPrice,
           ingredientUnitPrices,
         },
+        rareIngredientFlags,
       });
 
       setResult(nextResult);
@@ -368,6 +398,7 @@ export default function CookingCalculatorPage() {
     normalDishPrice,
     specialDishPrice,
     ingredientUnitPrices,
+    rareIngredientFlags,
   ]);
 
   useEffect(() => {
@@ -403,6 +434,10 @@ export default function CookingCalculatorPage() {
     setIngredientUnitPrices((prev) => syncIngredientPrices(recipeId, prev));
   }, [recipeId]);
 
+  useEffect(() => {
+    setRareIngredientFlags((prev) => syncRareIngredientFlags(recipeId, prev));
+  }, [recipeId]);
+
   const handleCalculate = useCallback(() => {
     const nextResult = calculateCooking(buildCalculationInput());
     setResult(nextResult);
@@ -420,6 +455,7 @@ export default function CookingCalculatorPage() {
     banquetPreparation,
     recipeId,
     ingredientUnitPrices,
+    rareIngredientFlags,
     normalDishPrice,
     specialDishPrice,
   ]);
@@ -446,6 +482,7 @@ export default function CookingCalculatorPage() {
 
     setRecipeId(INITIAL_FORM.recipeId);
     setIngredientUnitPrices(createInitialIngredientPrices(INITIAL_FORM.recipeId));
+    setRareIngredientFlags(createInitialRareIngredientFlags(INITIAL_FORM.recipeId));
     setNormalDishPrice(INITIAL_FORM.normalDishPrice);
     setSpecialDishPrice(INITIAL_FORM.specialDishPrice);
 
@@ -622,21 +659,38 @@ export default function CookingCalculatorPage() {
             <h3 className="mb-3 text-lg font-semibold">재료 시세</h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {selectedRecipe.ingredients.map((ingredient) => (
-                <Field
+                <div
                   key={ingredient.id}
-                  label={`${ingredient.name} (${ingredient.quantity}개)`}
+                  className="rounded-xl border border-zinc-200 p-3"
                 >
-                  <NumberInput
-                    value={ingredientUnitPrices[ingredient.id] ?? 0}
-                    onChange={(value) => {
-                      setIngredientUnitPrices((prev) => ({
-                        ...prev,
-                        [ingredient.id]: value,
-                      }));
-                      setIsDirty(true);
-                    }}
-                  />
-                </Field>
+                  <Field label={`${ingredient.name} (${ingredient.quantity}개)`}>
+                    <NumberInput
+                      value={ingredientUnitPrices[ingredient.id] ?? 0}
+                      onChange={(value) => {
+                        setIngredientUnitPrices((prev) => ({
+                          ...prev,
+                          [ingredient.id]: value,
+                        }));
+                        setIsDirty(true);
+                      }}
+                    />
+                  </Field>
+
+                  <label className="mt-3 flex items-center gap-2 text-sm text-zinc-700">
+                    <input
+                      type="checkbox"
+                      checked={rareIngredientFlags[ingredient.id] ?? false}
+                      onChange={(e) => {
+                        setRareIngredientFlags((prev) => ({
+                          ...prev,
+                          [ingredient.id]: e.target.checked,
+                        }));
+                        setIsDirty(true);
+                      }}
+                    />
+                    희귀 재료 사용
+                  </label>
+                </div>
               ))}
             </div>
           </div>
@@ -758,9 +812,41 @@ export default function CookingCalculatorPage() {
                 <span>{formatPercent(result.balanceOfTasteBonusPercent)}</span>
               </div>
               <div className="flex justify-between">
+                <span>선택한 희귀 재료 수</span>
+                <span>{result.selectedRareIngredientCount}개</span>
+              </div>
+              <div className="flex justify-between">
+                <span>희귀 재료 추가 지속시간</span>
+                <span>{formatSeconds(result.rareIngredientDurationBonusSeconds, 0)}</span>
+              </div>
+              <div className="flex justify-between">
                 <span>최종 유지 시간</span>
                 <span>{formatSeconds(result.finalDurationSeconds, 0)}</span>
               </div>
+            </div>
+          </ResultCard>
+
+          <ResultCard title="요리 효과 / 희귀 재료 보너스">
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>기본 요리 효과</span>
+                <span>{selectedRecipe.description}</span>
+              </div>
+
+              {result.rareEffectSummaryLines.length === 0 ? (
+                <div className="text-sm text-zinc-500">
+                  적용된 희귀 재료 보너스 없음
+                </div>
+              ) : (
+                result.rareEffectSummaryLines.map((line) => (
+                  <div
+                    key={line}
+                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+                  >
+                    {line}
+                  </div>
+                ))
+              )}
             </div>
           </ResultCard>
 
@@ -801,6 +887,9 @@ export default function CookingCalculatorPage() {
               </div>
               <div className="mt-2">
                 - 첨부 이미지 기준 희귀 결과물이 실제로 일품 요리에 해당하므로 시세 입력도 그 기준으로 받습니다.
+              </div>
+              <div className="mt-2">
+                - 희귀 재료 보너스는 현재 v1에서 "재료 라인 1개당"으로 계산합니다.
               </div>
               <div className="mt-2">
                 - 즉시 완성 / 연회 준비는 현재 수익식에 직접 반영하지 않고, 프로필 연동 및 확장 대비용으로만 보관합니다.
