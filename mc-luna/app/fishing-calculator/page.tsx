@@ -243,6 +243,7 @@ export default function FishingCalculatorPage() {
 
   const loadProfileToCalculator = useCallback(async () => {
     if (loadingProfileRef.current) return;
+    if (profileLoaded) return;
     loadingProfileRef.current = true;
 
     try {
@@ -418,7 +419,7 @@ export default function FishingCalculatorPage() {
 
   useEffect(() => {
     loadProfileToCalculator();
-  }, [pathname, loadProfileToCalculator]);
+  }, []);
 
   const isProUser = planType === "pro";
   const disableProfileFields = profileLoaded && !isProUser;

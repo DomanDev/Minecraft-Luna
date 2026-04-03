@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
 import { supabase } from "@/src/lib/supabase";
 
 import CalculatorLayout from "@/src/components/calculator/CalculatorLayout";
@@ -126,6 +125,7 @@ function syncIngredientPrices(
 export default function CookingCalculatorPage() {
   const pathname = usePathname();
   const loadingProfileRef = useRef(false);
+  const hasLoadedProfileRef = useRef(false);
 
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [planType, setPlanType] = useState<"free" | "pro" | null>(null);
@@ -200,7 +200,12 @@ export default function CookingCalculatorPage() {
   };
 
   const loadProfileToCalculator = useCallback(async () => {
+    /**
+     * 최초 1회만 프로필 로드
+     */
     if (loadingProfileRef.current) return;
+    if (hasLoadedProfileRef.current) return;
+
     loadingProfileRef.current = true;
 
     try {
@@ -229,6 +234,7 @@ export default function CookingCalculatorPage() {
       if (!user) {
         setPlanType(null);
         setProfileLoaded(false);
+        hasLoadedProfileRef.current = false;
         return;
       }
 
@@ -347,6 +353,11 @@ export default function CookingCalculatorPage() {
 
       setResult(nextResult);
       setIsDirty(false);
+
+      /**
+       * 최초 1회 로드 완료 표시
+       */
+      hasLoadedProfileRef.current = true;
     } finally {
       loadingProfileRef.current = false;
     }
@@ -361,7 +372,7 @@ export default function CookingCalculatorPage() {
 
   useEffect(() => {
     loadProfileToCalculator();
-  }, [pathname, loadProfileToCalculator]);
+  }, [loadProfileToCalculator]);
 
   useEffect(() => {
     const {
@@ -370,10 +381,17 @@ export default function CookingCalculatorPage() {
       if (!session?.user) {
         setPlanType(null);
         setProfileLoaded(false);
+
+        /**
+         * 로그아웃 시 다음 로그인에 다시 1회 로드할 수 있도록 리셋
+         */
+        hasLoadedProfileRef.current = false;
         return;
       }
 
-      loadProfileToCalculator();
+      if (!hasLoadedProfileRef.current) {
+        loadProfileToCalculator();
+      }
     });
 
     return () => {

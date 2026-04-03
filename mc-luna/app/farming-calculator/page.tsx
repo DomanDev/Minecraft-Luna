@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
 import { supabase } from "@/src/lib/supabase";
 import { calculateFarming } from "@/src/lib/farming/calc";
 import { calculateFarmingExp } from "@/src/lib/farming/exp";
@@ -108,8 +107,8 @@ function formatNumber(value: number, digits = 2): string {
 }
 
 export default function FarmingCalculatorPage() {
-  const pathname = usePathname();
   const loadingProfileRef = useRef(false);
+  const hasLoadedProfileRef = useRef(false);
 
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [planType, setPlanType] = useState<"free" | "pro" | null>(null);
@@ -194,7 +193,17 @@ export default function FarmingCalculatorPage() {
   };
 
   const loadProfileToCalculator = useCallback(async () => {
+    /**
+     * 최초 1회만 프로필 로드
+     *
+     * 왜 필요한가?
+     * - 계산기에서 사용자가 값을 직접 수정한 뒤 "계산하기"를 눌렀을 때
+     *   DB 값을 다시 읽어와 state를 덮어쓰는 문제를 막기 위함
+     * - 페이지 진입 후 첫 로드만 허용하고, 이후에는 현재 화면의 입력값을 유지한다.
+     */
     if (loadingProfileRef.current) return;
+    if (hasLoadedProfileRef.current) return;
+
     loadingProfileRef.current = true;
 
     try {
@@ -223,6 +232,7 @@ export default function FarmingCalculatorPage() {
       if (!user) {
         setPlanType(null);
         setProfileLoaded(false);
+        hasLoadedProfileRef.current = false;
         return;
       }
 
@@ -348,6 +358,12 @@ export default function FarmingCalculatorPage() {
 
       setResult(nextResult);
       setIsDirty(false);
+
+      /**
+       * 여기까지 성공적으로 로드된 이후에는
+       * 같은 페이지 인스턴스에서 다시 DB 로드를 막는다.
+       */
+      hasLoadedProfileRef.current = true;
     } finally {
       loadingProfileRef.current = false;
     }
@@ -355,7 +371,7 @@ export default function FarmingCalculatorPage() {
 
   useEffect(() => {
     loadProfileToCalculator();
-  }, [pathname, loadProfileToCalculator]);
+  }, [loadProfileToCalculator]);
 
   useEffect(() => {
     const {
@@ -364,10 +380,20 @@ export default function FarmingCalculatorPage() {
       if (!session?.user) {
         setPlanType(null);
         setProfileLoaded(false);
+
+        /**
+         * 로그아웃 시에는 다음 로그인에서 다시 1회 로드될 수 있도록 리셋
+         */
+        hasLoadedProfileRef.current = false;
         return;
       }
 
-      loadProfileToCalculator();
+      /**
+       * 이미 한 번 로드했다면 다시 불러오지 않음
+       */
+      if (!hasLoadedProfileRef.current) {
+        loadProfileToCalculator();
+      }
     });
 
     return () => {

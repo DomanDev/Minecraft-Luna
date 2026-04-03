@@ -26,8 +26,8 @@ export const DEFAULT_FISHING_CONFIG: FishingCalcConfig = {
   baseNibbleTicks: 360,
   baseBiteTicks: 90,
 
-  senseNibbleCoeff: 1.2,
-  senseBiteCoeff: 0.4,
+  senseNibbleCoeff: 0.9,
+  senseBiteCoeff: 0.3,
 
   baseGradeNormal: 150,
   baseGradeAdvanced: 30,
@@ -202,7 +202,7 @@ export function calculateCatchTime(
       afterGroundbaitBiteTicks - schoolFishingRow.biteReductionTicks;
   }
 
-  const displayNibbleTicks = clamp(afterSchoolFishingNibbleTicks, 1);
+  const displayNibbleTicks = clamp(afterSchoolFishingNibbleTicks, 20);
   const displayBiteTicks = clamp(afterSchoolFishingBiteTicks, 1);
 
   const displayNibbleSeconds = ticksToSeconds(displayNibbleTicks);
