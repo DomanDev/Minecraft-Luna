@@ -1112,6 +1112,10 @@ export default function FishingCalculatorPage() {
                 <span>{formatNumber(result.value.expectedValuePerFish, 2)}셀</span>
               </div>
               <div className="flex justify-between">
+                <span>시간당 커스텀 물고기 수</span>
+                <span>{formatNumber(customFishPerHour, 2)}마리</span>
+              </div>
+              <div className="flex justify-between">
                 <span>낚시 1회당 기대 수익</span>
                 <span>{formatNumber(result.value.expectedValuePerCycle, 2)}셀</span>
               </div>
