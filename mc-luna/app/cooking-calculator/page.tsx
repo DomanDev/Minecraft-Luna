@@ -663,7 +663,7 @@ export default function CookingCalculatorPage() {
                   key={ingredient.id}
                   className="rounded-xl border border-zinc-200 p-3"
                 >
-                  <Field label={`${ingredient.name} (${ingredient.quantity}개)`}>
+                  <Field label={`${ingredient.name} 개당 가격 (${ingredient.quantity}개 필요)`}>
                     <NumberInput
                       value={ingredientUnitPrices[ingredient.id] ?? 0}
                       onChange={(value) => {
