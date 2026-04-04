@@ -23,10 +23,7 @@ export type CookingIngredientBonusGroup =
   | "fruit"
   | "seafood";
 
-export type CookingRareBonusType =
-  | "stat"
-  | "recovery"
-  | "durationOnly";
+export type CookingRareBonusType = "stat" | "recovery" | "durationOnly";
 
 export interface CookingIngredient {
   id: string;
@@ -57,12 +54,14 @@ export interface CookingRareBonusRule {
   label: string;
 
   /**
-   * 희귀 재료 1개(=재료 라인 1개)당 증가량
+   * 희귀 재료 1개(=실제 필요 개수 1개)당 증가량
+   * 예: 토마토 x3 라인을 희귀로 체크하면 3개로 계산
    */
   amountPerIngredient?: number;
 
   /**
-   * 희귀 재료 1개(=재료 라인 1개)당 추가 지속시간(초)
+   * 희귀 재료 1개(=실제 필요 개수 1개)당 추가 지속시간(초)
+   * 예: 토마토 x3 라인을 희귀로 체크하면 3배 적용
    */
   durationBonusSecondsPerIngredient?: number;
 }
@@ -78,11 +77,9 @@ export interface CookingRecipe {
    * 주스류는 null 가능
    */
   baseDurationSeconds: number | null;
-
   baseCraftTimeSeconds: number;
   baseSuccessChancePercent: number;
   baseSpecialChancePercent: number;
-
   ingredients: CookingIngredient[];
 
   /**
@@ -121,7 +118,8 @@ export interface CookingCalculationInput {
 
   /**
    * 재료별 희귀 재료 선택 여부
-   * - true면 해당 재료 라인을 희귀 재료로 사용한다고 가정
+   * - true면 해당 재료 라인의 필요 수량 전체를 희귀 재료로 사용한다고 가정
+   *   예: 토마토 x3 체크 -> 희귀 토마토 3개 사용
    */
   rareIngredientFlags: Record<string, boolean>;
 }
@@ -157,8 +155,10 @@ export interface CookingCalculationResult {
 
   /**
    * 희귀 재료 관련 표시용
+   * - 실제 희귀 재료 개수 합계
    */
   selectedRareIngredientCount: number;
+
   rareEffectSummaryLines: string[];
 
   expectedRevenuePerCraft: number;

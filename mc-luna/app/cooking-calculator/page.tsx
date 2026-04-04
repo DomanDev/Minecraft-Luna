@@ -573,33 +573,13 @@ export default function CookingCalculatorPage() {
           </div>
 
           <div className="mt-6">
-            <h3 className="mb-3 text-lg font-semibold">도감 / 추가 효과</h3>
+            <h3 className="mb-3 text-lg font-semibold">도감 효과</h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="요리 등급업 확률">
                 <NumberInput
                   value={cookingGradeUpChance}
                   onChange={() => {}}
                   disabled
-                />
-              </Field>
-
-              <Field label="조리 단축(%)">
-                <NumberInput
-                  value={additionalCookTimeReductionPercent}
-                  onChange={(value) => {
-                    setAdditionalCookTimeReductionPercent(value);
-                    setIsDirty(true);
-                  }}
-                />
-              </Field>
-
-              <Field label="음식 효과연장(%)">
-                <NumberInput
-                  value={additionalFoodDurationBonusPercent}
-                  onChange={(value) => {
-                    setAdditionalFoodDurationBonusPercent(value);
-                    setIsDirty(true);
-                  }}
                 />
               </Field>
             </div>
@@ -736,7 +716,25 @@ export default function CookingCalculatorPage() {
       }
       right={
         <CalculatorPanel title="계산 결과">
-          <ResultCard title="등급 확률 / 성공 확률">
+          <ResultCard title="성공 확률">
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>기본 성공 확률</span>
+                <span>{formatPercent(result.baseSuccessChancePercent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>[노련함] 성공 보정</span>
+                <span>{formatPercent(result.masterySuccessBonusPercent)}</span>
+              </div>
+              <div className="border-t border-gray-800/20 my-2" />
+              <div className="flex justify-between">
+                <span>최종 성공 확률</span>
+                <span>{formatPercent(result.finalSuccessChancePercent)}</span>
+              </div>
+            </div>
+          </ResultCard>
+
+          <ResultCard title="등급 확률">
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>기본 일품 확률</span>
@@ -754,6 +752,7 @@ export default function CookingCalculatorPage() {
                 <span>[미식가] 등급업 보정</span>
                 <span>{formatPercent(result.gourmetGradeUpChancePercent)}</span>
               </div>
+              <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>최종 일반 확률</span>
                 <span>{formatPercent(result.finalNormalChancePercent)}</span>
@@ -762,22 +761,10 @@ export default function CookingCalculatorPage() {
                 <span>최종 일품 확률</span>
                 <span>{formatPercent(result.finalSpecialChancePercent)}</span>
               </div>
-              <div className="flex justify-between">
-                <span>기본 성공 확률</span>
-                <span>{formatPercent(result.baseSuccessChancePercent)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>[노련함] 성공 보정</span>
-                <span>{formatPercent(result.masterySuccessBonusPercent)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>최종 성공 확률</span>
-                <span>{formatPercent(result.finalSuccessChancePercent)}</span>
-              </div>
             </div>
           </ResultCard>
 
-          <ResultCard title="중간 계산값">
+          <ResultCard title="제작 시간">
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>기본 제작 시간</span>
@@ -795,10 +782,15 @@ export default function CookingCalculatorPage() {
                 <span>[조리 단축] 적용값</span>
                 <span>{formatPercent(result.additionalCookTimeReductionPercent)}</span>
               </div>
+              <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>최종 제작 시간</span>
                 <span>{formatSeconds(result.finalCraftTimeSeconds)}</span>
               </div>
+            </div>
+          </ResultCard>
+          <ResultCard title="유지 시간">
+            <div className="space-y-2">
               <div className="flex justify-between">
                 <span>기본 유지 시간</span>
                 <span>{formatSeconds(result.baseDurationSeconds, 0)}</span>
@@ -819,6 +811,7 @@ export default function CookingCalculatorPage() {
                 <span>희귀 재료 추가 지속시간</span>
                 <span>{formatSeconds(result.rareIngredientDurationBonusSeconds, 0)}</span>
               </div>
+              <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>최종 유지 시간</span>
                 <span>{formatSeconds(result.finalDurationSeconds, 0)}</span>
@@ -826,7 +819,7 @@ export default function CookingCalculatorPage() {
             </div>
           </ResultCard>
 
-          <ResultCard title="요리 효과 / 희귀 재료 보너스">
+          <ResultCard title="요리 효과">
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>기본 요리 효과</span>

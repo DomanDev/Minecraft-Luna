@@ -674,6 +674,7 @@ export default function FarmingCalculatorPage() {
                 <span>총 일반 작물 감소비율</span>
                 <span>{formatNumber(result.intermediate.totalNormalReduction, 2)}</span>
               </div>
+              <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>일반 가중치</span>
                 <span>{formatNumber(result.intermediate.normalWeight, 2)}</span>
@@ -686,10 +687,11 @@ export default function FarmingCalculatorPage() {
                 <span>희귀 가중치</span>
                 <span>{formatNumber(result.intermediate.rareWeight, 2)}</span>
               </div>
-              <div className="flex justify-between">
+              {/* <div className="flex justify-between">
                 <span>전체 가중치 합</span>
                 <span>{formatNumber(result.intermediate.totalWeight, 2)}</span>
-              </div>
+              </div> */}
+              <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>일반 확률</span>
                 <span>{toPercent(result.intermediate.normalProbability, 2)}</span>
@@ -711,10 +713,7 @@ export default function FarmingCalculatorPage() {
                 <span>씨앗 드롭률</span>
                 <span>{formatNumber(result.intermediate.seedDropRatePercent, 2)}%</span>
               </div>
-              <div className="flex justify-between">
-                <span>비옥한 토양 발동률</span>
-                <span>{formatNumber(result.intermediate.fertileSoilRatePercent, 2)}%</span>
-              </div>
+              <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>유효 갈증 계수</span>
                 <span>{formatNumber(result.intermediate.effectiveThirstMultiplier, 4)}</span>
@@ -731,6 +730,11 @@ export default function FarmingCalculatorPage() {
                 <span>수확 1회당 작물 개수</span>
                 <span>{formatNumber(result.intermediate.expectedCropsPerHarvestAttempt, 2)}개</span>
               </div>
+              <div className="border-t border-gray-800/20 my-2" />
+              <div className="flex justify-between">
+                <span>비옥한 토양 발동률</span>
+                <span>{formatNumber(result.intermediate.fertileSoilRatePercent, 2)}%</span>
+              </div>
               <div className="flex justify-between">
                 <span>화분통 1개당 재배 횟수</span>
                 <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerPot, 2)}회</span>
@@ -739,6 +743,7 @@ export default function FarmingCalculatorPage() {
                 <span>1사이클당 총 재배 횟수</span>
                 <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerCycle, 2)}회</span>
               </div>
+              <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>1사이클당 총 작물 개수(작물 개수x재배 횟수)</span>
                 <span>{Math.floor(result.intermediate.expectedTotalCropsPerCycle).toLocaleString()}개</span>

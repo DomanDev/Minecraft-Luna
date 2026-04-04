@@ -35,7 +35,7 @@ export const BLESSING_OF_HARVEST_NORMAL_REDUCTION: Record<number, number> = {
   27: 46.4,
   28: 49.6,
   29: 54.0,
-  30: 60.0,
+  30: 55.0,
 };
 
 /**
@@ -64,16 +64,16 @@ export const FERTILE_SOIL_EXTRA_DROP: Record<number, number> = {
   18: 16.0,
   19: 18.0,
   20: 20.0,
-  21: 22.0,
-  22: 24.0,
-  23: 26.0,
-  24: 28.0,
-  25: 30.0,
-  26: 32.0,
-  27: 34.0,
-  28: 36.0,
-  29: 38.0,
-  30: 40.0,
+  21: 21.6,
+  22: 23.2,
+  23: 24.8,
+  24: 26.4,
+  25: 28.0,
+  26: 29.6,
+  27: 31.2,
+  28: 32.8,
+  29: 34.4,
+  30: 36.0,
 };
 
 /**
@@ -111,5 +111,5 @@ export const OATH_OF_CULTIVATION_MAX_POTS: Record<number, number> = {
   27: 744,
   28: 752,
   29: 760,
-  30: 768,
+  30: 832,
 };
