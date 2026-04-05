@@ -25,11 +25,14 @@ import {
   formatPercent,
   formatPercentFromRatio,
 } from "@/src/lib/format";
+import { toast } from "sonner";
+import { loadUserMarketPrices, upsertUserMarketPrices } from "@/src/lib/market/db";
+import type { MarketGrade, UserMarketPriceRow } from "@/src/lib/market/types";
 
 const cropOptions: { value: FarmingCropType; label: string }[] = [
-  { value: "cabbage", label: "양배추" },
   { value: "lettuce", label: "상추" },
   { value: "corn", label: "옥수수" },
+  { value: "cabbage", label: "양배추" },
   { value: "radish", label: "무" },
   { value: "tomato", label: "토마토" },
   { value: "strawberry", label: "딸기" },
@@ -66,10 +69,10 @@ const INITIAL_FORM = {
   oathOfCultivation: 0,
   handOfHarvest: 0,
   reseeding: 0,
-  thirstMin: 10 as ThirstMin,
+  thirstMin: 15 as ThirstMin,
   cropType: "cabbage" as FarmingCropType,
   normalPrice: 4,
-  advancedPrice: 9,
+  advancedPrice: 8,
   rarePrice: 12,
 };
 
@@ -134,6 +137,26 @@ export default function FarmingCalculatorPage() {
 
   const loadingProfileRef = useRef(false);
   const hasLoadedProfileRef = useRef(false);
+  /**
+   * 현재 선택한 작물의 시세를 user_market_prices 에서 자동으로 불러오는 중인지 여부
+   *
+   * 왜 필요한가?
+   * - cropType 변경
+   * - 최초 프로필 로드 완료
+   * - auth state 변화
+   * 등의 타이밍이 겹치면 같은 시세 조회가 짧은 시간에 중복 호출될 수 있다.
+   */
+  const loadingMarketPriceRef = useRef(false);
+
+  /**
+   * 현재 선택한 작물 기준 시세를 한 번이라도 자동 반영했는지 기록
+   *
+   * 목적:
+   * - 최초 진입 후 "기본값 4 / 9 / 12"가 잠깐 보였다가
+   *   DB 저장값으로 바뀌는 흐름을 제어하기 쉽도록 하기 위함
+   * - 필수는 아니지만 디버깅/확장 시 상태 추적에 도움이 된다.
+   */
+  const hasAppliedMarketPriceRef = useRef(false);
 
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [planType, setPlanType] = useState<"free" | "pro" | null>(null);
@@ -216,6 +239,169 @@ export default function FarmingCalculatorPage() {
       },
     };
   };
+
+  /**
+   * user_market_prices 에 저장된 "현재 선택 작물" 시세를
+   * 농사 계산기 입력값으로 반영한다.
+   *
+   * 동작 원리:
+   * - category = "farming"
+   * - item_key = 현재 cropType
+   * - grade = normal / advanced / rare
+   *
+   * 저장값이 있으면:
+   * - normalPrice / advancedPrice / rarePrice 를 덮어쓴다.
+   *
+   * 저장값이 없으면:
+   * - 현재 화면의 값(기본값 또는 사용자가 이미 보고 있는 값)을 유지한다.
+   *
+   * 왜 "없을 때 유지"로 처리하는가?
+   * - 아직 해당 작물 시세를 저장하지 않은 사용자도 있을 수 있다.
+   * - 그 경우 계산기를 억지로 0으로 바꾸면 UX가 나빠진다.
+   */
+  const applySavedMarketPriceToCalculator = useCallback(
+    async (targetCropType: FarmingCropType) => {
+      if (loadingMarketPriceRef.current) return;
+
+      /**
+       * 접근 가드 / 인증 / 플랜 정보가 아직 정리되지 않은 상태면 중단
+       */
+      if (guardLoading) return;
+      if (!allowed) return;
+
+      loadingMarketPriceRef.current = true;
+
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.warn("시장 시세용 getSession 실패:", sessionError.message);
+          return;
+        }
+
+        const user = session?.user;
+
+        if (!user) return;
+
+        const rows = await loadUserMarketPrices(user.id, "farming");
+
+        /**
+         * 현재 선택 작물에 해당하는 저장 시세만 추출
+         *
+         * 예:
+         * - cropType = "cabbage" 이면
+         *   cabbage + normal/advanced/rare row만 사용
+         */
+        const currentCropRows = rows.filter((row) => row.item_key === targetCropType);
+
+        if (currentCropRows.length === 0) {
+          /**
+           * 저장값이 없으면 현재 입력값 유지
+           */
+          return;
+        }
+
+        const nextNormal = currentCropRows.find((row) => row.grade === "normal")?.price;
+        const nextAdvanced = currentCropRows.find((row) => row.grade === "advanced")?.price;
+        const nextRare = currentCropRows.find((row) => row.grade === "rare")?.price;
+
+        if (typeof nextNormal === "number") {
+          setNormalPrice(nextNormal);
+        }
+
+        if (typeof nextAdvanced === "number") {
+          setAdvancedPrice(nextAdvanced);
+        }
+
+        if (typeof nextRare === "number") {
+          setRarePrice(nextRare);
+        }
+
+        /**
+         * 자동 불러오기로 시세 입력값이 바뀌었으므로
+         * 사용자가 다시 계산 버튼을 눌러 결과를 갱신하도록 dirty 처리
+         */
+        setIsDirty(true);
+        hasAppliedMarketPriceRef.current = true;
+      } catch (error) {
+        console.error("현재 작물 저장 시세 자동 불러오기 실패:", error);
+      } finally {
+        loadingMarketPriceRef.current = false;
+      }
+    },
+    [allowed, guardLoading],
+  );
+
+  /**
+   * 현재 선택 작물의 시세 3개를 user_market_prices 에 저장한다.
+   *
+   * 저장 정책:
+   * - farming category
+   * - item_key = 현재 cropType
+   * - grade = normal / advanced / rare
+   *
+   * Pro 사용자만 저장 가능
+   */
+  const handleSaveCurrentCropPrice = useCallback(async () => {
+    if (!isProUser) {
+      toast.error("시세 저장은 Pro 사용자만 가능합니다.");
+      return;
+    }
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.warn("시세 저장용 getSession 실패:", sessionError.message);
+        toast.error("로그인 정보를 확인하지 못했습니다.");
+        return;
+      }
+
+      const user = session?.user;
+
+      if (!user) {
+        toast.error("로그인 정보가 없습니다.");
+        return;
+      }
+
+      const rows: UserMarketPriceRow[] = [
+        {
+          user_id: user.id,
+          category: "farming",
+          item_key: cropType,
+          grade: "normal" as MarketGrade,
+          price: normalPrice,
+        },
+        {
+          user_id: user.id,
+          category: "farming",
+          item_key: cropType,
+          grade: "advanced" as MarketGrade,
+          price: advancedPrice,
+        },
+        {
+          user_id: user.id,
+          category: "farming",
+          item_key: cropType,
+          grade: "rare" as MarketGrade,
+          price: rarePrice,
+        },
+      ];
+
+      await upsertUserMarketPrices(rows);
+
+      toast.success("현재 작물 시세를 저장했습니다.");
+    } catch (error) {
+      console.error("현재 작물 시세 저장 실패:", error);
+      toast.error("시세 저장 중 오류가 발생했습니다.");
+    }
+  }, [cropType, isProUser, normalPrice, advancedPrice, rarePrice]);
 
   const loadProfileToCalculator = useCallback(async () => {
     /**
@@ -410,6 +596,31 @@ export default function FarmingCalculatorPage() {
     loadProfileToCalculator();
   }, [guardLoading, allowed, loadProfileToCalculator]);
 
+  /**
+   * 프로필 자동 로드가 끝난 뒤,
+   * 현재 선택 작물(cropType)의 저장 시세를 자동 반영한다.
+   *
+   * 이유:
+   * - 기존에는 농사 스탯/스킬만 프로필에서 자동 로드되었고
+   * - 시세는 항상 화면 기본값(4 / 9 / 12)으로 시작했다.
+   *
+   * 이제는 user_market_prices 에 저장된 값이 있으면
+   * 페이지 진입 직후 자동으로 덮어써서 편의성을 높인다.
+   */
+  useEffect(() => {
+    if (guardLoading) return;
+    if (!allowed) return;
+    if (!profileLoaded) return;
+
+    void applySavedMarketPriceToCalculator(cropType);
+  }, [
+    guardLoading,
+    allowed,
+    profileLoaded,
+    cropType,
+    applySavedMarketPriceToCalculator,
+  ]);
+
   useEffect(() => {
     const {
       data: { subscription },
@@ -479,6 +690,13 @@ export default function FarmingCalculatorPage() {
     setNormalPrice(INITIAL_FORM.normalPrice);
     setAdvancedPrice(INITIAL_FORM.advancedPrice);
     setRarePrice(INITIAL_FORM.rarePrice);
+    /**
+     * 시세 자동 반영 상태도 초기화
+     *
+     * 이유:
+     * - 전체 초기화 후 다시 작물 선택/자동 로드 흐름을 자연스럽게 유지하기 위함
+     */
+    hasAppliedMarketPriceRef.current = false;
 
     setResult(calculateFarming(createInitialCalculationInput()));
     setIsDirty(false);
@@ -647,8 +865,20 @@ export default function FarmingCalculatorPage() {
               <SelectInput
                 value={cropType}
                 onChange={(value) => {
-                  setCropType(value as FarmingCropType);
+                  const nextCropType = value as FarmingCropType;
+
+                  /**
+                   * 현재 선택 작물을 먼저 바꾸고
+                   * 이어서 해당 작물의 저장 시세를 자동 불러온다.
+                   *
+                   * 주의:
+                   * - 저장 시세가 없는 작물은 현재 기본값/화면값을 유지한다.
+                   * - 저장 시세가 있는 작물은 normal / advanced / rare 를 자동 반영한다.
+                   */
+                  setCropType(nextCropType);
                   setIsDirty(true);
+
+                  void applySavedMarketPriceToCalculator(nextCropType);
                 }}
                 options={cropOptions}
               />
@@ -667,37 +897,55 @@ export default function FarmingCalculatorPage() {
           </div>
 
           <h3 className="mb-3 mt-6 text-lg font-semibold">평균 시세</h3>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <Field label="일반">
-              <NumberInput
-                value={normalPrice}
-                onChange={(value) => {
-                  setNormalPrice(value);
-                  setIsDirty(true);
-                }}
-              />
-            </Field>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <Field label="일반">
+                <NumberInput
+                  value={normalPrice}
+                  onChange={(value) => {
+                    setNormalPrice(value);
+                    setIsDirty(true);
+                  }}
+                />
+              </Field>
 
-            <Field label="고급">
-              <NumberInput
-                value={advancedPrice}
-                onChange={(value) => {
-                  setAdvancedPrice(value);
-                  setIsDirty(true);
-                }}
-              />
-            </Field>
+              <Field label="고급">
+                <NumberInput
+                  value={advancedPrice}
+                  onChange={(value) => {
+                    setAdvancedPrice(value);
+                    setIsDirty(true);
+                  }}
+                />
+              </Field>
 
-            <Field label="희귀">
-              <NumberInput
-                value={rarePrice}
-                onChange={(value) => {
-                  setRarePrice(value);
-                  setIsDirty(true);
-                }}
-              />
-            </Field>
-          </div>
+              <Field label="희귀">
+                <NumberInput
+                  value={rarePrice}
+                  onChange={(value) => {
+                    setRarePrice(value);
+                    setIsDirty(true);
+                  }}
+                />
+              </Field>
+            </div>
+
+            {/**
+             * 현재 선택 작물 시세 저장 버튼
+             *
+             * UX 의도:
+             * - 시세 탭에서 전체 관리도 가능하지만
+             * - 계산기 안에서 바로 조정한 뒤
+             *   "현재 작물만 빠르게 저장"하고 싶을 수 있다.
+             *
+             * 정책:
+             * - Pro 사용자만 활성화
+             * - cropType 기준으로 normal / advanced / rare 3개 row를 upsert
+             */}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ActionButton onClick={handleSaveCurrentCropPrice} disabled={!isProUser}>
+                현재 작물 시세 저장
+              </ActionButton>
+            </div>
 
           <div className="mt-6 flex flex-wrap gap-2">
             <ActionButton onClick={handleCalculate}>계산하기</ActionButton>
