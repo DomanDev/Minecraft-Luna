@@ -16,6 +16,7 @@ const navItems = [
   { href: "/farming-calculator", label: "농사" },
   { href: "/mining-calculator", label: "채광" },
   { href: "/cooking-calculator", label: "요리" },
+  { href: "/enhancement-calculator", label: "강화" },
 ];
 
 export default function GlobalNav() {
