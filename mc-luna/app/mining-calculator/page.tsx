@@ -18,6 +18,7 @@ import SelectInput from "@/src/components/calculator/SelectInput";
 import ActionButton from "@/src/components/calculator/ActionButton";
 import ResultCard from "@/src/components/calculator/ResultCard";
 import { useRequireProfile } from "@/src/hooks/useRequireProfile";
+import { formatInteger } from "@/src/lib/format";
 
 /**
  * =========================

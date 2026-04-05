@@ -19,6 +19,13 @@ import SelectInput from "@/src/components/calculator/SelectInput";
 import ActionButton from "@/src/components/calculator/ActionButton";
 import ResultCard from "@/src/components/calculator/ResultCard";
 import { useRequireProfile } from "@/src/hooks/useRequireProfile";
+import {
+  formatCell,
+  formatDecimal,
+  formatInteger,
+  formatPercent,
+  formatPercentFromRatio,
+} from "@/src/lib/format";
 
 const baitOptions: {
   value: BaitType;
@@ -163,21 +170,6 @@ function createInitialCalculationInput(): FishingCalculationInput {
       rare: INITIAL_FORM.rarePrice,
     },
   };
-}
-
-function formatNumber(value: number, digits = 2): string {
-  return value.toLocaleString("ko-KR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  });
-}
-
-function formatPercent(value: number, digits = 2): string {
-  return `${formatNumber(value, digits)}%`;
-}
-
-function formatRatioPercent(value: number, digits = 2): string {
-  return `${formatNumber(value * 100, digits)}%`;
 }
 
 export default function FishingCalculatorPage() {
@@ -992,48 +984,48 @@ export default function FishingCalculatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>낚싯대 던지는 시간</span>
-                <span>{formatNumber(result.catchTime.castStartSeconds, 2)}초</span>
+                <span>{formatDecimal(result.catchTime.castStartSeconds, 2)}초</span>
               </div>
               <div className="flex justify-between">
                 <span>표시 기척 시간(인챈트 미적용)</span>
                 <span>
-                  {formatNumber(result.catchTime.displayNibbleSeconds, 2)}초 (
-                  {formatNumber(result.catchTime.displayNibbleTicks, 2)}틱)
+                  {formatDecimal(result.catchTime.displayNibbleSeconds, 2)}초 (
+                  {formatDecimal(result.catchTime.displayNibbleTicks, 2)}틱)
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>실제 기척 시간(인챈트 적용)</span>
                 <span>
-                  {formatNumber(result.catchTime.finalNibbleSeconds, 2)}초 (
-                  {formatNumber(result.catchTime.finalNibbleTicks, 2)}틱)
+                  {formatDecimal(result.catchTime.finalNibbleSeconds, 2)}초 (
+                  {formatDecimal(result.catchTime.finalNibbleTicks, 2)}틱)
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>[도감]기척 시간 감소</span>
-                <span>{formatNumber(nibbleTimeReduction, 2)}초</span>
+                <span>{formatDecimal(nibbleTimeReduction, 2)}초</span>
               </div>
               <div className="flex justify-between">
                 <span>최종 기척 시간</span>
                 <span>
-                  {formatNumber(displayedFinalNibbleSeconds, 2)}초 (
-                  {formatNumber(displayedFinalNibbleTicks, 2)}틱)
+                  {formatDecimal(displayedFinalNibbleSeconds, 2)}초 (
+                  {formatDecimal(displayedFinalNibbleTicks, 2)}틱)
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>표시 입질 시간</span>
                 <span>
-                  {formatNumber(result.catchTime.displayBiteSeconds, 2)}초 (
-                  {formatNumber(result.catchTime.displayBiteTicks, 2)}틱)
+                  {formatDecimal(result.catchTime.displayBiteSeconds, 2)}초 (
+                  {formatDecimal(result.catchTime.displayBiteTicks, 2)}틱)
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>건져올리는 시간</span>
-                <span>{formatNumber(result.catchTime.reelInSeconds, 2)}초</span>
+                <span>{formatDecimal(result.catchTime.reelInSeconds, 2)}초</span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>※최종 1회 낚시 시간(던짐+기척+입질+건져올림)</span>
-                <span>{formatNumber(displayedTotalCycleSeconds, 2)}초</span>
+                <span>{formatDecimal(displayedTotalCycleSeconds, 2)}초</span>
               </div>
             </div>
           </ResultCard>
@@ -1042,20 +1034,20 @@ export default function FishingCalculatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>[도감]일반 물고기 감소비율</span>
-                <span>{formatNumber(normalFishReduction, 2)}</span>
+                <span>{formatPercent(normalFishReduction, 2)}</span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>일반 가중치</span>
-                <span>{formatNumber(result.gradeRatio.rawNormal, 2)}</span>
+                <span>{formatDecimal(result.gradeRatio.rawNormal, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>고급 가중치</span>
-                <span>{formatNumber(result.gradeRatio.rawAdvanced, 2)}</span>
+                <span>{formatDecimal(result.gradeRatio.rawAdvanced, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>희귀 가중치</span>
-                <span>{formatNumber(result.gradeRatio.rawRare, 2)}</span>
+                <span>{formatDecimal(result.gradeRatio.rawRare, 2)}</span>
               </div>
               {/* <div className="flex justify-between">
                 <span>전체 가중치 합</span>
@@ -1072,18 +1064,18 @@ export default function FishingCalculatorPage() {
               <div className="flex justify-between">
                 <span>일반 확률</span>
                 <span>
-                  {formatRatioPercent(result.gradeRatio.probabilityNormal, 2)}
+                  {formatPercentFromRatio(result.gradeRatio.probabilityNormal, 2)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>고급 확률</span>
                 <span>
-                  {formatRatioPercent(result.gradeRatio.probabilityAdvanced, 2)}
+                  {formatPercentFromRatio(result.gradeRatio.probabilityAdvanced, 2)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>희귀 확률</span>
-                <span>{formatRatioPercent(result.gradeRatio.probabilityRare, 2)}</span>
+                <span>{formatPercentFromRatio(result.gradeRatio.probabilityRare, 2)}</span>
               </div>
             </div>
           </ResultCard>
@@ -1115,9 +1107,9 @@ export default function FishingCalculatorPage() {
               <div className="flex justify-between">
                 <span>낚시 1회당 기대 커스텀 물고기 수</span>
                 <span>
-                  {formatNumber(
+                  {formatInteger(
                     result.catchExpectation.finalCustomFishPerCatch,
-                    3,
+      
                   )}
                   마리
                 </span>
@@ -1132,16 +1124,16 @@ export default function FishingCalculatorPage() {
               <div className="flex justify-between">
                 <span>1사이클당 기대 낚시 횟수</span>
                 <span>
-                  {formatNumber(result.catchExpectation.catchCountPerCycle, 3)}회
+                  {formatInteger(result.catchExpectation.catchCountPerCycle, 3)}회
                 </span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>최종 기대 획득량(물고기 수 x 낚시 횟수)</span>
                 <span>
-                  {formatNumber(
+                  {formatInteger(
                     result.catchExpectation.finalCustomFishPerCycle,
-                    3,
+                    
                   )}
                   개
                 </span>
@@ -1153,16 +1145,16 @@ export default function FishingCalculatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>물고기 1마리 기대가치</span>
-                <span>{formatNumber(result.value.expectedValuePerFish, 2)}셀</span>
+                <span>{formatCell(result.value.expectedValuePerFish, 2)}셀</span>
               </div>
               <div className="flex justify-between">
                 <span>시간당 커스텀 물고기 수</span>
-                <span>{formatNumber(customFishPerHour, 2)}마리</span>
+                <span>{formatInteger(customFishPerHour)}마리</span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>낚시 1회당 기대 수익</span>
-                <span>{formatNumber(result.value.expectedValuePerCycle, 2)}셀</span>
+                <span>{formatCell(result.value.expectedValuePerCycle)}셀</span>
               </div>
               <div className="flex justify-between">
                 <span>시간당 낚시 횟수</span>
@@ -1176,7 +1168,7 @@ export default function FishingCalculatorPage() {
                     시간당 기대 수익
                   </span>
                 <span className="text-lg font-bold text-blue-700">
-                  {Math.floor(expectedValuePerHour).toString()}셀
+                  {formatCell(expectedValuePerHour)}셀
                 </span>
                 </div>
             </div>

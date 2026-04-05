@@ -21,6 +21,12 @@ import type {
   EnhancementLevel,
   EnhancementScrollType,
 } from "@/src/lib/enhancement/types";
+import {
+  formatCell,
+  formatDecimal,
+  formatInteger,
+  formatPercentFromRatio,
+} from "@/src/lib/format";
 
 /**
  * =========================
@@ -88,38 +94,38 @@ const INITIAL_FORM = {
   strategy9: DEFAULT_STRATEGY[9],
 };
 
-/**
- * 셀 값은 소수점 없이 정수만 표시
- *
- * 요구사항:
- * - 비용(셀)은 소수점 버림
- * - 예: 12345.99 -> 12,345셀
- *
- * 주의:
- * - 확률은 퍼센트 표시이므로 별도 포맷 함수 사용
- */
-function formatCell(value: number): string {
-  return Math.floor(Math.max(value, 0)).toLocaleString("ko-KR");
-}
+// /**
+//  * 셀 값은 소수점 없이 정수만 표시
+//  *
+//  * 요구사항:
+//  * - 비용(셀)은 소수점 버림
+//  * - 예: 12345.99 -> 12,345셀
+//  *
+//  * 주의:
+//  * - 확률은 퍼센트 표시이므로 별도 포맷 함수 사용
+//  */
+// function formatCell(value: number): string {
+//   return Math.floor(Math.max(value, 0)).toLocaleString("ko-KR");
+// }
 
-/**
- * 일반 숫자도 소수점 없이 보고 싶을 때 사용
- * 예: 기대 주문서 수량 안내 등
- */
-function formatInteger(value: number): string {
-  return Math.floor(Math.max(value, 0)).toLocaleString("ko-KR");
-}
+// /**
+//  * 일반 숫자도 소수점 없이 보고 싶을 때 사용
+//  * 예: 기대 주문서 수량 안내 등
+//  */
+// function formatInteger(value: number): string {
+//   return Math.floor(Math.max(value, 0)).toLocaleString("ko-KR");
+// }
 
-/**
- * 확률 표시용
- * - 확률은 정수%가 아니라 소수점까지 남겨두는 편이 읽기 좋다.
- */
-function formatPercentFromRatio(value: number, digits = 2): string {
-  return `${(value * 100).toLocaleString("ko-KR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  })}%`;
-}
+// /**
+//  * 확률 표시용
+//  * - 확률은 정수%가 아니라 소수점까지 남겨두는 편이 읽기 좋다.
+//  */
+// function formatPercentFromRatio(value: number, digits = 2): string {
+//   return `${(value * 100).toLocaleString("ko-KR", {
+//     minimumFractionDigits: 0,
+//     maximumFractionDigits: digits,
+//   })}%`;
+// }
 
 function createInitialInput(): EnhancementCalculationInput {
   return {

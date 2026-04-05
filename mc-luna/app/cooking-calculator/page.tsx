@@ -10,7 +10,7 @@ import NumberInput from "@/src/components/calculator/NumberInput";
 import SelectInput from "@/src/components/calculator/SelectInput";
 import ActionButton from "@/src/components/calculator/ActionButton";
 import ResultCard from "@/src/components/calculator/ResultCard";
-
+import { formatInteger } from "@/src/lib/format";
 import { calculateCooking } from "@/src/lib/cooking/calc";
 import { COOKING_RECIPES, getCookingRecipe } from "@/src/lib/cooking/recipes";
 import type {
