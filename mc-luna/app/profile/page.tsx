@@ -33,6 +33,12 @@ import type {
   ParsedStatValue,
 } from '../../src/types/life-profile';
 import { toast } from "sonner";
+import {
+  buildMinecraftHeadRenderUrl,
+  getMinecraftStatusMeta,
+  type MinecraftLinkStatus,
+  type MinecraftLookupResult,
+} from "../../src/lib/minecraft-profile";
 
 /**
  * profiles 테이블에서 가져오는 기본 프로필 타입
@@ -41,7 +47,11 @@ type Profile = {
   id: string;
   username: string | null;
   display_name: string | null;
-  plan_type: 'free' | 'pro';
+  plan_type: "free" | "pro";
+  minecraft_uuid: string | null;
+  minecraft_link_status: MinecraftLinkStatus;
+  minecraft_linked_at: string | null;
+  minecraft_verified_at: string | null;
 };
 
 type InputMode = 'import' | 'manual';
@@ -247,6 +257,97 @@ const COOKING_SKILL_LABELS: Record<string, string> = {
   banquetPreparation: '연회 준비',
 };
 
+const handleLookupMinecraftProfile = async () => {
+  try {
+    setMinecraftLookupLoading(true);
+    setMinecraftLookupError("");
+    setMinecraftPreview(null);
+
+    const trimmedNickname = minecraftNicknameInput.trim();
+
+    if (trimmedNickname === "") {
+      setMinecraftLookupError("마인크래프트 닉네임을 입력해주세요.");
+      return;
+    }
+
+    const response = await fetch(
+      `/api/minecraft/profile?nickname=${encodeURIComponent(trimmedNickname)}`,
+      { cache: "no-store" },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      setMinecraftLookupError(
+        data?.error ?? "마인크래프트 프로필 조회에 실패했습니다.",
+      );
+      return;
+    }
+
+    setMinecraftPreview(data);
+    setMinecraftModalOpen(true);
+  } catch (error) {
+    console.error("마인크래프트 프로필 조회 중 예외:", error);
+    setMinecraftLookupError("마인크래프트 프로필 조회 중 오류가 발생했습니다.");
+  } finally {
+    setMinecraftLookupLoading(false);
+  }
+};
+
+const handleConfirmMinecraftLink = async () => {
+  try {
+    if (!user || !profile || !minecraftPreview) return;
+
+    setMinecraftLinkSaving(true);
+    setMinecraftLookupError("");
+
+    const updatePayload = {
+      username: minecraftPreview.nickname,
+      minecraft_uuid: minecraftPreview.uuid,
+      minecraft_link_status: "linked" as const,
+      minecraft_linked_at: new Date().toISOString(),
+    };
+
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update(updatePayload)
+      .eq("id", user.id);
+
+    if (updateError) {
+      console.error("마인크래프트 연동 저장 실패:", updateError);
+      setMinecraftLookupError("마인크래프트 연동 저장 중 오류가 발생했습니다.");
+      return;
+    }
+
+    setProfile({
+      ...profile,
+      username: updatePayload.username,
+      minecraft_uuid: updatePayload.minecraft_uuid,
+      minecraft_link_status: updatePayload.minecraft_link_status,
+      minecraft_linked_at: updatePayload.minecraft_linked_at,
+    });
+
+    setMinecraftNicknameInput(updatePayload.username);
+    setMinecraftModalOpen(false);
+    setMinecraftPreview(null);
+
+    toast.success("마인크래프트 프로필이 연동되었습니다.");
+  } catch (error) {
+    console.error("마인크래프트 연동 저장 중 예외:", error);
+    setMinecraftLookupError("마인크래프트 연동 저장 중 오류가 발생했습니다.");
+  } finally {
+    setMinecraftLinkSaving(false);
+  }
+};
+
+const [minecraftNicknameInput, setMinecraftNicknameInput] = useState("");
+const [minecraftLookupLoading, setMinecraftLookupLoading] = useState(false);
+const [minecraftLookupError, setMinecraftLookupError] = useState("");
+const [minecraftPreview, setMinecraftPreview] =
+  useState<MinecraftLookupResult | null>(null);
+const [minecraftModalOpen, setMinecraftModalOpen] = useState(false);
+const [minecraftLinkSaving, setMinecraftLinkSaving] = useState(false);
+
 function toNumberValue(value: string): number {
   if (value.trim() === '') return 0;
   const num = Number(value);
@@ -434,7 +535,7 @@ export default function ProfilePage() {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, display_name, plan_type')
+        .select("id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at",)
         .eq('id', user.id)
         .single();
 

@@ -8,6 +8,11 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/src/lib/supabase";
 import ThemeToggleButton from "@/src/components/common/ThemeToggleButton";
 import GlobalNav from "@/src/components/common/GlobalNav";
+import {
+  buildMinecraftAvatarUrl,
+  getMinecraftStatusMeta,
+  type MinecraftLinkStatus,
+} from "@/src/lib/minecraft-profile";
 
 /**
  * =========================
@@ -24,6 +29,8 @@ import GlobalNav from "@/src/components/common/GlobalNav";
 type HeaderProfile = {
   username: string | null;
   display_name: string | null;
+  minecraft_uuid: string | null;
+  minecraft_link_status: MinecraftLinkStatus | null;
 };
 
 export default function GlobalHeader() {
@@ -47,7 +54,7 @@ export default function GlobalHeader() {
   const fetchProfile = useCallback(async (user: User) => {
     const { data, error } = await supabase
       .from("profiles")
-      .select("username, display_name")
+      .select("username, display_name, minecraft_uuid, minecraft_link_status")
       .eq("id", user.id)
       .single();
 
@@ -56,12 +63,16 @@ export default function GlobalHeader() {
       return {
         username: null,
         display_name: null,
+        minecraft_uuid: null,
+        minecraft_link_status: null,
       };
     }
 
     return {
       username: data?.username ?? null,
       display_name: data?.display_name ?? null,
+      minecraft_uuid: data?.minecraft_uuid ?? null,
+      minecraft_link_status: data?.minecraft_link_status ?? null,
     };
   }, []);
 
@@ -201,6 +212,11 @@ export default function GlobalHeader() {
     userEmail ||
     "사용자";
 
+  const minecraftAvatarUrl =
+    profile?.minecraft_uuid ? buildMinecraftAvatarUrl(profile.minecraft_uuid, 40) : null;
+
+  const minecraftStatusMeta = getMinecraftStatusMeta(profile?.minecraft_link_status);
+
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white/95 backdrop-blur">
       {/* =========================
@@ -258,22 +274,36 @@ export default function GlobalHeader() {
           <ThemeToggleButton />
 
           {loading ? (
-            <div className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-500 shadow-sm">
-              불러오는 중...
-            </div>
+            <div className="text-sm text-zinc-500">불러오는 중...</div>
           ) : userEmail ? (
             <>
               <Link
                 href="/profile"
-                className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-100"
+                className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50"
               >
-                {headerName}
+                {minecraftAvatarUrl ? (
+                  <img
+                    src={minecraftAvatarUrl}
+                    alt="마인크래프트 머리"
+                    className="h-8 w-8 rounded-md border border-zinc-200 object-cover"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 text-[11px] text-zinc-500">
+                    없음
+                  </div>
+                )}
+
+                <span>{headerName}</span>
+
+                <span className={minecraftStatusMeta.className}>
+                  {minecraftStatusMeta.label}
+                </span>
               </Link>
 
               <button
                 type="button"
                 onClick={handleLogout}
-                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700"
+                className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-zinc-700"
               >
                 로그아웃
               </button>
@@ -281,7 +311,7 @@ export default function GlobalHeader() {
           ) : (
             <Link
               href="/login"
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700"
+              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-zinc-700"
             >
               로그인
             </Link>
