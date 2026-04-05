@@ -3,6 +3,7 @@ import {
   buildMinecraftAvatarUrl,
   buildMinecraftBodyRenderUrl,
   buildMinecraftHeadRenderUrl,
+  buildMinecraftSkinUrl,
   normalizeMinecraftUuid,
 } from "@/src/lib/minecraft-profile";
 
@@ -57,9 +58,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       nickname: data.name,
       uuid,
-      avatarUrl: buildMinecraftAvatarUrl(uuid, 64),
-      headUrl: buildMinecraftHeadRenderUrl(uuid, 5),
-      bodyRenderUrl: buildMinecraftBodyRenderUrl(uuid, 5),
+      avatarUrl: buildMinecraftAvatarUrl(uuid, 96),
+      headUrl: buildMinecraftHeadRenderUrl(uuid, 6),
+      bodyRenderUrl: buildMinecraftBodyRenderUrl(uuid, 6),
+      skinUrl: buildMinecraftSkinUrl(uuid),
     });
   } catch (error) {
     console.error("마인크래프트 프로필 조회 중 예외:", error);

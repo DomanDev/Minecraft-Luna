@@ -34,7 +34,7 @@ import type {
 } from '../../src/types/life-profile';
 import { toast } from 'sonner';
 import {
-  buildMinecraftHeadRenderUrl,
+  buildStoredMinecraftHeadUrl,
   getMinecraftStatusMeta,
   type MinecraftLinkStatus,
   type MinecraftLookupResult,
@@ -465,34 +465,79 @@ export default function ProfilePage() {
     const fetchProfile = async () => {
       setProfileLoading(true);
 
-      const { data, error } = await supabase
+      /**
+       * 1차 조회:
+       * - 기존 profiles row가 있는지 확인
+       */
+      let { data, error } = await supabase
         .from('profiles')
         .select(
           'id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
         )
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
+
+      /**
+       * row가 없는 경우:
+       * - 첫 Discord 로그인 사용자일 수 있으므로
+       *   free 플랜 기본값으로 profiles를 즉시 생성
+       *
+       * 참고:
+       * - 원칙적으로는 DB trigger가 가장 안정적이다.
+       * - 하지만 개발 중 trigger가 아직 적용 안 되었을 수 있으므로
+       *   프론트에서도 1회 보정 로직을 둔다.
+       */
+      if (!data) {
+        const insertPayload = {
+          id: user.id,
+          username: null,
+          display_name: null,
+          plan_type: 'free' as const,
+          minecraft_uuid: null,
+          minecraft_link_status: 'needs_lookup' as const,
+          minecraft_linked_at: null,
+          minecraft_verified_at: null,
+        };
+
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .upsert(insertPayload, { onConflict: 'id' });
+
+        if (insertError) {
+          console.error(
+            '기본 profiles 생성 실패:',
+            JSON.stringify(insertError, null, 2),
+          );
+          console.error('기본 profiles 생성 실패 raw: ', insertError);
+        }
+
+        const retry = await supabase
+          .from('profiles')
+          .select(
+            'id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+          )
+          .eq('id', user.id)
+          .single();
+
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
+        console.error('프로필 조회 실패:', JSON.stringify(error, null, 2));
         console.error('프로필 조회 실패:', error);
         setProfile(null);
       } else {
         setProfile(data);
         setEditUsername(data?.username ?? '');
         setEditDisplayName(data?.display_name ?? '');
-
-        /**
-         * 마인크래프트 조회 input은 현재 저장된 username을 기본값으로 깔아준다.
-         * 이렇게 해야 이미 연동된 사용자가 프로필 페이지에 다시 들어왔을 때
-         * 입력칸과 실제 저장값이 어긋나지 않는다.
-         */
         setMinecraftNicknameInput(data?.username ?? '');
       }
 
       setProfileLoading(false);
     };
 
-    fetchProfile();
+    void fetchProfile();
   }, [user]);
 
   /**
@@ -570,6 +615,44 @@ export default function ProfilePage() {
     }));
   };
 
+  /**
+   * 상태 배지는 요약 카드 / 연동 섹션 / 헤더에서 동일한 의미를 쓰도록
+   * helper 결과를 한 번만 계산해서 재사용한다.
+   */
+  const minecraftStatusMeta = getMinecraftStatusMeta(
+    profile?.minecraft_link_status ?? 'needs_lookup',
+  );
+
+  /**
+   * 생활 정보 등록 가능 여부
+   *
+   * 기준:
+   * - username 존재
+   * - minecraft_uuid 존재
+   * - 상태가 조회 필요(needs_lookup)가 아님
+   *
+   * 즉, 최소한 마인크래프트 프로필 연동을 완료한 사용자만
+   * 생활 정보 등록을 허용한다.
+   */
+  const isMinecraftLinked =
+    Boolean(profile?.username) &&
+    Boolean(profile?.minecraft_uuid) &&
+    profile?.minecraft_link_status !== 'needs_lookup';
+
+  /**
+   * UUID가 있을 때 실제 표시용 머리 이미지 URL 생성
+   *
+   * 정책:
+   * - 프로필/모달/헤더에서 사용할 최종 이미지는 "작은 머리 이미지"로 통일
+   * - 큰 아바타/바디 렌더는 제거
+   * - 조회 응답에 avatarUrl이 오더라도,
+   *   이미 저장된 프로필 표시에는 UUID 기반 동일 규칙을 사용한다.
+   */
+  const linkedMinecraftHeadUrl = buildStoredMinecraftHeadUrl({
+    username: profile?.username,
+    uuid: profile?.minecraft_uuid,
+    size: 64,
+  });
   /**
    * 기본 프로필 저장
    *
@@ -667,8 +750,13 @@ export default function ProfilePage() {
    * 흐름:
    * 1) 사용자가 입력한 닉네임을 검사
    * 2) 내부 API(/api/minecraft/profile)로 조회
-   * 3) UUID / 스킨 미리보기를 받아옴
+   * 3) UUID / 머리 이미지 미리보기를 받아옴
    * 4) 확인 모달을 열어 사용자에게 한 번 더 확인시킴
+   *
+   * 주의:
+   * - 디버그 출력은 제거했다.
+   * - 이제는 큰 아바타/스킨 미리보기가 아니라
+   *   실제로 프로필/헤더에서 쓸 "머리 이미지" 위주로만 확인한다.
    */
   const handleLookupMinecraftProfile = async () => {
     try {
@@ -725,17 +813,22 @@ export default function ProfilePage() {
    */
   const handleConfirmMinecraftLink = async () => {
     try {
-      if (!user || !profile || !minecraftPreview) return;
+      if (!user) {
+        toast.error('사용자 정보를 확인할 수 없습니다.');
+        return;
+      }
+
+      if (!minecraftPreview) {
+        toast.error('조회된 마인크래프트 프로필이 없습니다.');
+        return;
+      }
 
       setMinecraftLinkSaving(true);
       setMinecraftLookupError('');
 
       /**
-       * 동일한 username(=마인크래프트 닉네임)을
-       * 다른 계정이 이미 쓰고 있는지 먼저 확인
-       *
-       * 이 체크를 먼저 해두면 DB unique 제약이 있든 없든
-       * 사용자에게 더 명확한 오류 메시지를 줄 수 있다.
+       * 같은 username(=마인크래프트 닉네임)을
+       * 다른 계정이 이미 사용 중인지 확인
        */
       const { data: existingUser, error: usernameCheckError } = await supabase
         .from('profiles')
@@ -745,55 +838,58 @@ export default function ProfilePage() {
         .maybeSingle();
 
       if (usernameCheckError) {
-        console.error('마인크래프트 유저명 중복 확인 실패:', usernameCheckError);
+        console.error('유저명 중복 확인 실패:', usernameCheckError);
         setMinecraftLookupError('유저명 중복 확인 중 오류가 발생했습니다.');
+        toast.error('유저명 중복 확인 중 오류가 발생했습니다.');
         return;
       }
 
       if (existingUser) {
-        setMinecraftLookupError('이미 다른 계정에서 사용 중인 마인크래프트 닉네임입니다.');
+        setMinecraftLookupError(
+          '이미 다른 계정에서 사용 중인 마인크래프트 닉네임입니다.',
+        );
+        toast.error('이미 다른 계정에서 사용 중인 마인크래프트 닉네임입니다.');
         return;
       }
 
       const updatePayload = {
+        id: user.id,
         username: minecraftPreview.nickname,
         minecraft_uuid: minecraftPreview.uuid,
         minecraft_link_status: 'linked' as const,
         minecraft_linked_at: new Date().toISOString(),
       };
 
-      const { error: updateError } = await supabase
+      /**
+       * update 대신 upsert를 써서
+       * profiles row가 아직 없는 경우도 함께 처리한다.
+       */
+      const { data: updatedProfile, error: upsertError } = await supabase
         .from('profiles')
-        .update(updatePayload)
-        .eq('id', user.id);
+        .upsert(updatePayload, { onConflict: 'id' })
+        .select(
+          'id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+        )
+        .single();
 
-      if (updateError) {
-        console.error('마인크래프트 연동 저장 실패:', updateError);
-        setMinecraftLookupError(
-          '마인크래프트 연동 저장 중 오류가 발생했습니다.',
-        );
+      if (upsertError) {
+        console.error('마인크래프트 연동 저장 실패:', upsertError);
+        setMinecraftLookupError('마인크래프트 연동 저장 중 오류가 발생했습니다.');
+        toast.error('마인크래프트 연동 저장 중 오류가 발생했습니다.');
         return;
       }
 
-      setProfile({
-        ...profile,
-        username: updatePayload.username,
-        minecraft_uuid: updatePayload.minecraft_uuid,
-        minecraft_link_status: updatePayload.minecraft_link_status,
-        minecraft_linked_at: updatePayload.minecraft_linked_at,
-      });
-
-      setEditUsername(updatePayload.username);
-      setMinecraftNicknameInput(updatePayload.username);
+      setProfile(updatedProfile);
+      setEditUsername(updatedProfile.username ?? '');
+      setMinecraftNicknameInput(updatedProfile.username ?? '');
       setMinecraftModalOpen(false);
       setMinecraftPreview(null);
 
       toast.success('마인크래프트 프로필이 연동되었습니다.');
     } catch (error) {
       console.error('마인크래프트 연동 저장 중 예외:', error);
-      setMinecraftLookupError(
-        '마인크래프트 연동 저장 중 오류가 발생했습니다.',
-      );
+      setMinecraftLookupError('마인크래프트 연동 저장 중 오류가 발생했습니다.');
+      toast.error('마인크래프트 연동 저장 중 오류가 발생했습니다.');
     } finally {
       setMinecraftLinkSaving(false);
     }
@@ -806,6 +902,14 @@ export default function ProfilePage() {
 
       if (!user) {
         const message = '사용자 정보를 불러올 수 없습니다.';
+        setSaveMessage(message);
+        toast.error(message);
+        return;
+      }
+
+      if (!isMinecraftLinked) {
+        const message =
+          '마인크래프트 프로필 연동 후에만 생활 정보를 등록할 수 있습니다.';
         setSaveMessage(message);
         toast.error(message);
         return;
@@ -851,12 +955,19 @@ export default function ProfilePage() {
         return;
       }
 
+      if (!isMinecraftLinked) {
+        const message =
+          '마인크래프트 프로필 연동 후에만 생활 정보를 등록할 수 있습니다.';
+        setSaveMessage(message);
+        toast.error(message);
+        return;
+      }
+
       /**
        * manual 입력값을 표준 구조로 변환해서 저장
        */
       const manualInput = buildManualLifeProfileInput(manualForm);
       const parsed = await saveManualLifeProfile(user.id, manualInput);
-
       setParsedPreview(parsed);
 
       setSaveMessage('직접 입력 프로필 저장 완료');
@@ -866,7 +977,6 @@ export default function ProfilePage() {
         error instanceof Error
           ? error.message
           : '직접 입력 저장 중 오류가 발생했습니다.';
-
       setSaveMessage(message);
       toast.error(message);
     } finally {
@@ -920,14 +1030,6 @@ export default function ProfilePage() {
       .map(([key, label]) => ({ key, label, level: cookingSkills[key] }));
   }, [parsedPreview]);
 
-  /**
-   * 상태 배지는 요약 카드 / 연동 섹션 / 헤더에서 동일한 의미를 쓰도록
-   * helper 결과를 한 번만 계산해서 재사용한다.
-   */
-  const minecraftStatusMeta = getMinecraftStatusMeta(
-    profile?.minecraft_link_status ?? 'needs_lookup',
-  );
-
   if (loading) {
     return <div className="p-6">로그인 확인 중...</div>;
   }
@@ -954,11 +1056,18 @@ export default function ProfilePage() {
           <div className="rounded-lg border p-4">
             <div className="text-sm text-gray-500">유저명</div>
             <div className="mt-2 flex items-center gap-3">
-              {profile?.minecraft_uuid ? (
+              {linkedMinecraftHeadUrl ? (
                 <img
-                  src={buildMinecraftHeadRenderUrl(profile.minecraft_uuid, 4)}
+                  src={linkedMinecraftHeadUrl}
                   alt="마인크래프트 머리"
                   className="h-12 w-12 rounded-lg border object-cover"
+                  onError={(e) => {
+                    /**
+                     * 저장 후 표시용 이미지는 머리 이미지 하나만 쓴다.
+                     * 로드 실패 시 이미지를 숨기고 기본 박스가 아닌 빈 상태로 처리한다.
+                     */
+                    e.currentTarget.style.display = 'none';
+                  }}
                 />
               ) : (
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg border bg-gray-100 text-xs text-gray-500">
@@ -1075,8 +1184,8 @@ export default function ProfilePage() {
           <div>
             <h2 className="text-lg font-semibold">마인크래프트 프로필 연동</h2>
             <p className="mt-1 text-sm text-gray-600">
-              닉네임을 조회해 스킨과 머리 모양을 확인한 뒤 연동합니다. 연동 시 조회된
-              닉네임이 유저명에 저장됩니다.
+              닉네임을 조회해 머리 이미지를 확인한 뒤 연동합니다. 연동 시 조회된 닉네임이
+              유저명에 저장됩니다.
             </p>
           </div>
 
@@ -1129,15 +1238,18 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {profile?.minecraft_uuid && (
+          {profile?.minecraft_uuid && linkedMinecraftHeadUrl && (
             <div className="rounded-xl border bg-gray-50 p-4">
               <div className="text-sm text-gray-500">현재 연동 정보</div>
 
               <div className="mt-3 flex items-center gap-3">
                 <img
-                  src={buildMinecraftHeadRenderUrl(profile.minecraft_uuid, 4)}
+                  src={linkedMinecraftHeadUrl}
                   alt="현재 연동된 마인크래프트 머리"
                   className="h-16 w-16 rounded-lg border object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
                 />
 
                 <div>
@@ -1165,6 +1277,13 @@ export default function ProfilePage() {
             정확도가 낮을 수 있습니다.
           </p>
         </div>
+
+        {!isMinecraftLinked && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            마인크래프트 프로필 연동을 완료한 사용자만 생활 정보를 등록할 수 있습니다.
+            먼저 위에서 닉네임 조회 및 연동을 완료해주세요.
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           <button
@@ -1206,7 +1325,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={handleSaveImportProfile}
-                disabled={saving || rawText.trim().length === 0}
+                disabled={saving || rawText.trim().length === 0 || !isMinecraftLinked}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {saving ? '저장 중...' : '파싱 후 저장'}
@@ -1607,11 +1726,12 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={handleSaveManualProfile}
-                disabled={saving}
+                disabled={saving || !isMinecraftLinked}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {saving ? '저장 중...' : '직접 입력 저장'}
               </button>
+
               <button
                 type="button"
                 onClick={resetManualState}
@@ -1733,39 +1853,38 @@ export default function ProfilePage() {
               </p>
             </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-[160px_1fr]">
-              <div className="rounded-xl border bg-gray-50 p-4">
-                <img
-                  src={minecraftPreview.bodyRenderUrl}
-                  alt="마인크래프트 스킨 미리보기"
-                  className="mx-auto h-auto w-full max-w-[120px] object-contain"
-                />
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
+            <div className="mt-5 rounded-xl border bg-gray-50 p-6">
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border bg-white">
                   <img
-                    src={minecraftPreview.headUrl}
+                    src={minecraftPreview.avatarUrl}
                     alt="마인크래프트 머리 미리보기"
-                    className="h-16 w-16 rounded-lg border object-cover"
+                    className="h-16 w-16 object-cover"
+                    onError={(e) => {
+                      /**
+                       * 조회 확인 모달도 동일한 "머리 이미지"만 사용한다.
+                       * 로딩 실패 시 이미지를 숨기고 박스만 유지한다.
+                       */
+                      e.currentTarget.style.display = 'none';
+                    }}
                   />
+                </div>
 
-                  <div>
-                    <div className="text-sm text-gray-500">조회된 닉네임</div>
-                    <div className="text-lg font-semibold">
-                      {minecraftPreview.nickname}
-                    </div>
+                <div>
+                  <div className="text-sm text-gray-500">조회된 닉네임</div>
+                  <div className="text-lg font-semibold">
+                    {minecraftPreview.nickname}
                   </div>
                 </div>
+              </div>
 
-                <div className="rounded-lg border bg-gray-50 p-3 break-all text-xs text-gray-600">
-                  UUID: {minecraftPreview.uuid}
-                </div>
+              <div className="mt-4 rounded-lg border bg-white p-3 break-all text-xs text-gray-600">
+                UUID: {minecraftPreview.uuid}
+              </div>
 
-                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-                  다른 사용자의 닉네임을 무단으로 연동하거나 사칭하는 행위는 서비스
-                  이용 제한 및 처벌 대상이 될 수 있습니다.
-                </div>
+              <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                다른 사용자의 닉네임을 무단으로 연동하거나 사칭하는 행위는 서비스
+                이용 제한 및 처벌 대상이 될 수 있습니다.
               </div>
             </div>
 
