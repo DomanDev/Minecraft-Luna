@@ -33,7 +33,7 @@ export const DEFAULT_FISHING_CONFIG: FishingCalcConfig = {
   baseGradeAdvanced: 30,
   baseGradeRare: 15,
 
-  luckGradeCoeff: 1.2,
+  luckGradeCoeff: 1.6,
 
   vanillaBasePercent: 20,
   vanillaLuckCoeff: 0.15,

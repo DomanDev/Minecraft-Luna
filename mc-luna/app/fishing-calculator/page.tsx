@@ -125,12 +125,12 @@ const INITIAL_FORM = {
   baitType: "none" as BaitType,
   groundbaitType: "none" as GroundbaitType,
   lureEnchantLevel: 3,
-  thirstMin: 10 as ThirstMin,
+  thirstMin: 15 as ThirstMin,
   useDoubleHook: false,
   useSchoolFishing: false,
   normalPrice: 10,
   advancedPrice: 20,
-  rarePrice: 40,
+  rarePrice: 60,
 };
 
 function createInitialCalculationInput(): FishingCalculationInput {
