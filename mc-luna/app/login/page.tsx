@@ -12,7 +12,7 @@ export default function LoginPage() {
 
       const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}/profile`
+          ? `https://congenial-goldfish-jjx764xjvwp93qqr5-3000.app.github.dev/profile`
           : undefined;
 
       const { error } = await supabase.auth.signInWithOAuth({

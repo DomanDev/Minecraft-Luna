@@ -32,13 +32,13 @@ import type {
   ParsedLifeProfile,
   ParsedStatValue,
 } from '../../src/types/life-profile';
-import { toast } from "sonner";
+import { toast } from 'sonner';
 import {
   buildMinecraftHeadRenderUrl,
   getMinecraftStatusMeta,
   type MinecraftLinkStatus,
   type MinecraftLookupResult,
-} from "../../src/lib/minecraft-profile";
+} from '../../src/lib/minecraft-profile';
 
 /**
  * profiles 테이블에서 가져오는 기본 프로필 타입
@@ -47,7 +47,7 @@ type Profile = {
   id: string;
   username: string | null;
   display_name: string | null;
-  plan_type: "free" | "pro";
+  plan_type: 'free' | 'pro';
   minecraft_uuid: string | null;
   minecraft_link_status: MinecraftLinkStatus;
   minecraft_linked_at: string | null;
@@ -257,97 +257,6 @@ const COOKING_SKILL_LABELS: Record<string, string> = {
   banquetPreparation: '연회 준비',
 };
 
-const handleLookupMinecraftProfile = async () => {
-  try {
-    setMinecraftLookupLoading(true);
-    setMinecraftLookupError("");
-    setMinecraftPreview(null);
-
-    const trimmedNickname = minecraftNicknameInput.trim();
-
-    if (trimmedNickname === "") {
-      setMinecraftLookupError("마인크래프트 닉네임을 입력해주세요.");
-      return;
-    }
-
-    const response = await fetch(
-      `/api/minecraft/profile?nickname=${encodeURIComponent(trimmedNickname)}`,
-      { cache: "no-store" },
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setMinecraftLookupError(
-        data?.error ?? "마인크래프트 프로필 조회에 실패했습니다.",
-      );
-      return;
-    }
-
-    setMinecraftPreview(data);
-    setMinecraftModalOpen(true);
-  } catch (error) {
-    console.error("마인크래프트 프로필 조회 중 예외:", error);
-    setMinecraftLookupError("마인크래프트 프로필 조회 중 오류가 발생했습니다.");
-  } finally {
-    setMinecraftLookupLoading(false);
-  }
-};
-
-const handleConfirmMinecraftLink = async () => {
-  try {
-    if (!user || !profile || !minecraftPreview) return;
-
-    setMinecraftLinkSaving(true);
-    setMinecraftLookupError("");
-
-    const updatePayload = {
-      username: minecraftPreview.nickname,
-      minecraft_uuid: minecraftPreview.uuid,
-      minecraft_link_status: "linked" as const,
-      minecraft_linked_at: new Date().toISOString(),
-    };
-
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update(updatePayload)
-      .eq("id", user.id);
-
-    if (updateError) {
-      console.error("마인크래프트 연동 저장 실패:", updateError);
-      setMinecraftLookupError("마인크래프트 연동 저장 중 오류가 발생했습니다.");
-      return;
-    }
-
-    setProfile({
-      ...profile,
-      username: updatePayload.username,
-      minecraft_uuid: updatePayload.minecraft_uuid,
-      minecraft_link_status: updatePayload.minecraft_link_status,
-      minecraft_linked_at: updatePayload.minecraft_linked_at,
-    });
-
-    setMinecraftNicknameInput(updatePayload.username);
-    setMinecraftModalOpen(false);
-    setMinecraftPreview(null);
-
-    toast.success("마인크래프트 프로필이 연동되었습니다.");
-  } catch (error) {
-    console.error("마인크래프트 연동 저장 중 예외:", error);
-    setMinecraftLookupError("마인크래프트 연동 저장 중 오류가 발생했습니다.");
-  } finally {
-    setMinecraftLinkSaving(false);
-  }
-};
-
-const [minecraftNicknameInput, setMinecraftNicknameInput] = useState("");
-const [minecraftLookupLoading, setMinecraftLookupLoading] = useState(false);
-const [minecraftLookupError, setMinecraftLookupError] = useState("");
-const [minecraftPreview, setMinecraftPreview] =
-  useState<MinecraftLookupResult | null>(null);
-const [minecraftModalOpen, setMinecraftModalOpen] = useState(false);
-const [minecraftLinkSaving, setMinecraftLinkSaving] = useState(false);
-
 function toNumberValue(value: string): number {
   if (value.trim() === '') return 0;
   const num = Number(value);
@@ -400,7 +309,6 @@ function buildManualLifeProfileInput(
           mastery: { total: form.common.mastery },
           dexterity: { total: form.common.dexterity },
           charisma: { total: form.common.charisma },
-
           normalCropReduction: { total: form.farming.codex.normalCropReduction },
         },
       },
@@ -413,7 +321,6 @@ function buildManualLifeProfileInput(
           mastery: { total: form.common.mastery },
           dexterity: { total: form.common.dexterity },
           charisma: { total: form.common.charisma },
-
           miningDelayReduction: { total: form.mining.codex.miningDelayReduction },
           miningDamageIncrease: { total: form.mining.codex.miningDamageIncrease },
         },
@@ -427,7 +334,6 @@ function buildManualLifeProfileInput(
           mastery: { total: form.common.mastery },
           dexterity: { total: form.common.dexterity },
           charisma: { total: form.common.charisma },
-
           cookingGradeUpChance: { total: form.cooking.codex.cookingGradeUpChance },
         },
       },
@@ -507,6 +413,17 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
+  /**
+   * 기본 프로필 수정용 state
+   *
+   * 정책 정리:
+   * - username:
+   *   마인크래프트 닉네임이 저장되는 기본 유저명
+   *   -> 직접 수정 대상이 아니라 "조회/연동"으로 갱신
+   * - display_name:
+   *   Pro 유저만 수정 가능한 한글 표시명
+   *   -> 있으면 사이트 표시 우선순위가 더 높음
+   */
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -523,6 +440,21 @@ export default function ProfilePage() {
   const [saveMessage, setSaveMessage] = useState('');
   const [parsedPreview, setParsedPreview] = useState<ParsedLifeProfile | null>(null);
 
+  /**
+   * 마인크래프트 프로필 연동 관련 state
+   *
+   * 중요:
+   * - 이 state들은 반드시 컴포넌트 내부에 있어야 한다.
+   * - 이전 버전처럼 컴포넌트 바깥에 두면 React hook 규칙 위반으로 컴파일이 깨진다.
+   */
+  const [minecraftNicknameInput, setMinecraftNicknameInput] = useState('');
+  const [minecraftLookupLoading, setMinecraftLookupLoading] = useState(false);
+  const [minecraftLookupError, setMinecraftLookupError] = useState('');
+  const [minecraftPreview, setMinecraftPreview] =
+    useState<MinecraftLookupResult | null>(null);
+  const [minecraftModalOpen, setMinecraftModalOpen] = useState(false);
+  const [minecraftLinkSaving, setMinecraftLinkSaving] = useState(false);
+
   useEffect(() => {
     if (!user) {
       setProfile(null);
@@ -535,7 +467,9 @@ export default function ProfilePage() {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select("id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at",)
+        .select(
+          'id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+        )
         .eq('id', user.id)
         .single();
 
@@ -546,6 +480,13 @@ export default function ProfilePage() {
         setProfile(data);
         setEditUsername(data?.username ?? '');
         setEditDisplayName(data?.display_name ?? '');
+
+        /**
+         * 마인크래프트 조회 input은 현재 저장된 username을 기본값으로 깔아준다.
+         * 이렇게 해야 이미 연동된 사용자가 프로필 페이지에 다시 들어왔을 때
+         * 입력칸과 실제 저장값이 어긋나지 않는다.
+         */
+        setMinecraftNicknameInput(data?.username ?? '');
       }
 
       setProfileLoading(false);
@@ -573,10 +514,7 @@ export default function ProfilePage() {
   /**
    * 직업 레벨 업데이트
    */
-  const updateJobLevel = (
-    job: ManualJobTab,
-    value: number,
-  ) => {
+  const updateJobLevel = (job: ManualJobTab, value: number) => {
     setManualForm((prev) => ({
       ...prev,
       [job]: {
@@ -635,10 +573,13 @@ export default function ProfilePage() {
   /**
    * 기본 프로필 저장
    *
-   * 정책:
-   * - 표시명: 모두 가능
-   * - 유저명: Pro만 가능
-   * - 유저명: 한글/영문/숫자/밑줄/마침표 허용
+   * 정책(최종):
+   * - 유저명(username):
+   *   마인크래프트 조회 후 연동된 닉네임이 저장되는 칸
+   *   -> 여기서는 직접 수정하지 않음
+   * - 표시명(display_name):
+   *   Pro 유저만 수정 가능한 한글/별칭 표시명
+   *   -> 값이 있으면 사이트 표시 우선순위가 더 높음
    */
   const handleSaveBasicProfile = async () => {
     try {
@@ -651,62 +592,40 @@ export default function ProfilePage() {
       }
 
       const trimmedDisplayName = editDisplayName.trim();
-      const trimmedUsername = editUsername.trim();
-
-      const canEditUsername = profile.plan_type === 'pro';
-      const isUsernameChanged = trimmedUsername !== (profile.username ?? '');
+      const canEditDisplayName = profile.plan_type === 'pro';
       const isDisplayNameChanged =
         trimmedDisplayName !== (profile.display_name ?? '');
 
-      if (!isUsernameChanged && !isDisplayNameChanged) {
+      if (!isDisplayNameChanged) {
         setProfileSaveMessage('변경된 내용이 없습니다.');
         return;
       }
 
-      if (isUsernameChanged && !canEditUsername) {
-        setProfileSaveMessage('유저명 변경은 Pro 유저만 가능합니다.');
+      if (!canEditDisplayName) {
+        setProfileSaveMessage('표시명 변경은 Pro 유저만 가능합니다.');
         return;
       }
 
-      if (isUsernameChanged) {
-        const usernameRegex = /^[가-힣a-zA-Z0-9._]{2,20}$/;
+      /**
+       * 표시명은 한글 별칭을 주로 상정하지만,
+       * 기존 정책과 호환되도록 비교적 넓은 문자셋을 허용한다.
+       */
+      if (trimmedDisplayName !== '') {
+        const displayNameRegex = /^[가-힣a-zA-Z0-9 ._]{2,30}$/;
 
-        if (!usernameRegex.test(trimmedUsername)) {
+        if (!displayNameRegex.test(trimmedDisplayName)) {
           setProfileSaveMessage(
-            '유저명은 2~20자의 한글, 영문, 숫자, 밑줄(_), 마침표(.)만 사용할 수 있습니다.',
+            '표시명은 2~30자의 한글, 영문, 숫자, 공백, 밑줄(_), 마침표(.)만 사용할 수 있습니다.',
           );
-          return;
-        }
-
-        const { data: existingUser, error: usernameCheckError } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('username', trimmedUsername)
-          .neq('id', user.id)
-          .maybeSingle();
-
-        if (usernameCheckError) {
-          console.error('유저명 중복 확인 실패:', usernameCheckError);
-          setProfileSaveMessage('유저명 중복 확인 중 오류가 발생했습니다.');
-          return;
-        }
-
-        if (existingUser) {
-          setProfileSaveMessage('이미 사용 중인 유저명입니다.');
           return;
         }
       }
 
       const updatePayload: {
         display_name: string | null;
-        username?: string | null;
       } = {
         display_name: trimmedDisplayName === '' ? null : trimmedDisplayName,
       };
-
-      if (isUsernameChanged && canEditUsername) {
-        updatePayload.username = trimmedUsername === '' ? null : trimmedUsername;
-      }
 
       const { error: updateError } = await supabase
         .from('profiles')
@@ -722,10 +641,6 @@ export default function ProfilePage() {
       const nextProfile: Profile = {
         ...profile,
         display_name: updatePayload.display_name,
-        username:
-          updatePayload.username !== undefined
-            ? updatePayload.username
-            : profile.username,
       };
 
       setProfile(nextProfile);
@@ -746,13 +661,151 @@ export default function ProfilePage() {
     setProfileSaveMessage('');
   };
 
+  /**
+   * 마인크래프트 닉네임 조회
+   *
+   * 흐름:
+   * 1) 사용자가 입력한 닉네임을 검사
+   * 2) 내부 API(/api/minecraft/profile)로 조회
+   * 3) UUID / 스킨 미리보기를 받아옴
+   * 4) 확인 모달을 열어 사용자에게 한 번 더 확인시킴
+   */
+  const handleLookupMinecraftProfile = async () => {
+    try {
+      setMinecraftLookupLoading(true);
+      setMinecraftLookupError('');
+      setMinecraftPreview(null);
+
+      const trimmedNickname = minecraftNicknameInput.trim();
+
+      if (trimmedNickname === '') {
+        setMinecraftLookupError('마인크래프트 닉네임을 입력해주세요.');
+        return;
+      }
+
+      const response = await fetch(
+        `/api/minecraft/profile?nickname=${encodeURIComponent(trimmedNickname)}`,
+        { cache: 'no-store' },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setMinecraftLookupError(
+          data?.error ?? '마인크래프트 프로필 조회에 실패했습니다.',
+        );
+        return;
+      }
+
+      setMinecraftPreview(data);
+      setMinecraftModalOpen(true);
+    } catch (error) {
+      console.error('마인크래프트 프로필 조회 중 예외:', error);
+      setMinecraftLookupError(
+        '마인크래프트 프로필 조회 중 오류가 발생했습니다.',
+      );
+    } finally {
+      setMinecraftLookupLoading(false);
+    }
+  };
+
+  /**
+   * 마인크래프트 연동 저장
+   *
+   * 정책:
+   * - 조회/확인한 닉네임을 username에 저장
+   * - uuid는 minecraft_uuid에 저장
+   * - 상태는 linked로 변경
+   * - display_name은 여기서 건드리지 않음
+   *
+   * 이유:
+   * - username = 마인크래프트 닉네임
+   * - display_name = Pro 전용 별칭
+   * 구조를 유지해야 하기 때문
+   */
+  const handleConfirmMinecraftLink = async () => {
+    try {
+      if (!user || !profile || !minecraftPreview) return;
+
+      setMinecraftLinkSaving(true);
+      setMinecraftLookupError('');
+
+      /**
+       * 동일한 username(=마인크래프트 닉네임)을
+       * 다른 계정이 이미 쓰고 있는지 먼저 확인
+       *
+       * 이 체크를 먼저 해두면 DB unique 제약이 있든 없든
+       * 사용자에게 더 명확한 오류 메시지를 줄 수 있다.
+       */
+      const { data: existingUser, error: usernameCheckError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', minecraftPreview.nickname)
+        .neq('id', user.id)
+        .maybeSingle();
+
+      if (usernameCheckError) {
+        console.error('마인크래프트 유저명 중복 확인 실패:', usernameCheckError);
+        setMinecraftLookupError('유저명 중복 확인 중 오류가 발생했습니다.');
+        return;
+      }
+
+      if (existingUser) {
+        setMinecraftLookupError('이미 다른 계정에서 사용 중인 마인크래프트 닉네임입니다.');
+        return;
+      }
+
+      const updatePayload = {
+        username: minecraftPreview.nickname,
+        minecraft_uuid: minecraftPreview.uuid,
+        minecraft_link_status: 'linked' as const,
+        minecraft_linked_at: new Date().toISOString(),
+      };
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('마인크래프트 연동 저장 실패:', updateError);
+        setMinecraftLookupError(
+          '마인크래프트 연동 저장 중 오류가 발생했습니다.',
+        );
+        return;
+      }
+
+      setProfile({
+        ...profile,
+        username: updatePayload.username,
+        minecraft_uuid: updatePayload.minecraft_uuid,
+        minecraft_link_status: updatePayload.minecraft_link_status,
+        minecraft_linked_at: updatePayload.minecraft_linked_at,
+      });
+
+      setEditUsername(updatePayload.username);
+      setMinecraftNicknameInput(updatePayload.username);
+      setMinecraftModalOpen(false);
+      setMinecraftPreview(null);
+
+      toast.success('마인크래프트 프로필이 연동되었습니다.');
+    } catch (error) {
+      console.error('마인크래프트 연동 저장 중 예외:', error);
+      setMinecraftLookupError(
+        '마인크래프트 연동 저장 중 오류가 발생했습니다.',
+      );
+    } finally {
+      setMinecraftLinkSaving(false);
+    }
+  };
+
   const handleSaveImportProfile = async () => {
     try {
       setSaving(true);
-      setSaveMessage("");
+      setSaveMessage('');
 
       if (!user) {
-        const message = "사용자 정보를 불러올 수 없습니다.";
+        const message = '사용자 정보를 불러올 수 없습니다.';
         setSaveMessage(message);
         toast.error(message);
         return;
@@ -772,13 +825,13 @@ export default function ProfilePage() {
        * - 토스트 메시지
        * 둘 다 표시
        */
-      setSaveMessage("생활 정보 가져오기 저장 완료");
-      toast.success("생활 정보가 저장되었습니다.");
+      setSaveMessage('생활 정보 가져오기 저장 완료');
+      toast.success('생활 정보가 저장되었습니다.');
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : "가져오기 저장 중 오류가 발생했습니다.";
+          : '가져오기 저장 중 오류가 발생했습니다.';
       setSaveMessage(message);
       toast.error(message);
     } finally {
@@ -789,10 +842,10 @@ export default function ProfilePage() {
   const handleSaveManualProfile = async () => {
     try {
       setSaving(true);
-      setSaveMessage("");
+      setSaveMessage('');
 
       if (!user) {
-        const message = "사용자 정보를 불러올 수 없습니다.";
+        const message = '사용자 정보를 불러올 수 없습니다.';
         setSaveMessage(message);
         toast.error(message);
         return;
@@ -806,13 +859,13 @@ export default function ProfilePage() {
 
       setParsedPreview(parsed);
 
-      setSaveMessage("직접 입력 프로필 저장 완료");
-      toast.success("프로필이 저장되었습니다.");
+      setSaveMessage('직접 입력 프로필 저장 완료');
+      toast.success('프로필이 저장되었습니다.');
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : "직접 입력 저장 중 오류가 발생했습니다.";
+          : '직접 입력 저장 중 오류가 발생했습니다.';
 
       setSaveMessage(message);
       toast.error(message);
@@ -867,6 +920,14 @@ export default function ProfilePage() {
       .map(([key, label]) => ({ key, label, level: cookingSkills[key] }));
   }, [parsedPreview]);
 
+  /**
+   * 상태 배지는 요약 카드 / 연동 섹션 / 헤더에서 동일한 의미를 쓰도록
+   * helper 결과를 한 번만 계산해서 재사용한다.
+   */
+  const minecraftStatusMeta = getMinecraftStatusMeta(
+    profile?.minecraft_link_status ?? 'needs_lookup',
+  );
+
   if (loading) {
     return <div className="p-6">로그인 확인 중...</div>;
   }
@@ -892,7 +953,28 @@ export default function ProfilePage() {
 
           <div className="rounded-lg border p-4">
             <div className="text-sm text-gray-500">유저명</div>
-            <div className="font-medium">{profile?.username ?? '-'}</div>
+            <div className="mt-2 flex items-center gap-3">
+              {profile?.minecraft_uuid ? (
+                <img
+                  src={buildMinecraftHeadRenderUrl(profile.minecraft_uuid, 4)}
+                  alt="마인크래프트 머리"
+                  className="h-12 w-12 rounded-lg border object-cover"
+                />
+              ) : (
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg border bg-gray-100 text-xs text-gray-500">
+                  없음
+                </div>
+              )}
+
+              <div>
+                <div className="font-medium">{profile?.username ?? '-'}</div>
+                <div className="mt-1">
+                  <span className={minecraftStatusMeta.className}>
+                    {minecraftStatusMeta.label}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="rounded-lg border p-4">
@@ -910,29 +992,15 @@ export default function ProfilePage() {
           <div>
             <h2 className="text-lg font-semibold">기본 프로필 수정</h2>
             <p className="mt-1 text-sm text-gray-600">
-              표시명은 누구나 변경할 수 있고, 유저명은 Pro 유저만 변경할 수 있습니다.
+              유저명은 마인크래프트 조회 후 연동된 닉네임이 저장되며, 표시명은 Pro 유저만
+              수정할 수 있는 별칭입니다.
             </p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1">
-              <div className="text-sm font-medium">표시명</div>
-              <input
-                type="text"
-                value={editDisplayName}
-                onChange={(e) => setEditDisplayName(e.target.value)}
-                placeholder="표시명을 입력하세요"
-                maxLength={30}
-                className="w-full rounded-lg border p-2"
-              />
-              <div className="text-xs text-gray-500">
-                빈칸으로 저장하면 표시명이 제거됩니다.
-              </div>
-            </label>
-
-            <label className="space-y-1">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <span>유저명</span>
+                <span>표시명</span>
                 {profile?.plan_type === 'pro' ? (
                   <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
                     Pro 수정 가능
@@ -943,23 +1011,35 @@ export default function ProfilePage() {
                   </span>
                 )}
               </div>
-
               <input
                 type="text"
-                value={editUsername}
-                onChange={(e) => setEditUsername(e.target.value)}
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
                 placeholder={
                   profile?.plan_type === 'pro'
-                    ? '유저명을 입력하세요'
+                    ? '한글 표시명을 입력하세요'
                     : 'Pro 유저만 수정 가능합니다'
                 }
-                maxLength={20}
+                maxLength={30}
                 disabled={profile?.plan_type !== 'pro'}
                 className="w-full rounded-lg border p-2 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
               />
-
               <div className="text-xs text-gray-500">
-                2~20자 한글, 영문, 숫자, 밑줄(_), 마침표(.) 사용 가능
+                빈칸으로 저장하면 표시명이 제거됩니다.
+              </div>
+            </label>
+
+            <label className="space-y-1">
+              <div className="text-sm font-medium">유저명</div>
+              <input
+                type="text"
+                value={editUsername}
+                readOnly
+                placeholder="마인크래프트 프로필 연동 시 자동으로 설정됩니다"
+                className="w-full rounded-lg border bg-gray-50 p-2 text-gray-700"
+              />
+              <div className="text-xs text-gray-500">
+                유저명은 아래 마인크래프트 프로필 연동에서 조회/확인 후 저장됩니다.
               </div>
             </label>
           </div>
@@ -987,6 +1067,91 @@ export default function ProfilePage() {
           {profileSaveMessage && (
             <div className="rounded-lg border bg-gray-50 p-3 text-sm">
               {profileSaveMessage}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4 rounded-xl border p-4">
+          <div>
+            <h2 className="text-lg font-semibold">마인크래프트 프로필 연동</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              닉네임을 조회해 스킨과 머리 모양을 확인한 뒤 연동합니다. 연동 시 조회된
+              닉네임이 유저명에 저장됩니다.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+            <div className="font-semibold">중요 안내</div>
+            <p className="mt-1">
+              다른 사용자의 마인크래프트 닉네임을 무단으로 연동하거나 사칭하는 행위는
+              서비스 이용 제한 및 추후 운영 정책에 따른 제재 대상이 될 수 있습니다.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+            <label className="space-y-1">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span>마인크래프트 닉네임</span>
+                <span className={minecraftStatusMeta.className}>
+                  {minecraftStatusMeta.label}
+                </span>
+              </div>
+
+              <input
+                type="text"
+                value={minecraftNicknameInput}
+                onChange={(e) => setMinecraftNicknameInput(e.target.value)}
+                placeholder="예: Steve"
+                maxLength={16}
+                className="w-full rounded-lg border p-2"
+              />
+
+              <div className="text-xs text-gray-500">
+                Java Edition 닉네임 기준으로 조회합니다.
+              </div>
+            </label>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={handleLookupMinecraftProfile}
+                disabled={minecraftLookupLoading}
+                className="rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {minecraftLookupLoading ? '조회 중...' : '조회'}
+              </button>
+            </div>
+          </div>
+
+          {minecraftLookupError && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              {minecraftLookupError}
+            </div>
+          )}
+
+          {profile?.minecraft_uuid && (
+            <div className="rounded-xl border bg-gray-50 p-4">
+              <div className="text-sm text-gray-500">현재 연동 정보</div>
+
+              <div className="mt-3 flex items-center gap-3">
+                <img
+                  src={buildMinecraftHeadRenderUrl(profile.minecraft_uuid, 4)}
+                  alt="현재 연동된 마인크래프트 머리"
+                  className="h-16 w-16 rounded-lg border object-cover"
+                />
+
+                <div>
+                  <div className="font-medium">{profile.username ?? '-'}</div>
+                  <div className="mt-1">
+                    <span className={minecraftStatusMeta.className}>
+                      {minecraftStatusMeta.label}
+                    </span>
+                  </div>
+                  <div className="mt-2 break-all text-xs text-gray-500">
+                    UUID: {profile.minecraft_uuid}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1068,6 +1233,7 @@ export default function ProfilePage() {
 
             <div className="space-y-3 rounded-xl border p-4">
               <h3 className="text-lg font-semibold">공통 스탯 (total 기준)</h3>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <NumberField
                   label="명성 레벨"
@@ -1446,7 +1612,6 @@ export default function ProfilePage() {
               >
                 {saving ? '저장 중...' : '직접 입력 저장'}
               </button>
-
               <button
                 type="button"
                 onClick={resetManualState}
@@ -1556,6 +1721,78 @@ export default function ProfilePage() {
             </div>
           </div>
         </section>
+      )}
+
+      {minecraftModalOpen && minecraftPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="space-y-1">
+              <h3 className="text-lg font-semibold">마인크래프트 프로필 확인</h3>
+              <p className="text-sm text-gray-600">
+                아래 프로필이 맞는지 확인한 뒤 연동을 완료하세요.
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-[160px_1fr]">
+              <div className="rounded-xl border bg-gray-50 p-4">
+                <img
+                  src={minecraftPreview.bodyRenderUrl}
+                  alt="마인크래프트 스킨 미리보기"
+                  className="mx-auto h-auto w-full max-w-[120px] object-contain"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <img
+                    src={minecraftPreview.headUrl}
+                    alt="마인크래프트 머리 미리보기"
+                    className="h-16 w-16 rounded-lg border object-cover"
+                  />
+
+                  <div>
+                    <div className="text-sm text-gray-500">조회된 닉네임</div>
+                    <div className="text-lg font-semibold">
+                      {minecraftPreview.nickname}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-gray-50 p-3 break-all text-xs text-gray-600">
+                  UUID: {minecraftPreview.uuid}
+                </div>
+
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                  다른 사용자의 닉네임을 무단으로 연동하거나 사칭하는 행위는 서비스
+                  이용 제한 및 처벌 대상이 될 수 있습니다.
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMinecraftModalOpen(false);
+                  setMinecraftPreview(null);
+                }}
+                disabled={minecraftLinkSaving}
+                className="rounded-lg bg-gray-500 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                취소
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmMinecraftLink}
+                disabled={minecraftLinkSaving}
+                className="rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {minecraftLinkSaving ? '연동 저장 중...' : '확인 후 연동'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
