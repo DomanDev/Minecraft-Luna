@@ -271,7 +271,7 @@ export default function GlobalHeader() {
             우측: 테마 + 닉네임 + 로그인/로그아웃
            ========================= */}
         <div className="flex items-center justify-end gap-2">
-          <ThemeToggleButton />
+          {/* <ThemeToggleButton /> */}
 
           {loading ? (
             <div className="text-sm text-zinc-500">불러오는 중...</div>
