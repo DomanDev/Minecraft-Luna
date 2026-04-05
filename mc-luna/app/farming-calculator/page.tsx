@@ -18,7 +18,13 @@ import SelectInput from "@/src/components/calculator/SelectInput";
 import ActionButton from "@/src/components/calculator/ActionButton";
 import ResultCard from "@/src/components/calculator/ResultCard";
 import { useRequireProfile } from "@/src/hooks/useRequireProfile";
-import { formatInteger } from "@/src/lib/format";
+import {
+  formatCell,
+  formatDecimal,
+  formatInteger,
+  formatPercent,
+  formatPercentFromRatio,
+} from "@/src/lib/format";
 
 const cropOptions: { value: FarmingCropType; label: string }[] = [
   { value: "cabbage", label: "양배추" },
@@ -713,28 +719,28 @@ export default function FarmingCalculatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>[풍년의 축복]일반 작물 감소비율</span>
-                <span>{formatNumber(result.intermediate.skillNormalReduction, 2)}</span>
+                <span>{formatDecimal(result.intermediate.skillNormalReduction, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>[도감]일반 작물 감소비율</span>
-                <span>{formatNumber(result.intermediate.codexNormalReduction, 2)}</span>
+                <span>{formatDecimal(result.intermediate.codexNormalReduction, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>총 일반 작물 감소비율</span>
-                <span>{formatNumber(result.intermediate.totalNormalReduction, 2)}</span>
+                <span>{formatDecimal(result.intermediate.totalNormalReduction, 2)}</span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>일반 가중치</span>
-                <span>{formatNumber(result.intermediate.normalWeight, 2)}</span>
+                <span>{formatDecimal(result.intermediate.normalWeight, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>고급 가중치</span>
-                <span>{formatNumber(result.intermediate.advancedWeight, 2)}</span>
+                <span>{formatDecimal(result.intermediate.advancedWeight, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>희귀 가중치</span>
-                <span>{formatNumber(result.intermediate.rareWeight, 2)}</span>
+                <span>{formatDecimal(result.intermediate.rareWeight, 2)}</span>
               </div>
               {/* <div className="flex justify-between">
                 <span>전체 가중치 합</span>
@@ -743,15 +749,15 @@ export default function FarmingCalculatorPage() {
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>일반 확률</span>
-                <span>{toPercent(result.intermediate.normalProbability, 2)}</span>
+                <span>{formatPercentFromRatio(result.intermediate.normalProbability, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>고급 확률</span>
-                <span>{toPercent(result.intermediate.advancedProbability, 2)}</span>
+                <span>{formatPercentFromRatio(result.intermediate.advancedProbability, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>희귀 확률</span>
-                <span>{toPercent(result.intermediate.rareProbability, 2)}</span>
+                <span>{formatPercentFromRatio(result.intermediate.rareProbability, 2)}</span>
               </div>
             </div>
           </ResultCard>
@@ -760,42 +766,42 @@ export default function FarmingCalculatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>씨앗 드롭률</span>
-                <span>{formatNumber(result.intermediate.seedDropRatePercent, 2)}%</span>
+                <span>{formatPercent(result.intermediate.seedDropRatePercent, 2)}</span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>유효 갈증 계수</span>
-                <span>{formatNumber(result.intermediate.effectiveThirstMultiplier, 4)}</span>
+                <span>{formatDecimal(result.intermediate.effectiveThirstMultiplier, 4)}</span>
               </div>
               <div className="flex justify-between">
                 <span>작물 2개 드롭률(갈증 적용 후)</span>
-                <span>{formatNumber(result.intermediate.effectiveThirstValue, 2)}%</span>
+                <span>{formatPercent(result.intermediate.effectiveThirstValue, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>작물 2개 드롭률(감각 적용 후)</span>
-                <span>{formatNumber(result.intermediate.doubleDropRatePercent, 2)}%</span>
+                <span>{formatPercent(result.intermediate.doubleDropRatePercent, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>수확 1회당 작물 개수</span>
-                <span>{formatNumber(result.intermediate.expectedCropsPerHarvestAttempt, 2)}개</span>
+                <span>{formatDecimal(result.intermediate.expectedCropsPerHarvestAttempt, 2)}개</span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>비옥한 토양 발동률</span>
-                <span>{formatNumber(result.intermediate.fertileSoilRatePercent, 2)}%</span>
+                <span>{formatPercent(result.intermediate.fertileSoilRatePercent, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>화분통 1개당 재배 횟수</span>
-                <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerPot, 2)}회</span>
+                <span>{formatDecimal(result.intermediate.expectedHarvestAttemptsPerPot, 2)}회</span>
               </div>
               <div className="flex justify-between">
                 <span>1사이클당 총 재배 횟수</span>
-                <span>{formatNumber(result.intermediate.expectedHarvestAttemptsPerCycle, 2)}회</span>
+                <span>{formatInteger(result.intermediate.expectedHarvestAttemptsPerCycle)}회</span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>1사이클당 총 작물 개수(작물 개수x재배 횟수)</span>
-                <span>{Math.floor(result.intermediate.expectedTotalCropsPerCycle).toLocaleString()}개</span>
+                <span>{formatInteger(result.intermediate.expectedTotalCropsPerCycle)}개</span>
               </div>
             </div>
           </ResultCard>
@@ -804,15 +810,15 @@ export default function FarmingCalculatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>일반 기대 개수</span>
-                <span>{Math.floor(result.normalExpectedCount).toLocaleString()}개</span>
+                <span>{formatInteger(result.normalExpectedCount)}개</span>
               </div>
               <div className="flex justify-between">
                 <span>고급 기대 개수</span>
-                <span>{Math.floor(result.advancedExpectedCount).toLocaleString()}개</span>
+                <span>{formatInteger(result.advancedExpectedCount)}개</span>
               </div>
               <div className="flex justify-between">
                 <span>희귀 기대 개수</span>
-                <span>{Math.floor(result.rareExpectedCount).toLocaleString()}개</span>
+                <span>{formatInteger(result.rareExpectedCount)}개</span>
               </div>
 
               <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
@@ -821,7 +827,7 @@ export default function FarmingCalculatorPage() {
                     1사이클 기대 수익
                   </span>
                   <span className="text-lg font-bold text-blue-700">
-                    {Math.floor(result.expectedRevenuePerCycle).toLocaleString()}셀
+                    {formatCell(result.expectedRevenuePerCycle)}셀
                   </span>
                 </div>
               </div>

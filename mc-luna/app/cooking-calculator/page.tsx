@@ -10,7 +10,6 @@ import NumberInput from "@/src/components/calculator/NumberInput";
 import SelectInput from "@/src/components/calculator/SelectInput";
 import ActionButton from "@/src/components/calculator/ActionButton";
 import ResultCard from "@/src/components/calculator/ResultCard";
-import { formatInteger } from "@/src/lib/format";
 import { calculateCooking } from "@/src/lib/cooking/calc";
 import { COOKING_RECIPES, getCookingRecipe } from "@/src/lib/cooking/recipes";
 import type {
@@ -19,6 +18,13 @@ import type {
   CookingRecipeId,
 } from "@/src/lib/cooking/types";
 import { useRequireProfile } from "@/src/hooks/useRequireProfile";
+import {
+  formatCell,
+  formatDecimal,
+  formatInteger,
+  formatPercent,
+  formatPercentFromRatio,
+} from "@/src/lib/format";
 
 const recipeOptions = COOKING_RECIPES.map((recipe) => ({
   value: recipe.id,
@@ -104,20 +110,9 @@ function createInitialCalculationInput(): CookingCalculationInput {
   };
 }
 
-function formatNumber(value: number, digits = 2): string {
-  return value.toLocaleString("ko-KR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  });
-}
-
-function formatPercent(value: number, digits = 2): string {
-  return `${formatNumber(value, digits)}%`;
-}
-
 function formatSeconds(value: number | null, digits = 1): string {
   if (value == null) return "-";
-  return `${formatNumber(value, digits)}초`;
+  return `${formatDecimal(value, digits)}초`;
 }
 
 function syncIngredientPrices(
@@ -844,7 +839,7 @@ export default function CookingCalculatorPage() {
               </div>
               <div className="flex justify-between">
                 <span>선택한 희귀 재료 수</span>
-                <span>{result.selectedRareIngredientCount}개</span>
+                <span>{formatInteger(result.selectedRareIngredientCount) }개</span>
               </div>
               <div className="flex justify-between">
                 <span>희귀 재료 추가 지속시간</span>
@@ -886,15 +881,15 @@ export default function CookingCalculatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>재료 원가</span>
-                <span>{formatNumber(result.ingredientCostPerCraft)}셀</span>
+                <span>{formatCell(result.ingredientCostPerCraft)}셀</span>
               </div>
               <div className="flex justify-between">
                 <span>1회 기대 매출</span>
-                <span>{formatNumber(result.expectedRevenuePerCraft)}셀</span>
+                <span>{formatCell(result.expectedRevenuePerCraft)}셀</span>
               </div>
               <div className="flex justify-between">
                 <span>1회 기대 순이익</span>
-                <span>{formatNumber(result.expectedNetProfitPerCraft)}셀</span>
+                <span>{formatCell(result.expectedNetProfitPerCraft)}셀</span>
               </div>
 
               <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
@@ -903,7 +898,7 @@ export default function CookingCalculatorPage() {
                     시간당 기대 순이익
                   </span>
                   <span className="text-lg font-bold text-blue-700">
-                    {Math.floor(result.expectedNetProfitPerHour).toLocaleString()}셀
+                    {formatCell(result.expectedNetProfitPerHour)}셀
                   </span>
                 </div>
               </div>

@@ -1124,7 +1124,7 @@ export default function FishingCalculatorPage() {
               <div className="flex justify-between">
                 <span>1사이클당 기대 낚시 횟수</span>
                 <span>
-                  {formatInteger(result.catchExpectation.catchCountPerCycle, 3)}회
+                  {formatInteger(result.catchExpectation.catchCountPerCycle)}회
                 </span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
@@ -1145,7 +1145,7 @@ export default function FishingCalculatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>물고기 1마리 기대가치</span>
-                <span>{formatCell(result.value.expectedValuePerFish, 2)}셀</span>
+                <span>{formatCell(result.value.expectedValuePerFish)}셀</span>
               </div>
               <div className="flex justify-between">
                 <span>시간당 커스텀 물고기 수</span>
