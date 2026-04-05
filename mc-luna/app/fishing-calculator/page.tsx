@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
 import { supabase } from "@/src/lib/supabase";
 import { calculateFishing } from "@/src/lib/fishing/calc";
 import type {
@@ -19,6 +18,7 @@ import NumberInput from "@/src/components/calculator/NumberInput";
 import SelectInput from "@/src/components/calculator/SelectInput";
 import ActionButton from "@/src/components/calculator/ActionButton";
 import ResultCard from "@/src/components/calculator/ResultCard";
+import { useRequireProfile } from "@/src/hooks/useRequireProfile";
 
 const baitOptions: {
   value: BaitType;
@@ -181,7 +181,26 @@ function formatRatioPercent(value: number, digits = 2): string {
 }
 
 export default function FishingCalculatorPage() {
-  const pathname = usePathname();
+  /**
+   * 페이지 진입 전 공통 가드
+   *
+   * 정책:
+   * - 로그인 안 되어 있으면 /login
+   * - 마인크래프트 프로필 연동이 안 되어 있으면 /profile
+   *
+   * 주의:
+   * - 아래의 기존 loadProfileToCalculator()는
+   *   "계산기 입력값 자동 불러오기" 역할이고,
+   * - 이 가드는
+   *   "이 페이지에 들어올 자격이 있는지"만 먼저 검사한다.
+   *
+   * 즉, 역할이 다르므로 둘 다 유지한다.
+   */
+  const { loading: guardLoading, allowed } = useRequireProfile({
+    loginMessage: "낚시 계산기를 사용하려면 로그인이 필요합니다.",
+    profileMessage: "낚시 계산기를 사용하려면 프로필 연동이 필요합니다.",
+  });
+
   const loadingProfileRef = useRef(false);
 
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -418,8 +437,11 @@ export default function FishingCalculatorPage() {
   ]);
 
   useEffect(() => {
+    if (guardLoading) return;
+    if (!allowed) return;
+
     loadProfileToCalculator();
-  }, []);
+  }, [guardLoading, allowed, loadProfileToCalculator]);
 
   const isProUser = planType === "pro";
   const disableProfileFields = profileLoaded && !isProUser;
@@ -613,6 +635,24 @@ export default function FishingCalculatorPage() {
     setIsExpDirty(false);
   };
 
+  /**
+   * 공통 가드 확인 중이거나 아직 접근이 허용되지 않은 경우
+   *
+   * - guardLoading: 로그인/프로필 연동 여부 검사 중
+   * - !allowed: 곧 리다이렉트될 예정이므로 본문 렌더링 방지
+   */
+  if (guardLoading || !allowed) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight text-zinc-100">
+          낚시 계산기
+        </h1>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-zinc-300">
+          로그인 및 프로필 연동 상태를 확인하고 있습니다.
+        </div>
+      </div>
+    );
+  }
   return (
     <CalculatorLayout
       title="낚시 계산기"

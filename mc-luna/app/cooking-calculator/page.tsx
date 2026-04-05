@@ -18,6 +18,7 @@ import type {
   CookingCalculationResult,
   CookingRecipeId,
 } from "@/src/lib/cooking/types";
+import { useRequireProfile } from "@/src/hooks/useRequireProfile";
 
 const recipeOptions = COOKING_RECIPES.map((recipe) => ({
   value: recipe.id,
@@ -148,6 +149,22 @@ function syncRareIngredientFlags(
 }
 
 export default function CookingCalculatorPage() {
+  /**
+   * 페이지 진입 전 공통 가드
+   *
+   * 정책:
+   * - 로그인 안 되어 있으면 /login
+   * - 마인크래프트 프로필 연동이 안 되어 있으면 /profile
+   *
+   * 요리 계산기 내부의 loadProfileToCalculator()는
+   * "입력값 자동 반영" 역할이고,
+   * 이 가드는
+   * "페이지 접근 허용 여부"만 먼저 검사한다.
+   */
+  const { loading: guardLoading, allowed } = useRequireProfile({
+    loginMessage: "요리 계산기를 사용하려면 로그인이 필요합니다.",
+    profileMessage: "요리 계산기를 사용하려면 프로필 연동이 필요합니다.",
+  });
   const loadingProfileRef = useRef(false);
   const hasLoadedProfileRef = useRef(false);
 
@@ -401,9 +418,16 @@ export default function CookingCalculatorPage() {
     rareIngredientFlags,
   ]);
 
+  /**
+   * 공통 가드를 통과한 뒤에만
+   * 프로필 기반 계산기 자동 입력값을 불러온다.
+   */
   useEffect(() => {
+    if (guardLoading) return;
+    if (!allowed) return;
+
     loadProfileToCalculator();
-  }, [loadProfileToCalculator]);
+  }, [guardLoading, allowed, loadProfileToCalculator]);
 
   useEffect(() => {
     const {
@@ -490,6 +514,22 @@ export default function CookingCalculatorPage() {
     setIsDirty(false);
   };
 
+  /**
+   * 공통 가드 확인 중이거나 아직 접근이 허용되지 않은 경우
+   */
+  if (guardLoading || !allowed) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight text-zinc-100">
+          요리 계산기
+        </h1>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-zinc-300">
+          로그인 및 프로필 연동 상태를 확인하고 있습니다.
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <CalculatorLayout
       title="요리 계산기"
