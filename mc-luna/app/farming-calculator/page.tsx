@@ -181,7 +181,7 @@ export default function FarmingCalculatorPage() {
   }, [oathOfCultivation]);
 
   const isProUser = planType === "pro";
-  const disableProfileFields = profileLoaded && !isProUser;
+  const disableProfileFields = planType !== "pro";
 
   const buildCalculationInput = (): FarmingCalculationInput => {
     return {
@@ -454,7 +454,6 @@ export default function FarmingCalculatorPage() {
 
   const handleReset = () => {
     setProfileLoaded(false);
-    setPlanType(null);
 
     setLuck(INITIAL_FORM.luck);
     setSense(INITIAL_FORM.sense);
@@ -520,7 +519,7 @@ export default function FarmingCalculatorPage() {
       </div>
     );
   }
-  
+
   return (
     <CalculatorLayout
       title="농사 계산기"

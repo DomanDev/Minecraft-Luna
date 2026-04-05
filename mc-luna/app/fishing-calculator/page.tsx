@@ -444,7 +444,7 @@ export default function FishingCalculatorPage() {
   }, [guardLoading, allowed, loadProfileToCalculator]);
 
   const isProUser = planType === "pro";
-  const disableProfileFields = profileLoaded && !isProUser;
+  const disableProfileFields = planType !== "pro";
   const disableDoubleHookCheckbox = doubleHook <= 0;
   const disableSchoolFishingCheckbox = schoolFishing <= 0;
 
@@ -522,7 +522,6 @@ export default function FishingCalculatorPage() {
 
   const handleReset = () => {
     setProfileLoaded(false);
-    setPlanType(null);
 
     setLuck(INITIAL_FORM.luck);
     setSense(INITIAL_FORM.sense);

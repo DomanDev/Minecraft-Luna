@@ -217,7 +217,7 @@ export default function CookingCalculatorPage() {
   const selectedRecipe = useMemo(() => getCookingRecipe(recipeId), [recipeId]);
 
   const isProUser = planType === "pro";
-  const disableProfileFields = profileLoaded && !isProUser;
+  const disableProfileFields = planType !== "pro";
 
   const buildCalculationInput = (): CookingCalculationInput => {
     return {
@@ -486,7 +486,6 @@ export default function CookingCalculatorPage() {
 
   const handleReset = () => {
     setProfileLoaded(false);
-    setPlanType(null);
 
     setMastery(INITIAL_FORM.mastery);
     setDexterity(INITIAL_FORM.dexterity);
@@ -529,7 +528,7 @@ export default function CookingCalculatorPage() {
       </div>
     );
   }
-  
+
   return (
     <CalculatorLayout
       title="요리 계산기"

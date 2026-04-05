@@ -495,7 +495,7 @@ export default function MiningCalculatorPage() {
   }, [guardLoading, allowed, loadProfileToCalculator]);
 
   const isProUser = planType === "pro";
-  const disableProfileFields = profileLoaded && !isProUser;
+  const disableProfileFields = planType !== "pro";
 
   const selectedOre = useMemo(
     () => oreOptions.find((item) => item.value === oreType),
@@ -533,7 +533,6 @@ export default function MiningCalculatorPage() {
   const handleReset = () => {
     hasLoadedProfileRef.current = false;
     setProfileLoaded(false);
-    setPlanType(null);
 
     setLuck(INITIAL_FORM.luck);
     setSense(INITIAL_FORM.sense);
