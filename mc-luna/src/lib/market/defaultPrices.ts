@@ -349,68 +349,113 @@ export const FISHING_MARKET_ITEMS: MarketPriceItem[] = [
   },
 ];
 
-/**
- * =========================
- * 채광 시세 기본값
- * =========================
- *
- * 현재 채광 계산기 상세 구현은 보류 상태이므로
- * 대표 광물 위주로 먼저 탭/DB 구조만 준비한다.
- */
 export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
+  /**
+   * =========================
+   * 재련 재료
+   * =========================
+   */
   {
-    key: "coal",
-    name: "석탄",
-    iconPath: "/icons/mining/coal.png",
+    key: "mithril_ore",
+    name: "미스릴 원석",
+    iconPath: "/icons/mining/mithril_ore.png",
     category: "mining",
     order: 1,
-    gradeType: "triple",
-    prices: { normal: 3, advanced: 6, rare: 10 },
+    gradeType: "single",
+    prices: { single: 120 },
   },
   {
-    key: "iron",
-    name: "철",
-    iconPath: "/icons/mining/iron.png",
+    key: "argentite_ore",
+    name: "아르젠타이트 원석",
+    iconPath: "/icons/mining/argentite_ore.png",
     category: "mining",
     order: 2,
-    gradeType: "triple",
-    prices: { normal: 5, advanced: 10, rare: 16 },
+    gradeType: "single",
+    prices: { single: 150 },
   },
   {
-    key: "gold",
-    name: "금",
-    iconPath: "/icons/mining/gold.png",
+    key: "vellium_ore",
+    name: "벨리움 원석",
+    iconPath: "/icons/mining/vellium_ore.png",
     category: "mining",
     order: 3,
-    gradeType: "triple",
-    prices: { normal: 7, advanced: 14, rare: 22 },
+    gradeType: "single",
+    prices: { single: 220 },
   },
   {
-    key: "redstone",
-    name: "레드스톤",
-    iconPath: "/icons/mining/redstone.png",
+    key: "magma_block",
+    name: "마그마 블록",
+    iconPath: "/icons/mining/magma_block.png",
     category: "mining",
     order: 4,
-    gradeType: "triple",
-    prices: { normal: 6, advanced: 12, rare: 18 },
+    gradeType: "single",
+    prices: { single: 35 },
   },
   {
-    key: "diamond",
-    name: "다이아몬드",
-    iconPath: "/icons/mining/diamond.png",
+    key: "netherite_ingot",
+    name: "네더라이트 주괴",
+    iconPath: "/icons/mining/netherite_ingot.png",
     category: "mining",
     order: 5,
+    gradeType: "single",
+    prices: { single: 1500 },
+  },
+
+  /**
+   * =========================
+   * 허름한 화로 결과물
+   * =========================
+   */
+  {
+    key: "mithril_ingot",
+    name: "미스릴 주괴",
+    iconPath: "/icons/mining/mithril_ingot.png",
+    category: "mining",
+    order: 10,
     gradeType: "triple",
-    prices: { normal: 12, advanced: 24, rare: 40 },
+    prices: { normal: 520, advanced: 880, rare: 1450 },
   },
   {
-    key: "netherite",
-    name: "네더라이트",
-    iconPath: "/icons/mining/netherite.png",
+    key: "argentite_ingot",
+    name: "아르젠타이트 주괴",
+    iconPath: "/icons/mining/argentite_ingot.png",
     category: "mining",
-    order: 6,
+    order: 11,
     gradeType: "triple",
-    prices: { normal: 20, advanced: 40, rare: 70 },
+    prices: { normal: 650, advanced: 1080, rare: 1780 },
+  },
+  {
+    key: "vellium_ingot",
+    name: "벨리움 주괴",
+    iconPath: "/icons/mining/vellium_ingot.png",
+    category: "mining",
+    order: 12,
+    gradeType: "triple",
+    prices: { normal: 980, advanced: 1650, rare: 2650 },
+  },
+
+  /**
+   * =========================
+   * 벨리움 합성 결과물
+   * =========================
+   */
+  {
+    key: "sturdy_vellium",
+    name: "단단한 벨리움",
+    iconPath: "/icons/mining/sturdy_vellium.png",
+    category: "mining",
+    order: 20,
+    gradeType: "single",
+    prices: { single: 4200 },
+  },
+  {
+    key: "pure_vellium",
+    name: "순수한 벨리움",
+    iconPath: "/icons/mining/pure_vellium.png",
+    category: "mining",
+    order: 21,
+    gradeType: "single",
+    prices: { single: 7800 },
   },
 ];
 

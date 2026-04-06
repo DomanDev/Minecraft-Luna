@@ -896,7 +896,7 @@ export default function FarmingCalculatorPage() {
             </Field>
           </div>
 
-          <h3 className="mb-3 mt-6 text-lg font-semibold">평균 시세</h3>
+          <h3 className="mb-3 mt-6 text-lg font-semibold">재료 시세</h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <Field label="일반">
                 <NumberInput
