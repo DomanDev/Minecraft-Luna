@@ -30,7 +30,7 @@ export const FARMING_MARKET_ITEMS: MarketPriceItem[] = [
     
   },
   {
-    key: "raddish",
+    key: "radish",
     name: "무",
     iconPath: "/icons/farming/radish.png",
     category: "farming",
