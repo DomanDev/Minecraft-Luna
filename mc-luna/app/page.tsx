@@ -253,9 +253,8 @@ export default function Home() {
             </h1>
 
             <p className="mt-4 max-w-3xl text-base leading-7 text-zinc-600 sm:text-lg">
-              낚시, 농사, 요리, 강화 계산기와 시세 확인, 아르카 거래 확장,
-              프로필 자동 반영 기능까지 연결하는 서비스형 메인 페이지입니다.
-              보기 좋은 감성보다 먼저, 바로 읽히는 정보 구조와 빠른 진입을 우선했습니다.
+              낚시, 농사, 채광, 요리, 강화 계산기와 시세 기록, 아르카 거래,
+              프로필 자동 반영 기능까지 <br/>연결하는 서비스형 메인 페이지입니다.
             </p>
 
             <div className="mt-6 flex flex-wrap gap-3">
@@ -276,13 +275,7 @@ export default function Home() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-              <p className="text-sm font-medium text-emerald-700">핵심 방향</p>
-              <p className="mt-2 text-2xl font-bold text-emerald-900">가독성 우선</p>
-              <p className="mt-2 text-sm leading-6 text-emerald-800">
-                흐린 반투명 카드보다 선명한 정보 구조로 정리
-              </p>
-            </div>
+
 
             <div className="rounded-2xl border border-sky-200 bg-sky-50 p-5">
               <p className="text-sm font-medium text-sky-700">확장 포인트</p>
@@ -306,7 +299,7 @@ export default function Home() {
       {/* =========================
           계산기 / 주요 기능 진입 카드
       ========================= */}
-      <section className="mt-8">
+      {/* <section className="mt-8">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold text-zinc-900">빠른 바로가기</h2>
@@ -356,16 +349,16 @@ export default function Home() {
             );
           })}
         </div>
-      </section>
+      </section> */}
 
       {/* =========================
           공지 / 패치노트 / 이벤트 / 점검
       ========================= */}
       <section className="mt-8">
-        <div className="mb-4">
+        <div className="mb-4">  
           <h2 className="text-2xl font-bold text-zinc-900">운영 안내</h2>
           <p className="mt-1 text-sm text-zinc-600">
-            공지사항, 패치노트, 이벤트, 점검 일정을 네 구간으로 나눠 한 번에 보이도록 배치합니다.
+            공지사항, 패치노트, 이벤트, 점검 일정을 확인할 수 있습니다.
           </p>
         </div>
 
@@ -403,11 +396,11 @@ export default function Home() {
             <div>
               <p className="text-sm font-semibold text-rose-700">Market Overview</p>
               <h2 className="mt-1 text-2xl font-bold text-zinc-900">아르카 시세 표</h2>
-              <p className="mt-2 text-sm leading-6 text-zinc-600">
+              {/* <p className="mt-2 text-sm leading-6 text-zinc-600">
                 메인에서도 한눈에 흐름을 볼 수 있게 크게 배치한 영역입니다.
                 현재 공개 코드 기준으로는 요약 카드 컴포넌트가 이미 있으므로,
                 우선은 그 흐름을 중심으로 메인용 표 UI를 안정적으로 확장하는 형태로 구성합니다.
-              </p>
+              </p> */}
             </div>
 
             <div className="flex flex-wrap gap-2">
