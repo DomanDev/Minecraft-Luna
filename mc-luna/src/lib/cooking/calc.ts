@@ -16,8 +16,8 @@ import type {
  * 이후 손질 달인은 별도 곱연산으로 추가 감소
  *
  * 3) 섭취 유지 시간
- * = 기본 시간 * (1 + 음식 효과연장 / 100)
- * 이후 맛의 균형은 별도 곱연산으로 추가 증가
+ * = 기본 시간 * (1 + 맛의 균형 / 100)
+ * 이후 희귀 재료 추가 지속시간 가산
  *
  * 4) 요리 성공 확률
  * = 기본 확률 + (0.3 * 노련함)
@@ -26,15 +26,28 @@ import type {
  * - 레시피별 규칙에 따라 효과/지속시간 증가
  * - 체크된 재료 라인은 "라인 1개"가 아니라 해당 quantity 전체를 희귀 재료로 계산
  *   예: 토마토 x3 체크 -> 희귀 재료 3개로 카운트
+ *
+ * 6) 즉시 완성 / 연회 준비
+ * - 즉시 완성:
+ *   발동 시 해당 1회 제작 시간이 0초가 된다고 가정
+ *
+ * - 연회 준비:
+ *   발동 시 "재료가 공짜"가 아니라
+ *   인벤에 있는 재료가 자동 투입되어 추가 제작이 진행된다고 가정
+ *   = 시간은 추가로 들지 않지만
+ *   = 재료 원가 / 매출 / 경험치는 추가 제작 기대값만큼 반영
+ *
+ * 이번 수정:
+ * - 액티브 스킬은 루나위키 수치표 기준으로 계산
+ * - 경험치는 사용자 입력값 유지
  */
 
 /**
  * -------------------------------------------------------
- * 스킬 테이블
+ * 패시브 스킬 테이블
  * -------------------------------------------------------
- * 위키는 정성 설명만 있고 레벨별 수치표는 공개하지 않으므로,
- * 아래 표는 프로젝트 내부 계산용 상수로 분리.
- * 나중에 실측값을 알게 되면 여기만 수정하면 됨.
+ * 손질 달인 / 맛의 균형 / 미식가 는
+ * 기존 표를 유지한다.
  */
 const PREPARATION_MASTER_REDUCTION_PERCENT: Record<number, number> = {
   0: 0,
@@ -138,6 +151,121 @@ const GOURMET_GRADE_UP_BONUS_PERCENT: Record<number, number> = {
   30: 60,
 };
 
+/**
+ * -------------------------------------------------------
+ * 액티브 스킬 테이블
+ * -------------------------------------------------------
+ * 루나위키 기준
+ *
+ * 즉시 완성:
+ * - 레벨별 "즉시 완성 확률 (%)"
+ *
+ * 연회 준비:
+ * - 레벨별 "다중 요리 확률 (%)"
+ * - 레벨별 "추가 요리 횟수"
+ */
+const INSTANT_COMPLETION_PROC_CHANCE_PERCENT: Record<number, number> = {
+  0: 0,
+  1: 3,
+  2: 4,
+  3: 5,
+  4: 6,
+  5: 7,
+  6: 8,
+  7: 9,
+  8: 10,
+  9: 11,
+  10: 12,
+  11: 14,
+  12: 16,
+  13: 18,
+  14: 20,
+  15: 22,
+  16: 24,
+  17: 26,
+  18: 28,
+  19: 30,
+  20: 31,
+  21: 32,
+  22: 33,
+  23: 34,
+  24: 35,
+  25: 36,
+  26: 37,
+  27: 38,
+  28: 39,
+  29: 39,
+  30: 40,
+};
+
+const BANQUET_PREPARATION_PROC_CHANCE_PERCENT: Record<number, number> = {
+  0: 0,
+  1: 8,
+  2: 10,
+  3: 12,
+  4: 14,
+  5: 16,
+  6: 18,
+  7: 20,
+  8: 22,
+  9: 24,
+  10: 26,
+  11: 28,
+  12: 30,
+  13: 32,
+  14: 34,
+  15: 36,
+  16: 38,
+  17: 40,
+  18: 42,
+  19: 44,
+  20: 46,
+  21: 48,
+  22: 50,
+  23: 52,
+  24: 54,
+  25: 56,
+  26: 58,
+  27: 60,
+  28: 62,
+  29: 64,
+  30: 70,
+};
+
+const BANQUET_PREPARATION_EXTRA_CRAFT_COUNT: Record<number, number> = {
+  0: 0,
+  1: 1,
+  2: 1,
+  3: 1,
+  4: 1,
+  5: 1,
+  6: 1,
+  7: 1,
+  8: 1,
+  9: 1,
+  10: 1,
+  11: 2,
+  12: 2,
+  13: 2,
+  14: 2,
+  15: 2,
+  16: 2,
+  17: 2,
+  18: 3,
+  19: 3,
+  20: 3,
+  21: 3,
+  22: 3,
+  23: 3,
+  24: 4,
+  25: 4,
+  26: 4,
+  27: 4,
+  28: 5,
+  29: 5,
+  30: 5,
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -145,6 +273,18 @@ function clamp(value: number, min: number, max: number): number {
 function round(value: number, digits = 4): number {
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
+}
+
+function getInstantCompletionProcChancePercent(level: number): number {
+  return INSTANT_COMPLETION_PROC_CHANCE_PERCENT[level] ?? 0;
+}
+
+function getBanquetPreparationProcChancePercent(level: number): number {
+  return BANQUET_PREPARATION_PROC_CHANCE_PERCENT[level] ?? 0;
+}
+
+function getBanquetPreparationExtraCraftCount(level: number): number {
+  return BANQUET_PREPARATION_EXTRA_CRAFT_COUNT[level] ?? 0;
 }
 
 export function calculateCooking(
@@ -157,16 +297,33 @@ export function calculateCooking(
     dexterity,
     cookingGradeUpChance,
     additionalCookTimeReductionPercent,
-    additionalFoodDurationBonusPercent,
   } = input.stats;
 
-  const { preparationMaster, balanceOfTaste, gourmet } = input.skills;
+  const {
+    preparationMaster,
+    balanceOfTaste,
+    gourmet,
+    instantCompletion,
+    banquetPreparation,
+    useInstantCompletion,
+    useBanquetPreparation,
+  } = input.skills;
 
+  /**
+   * -------------------------------------------------------
+   * 1) 1회 제작 기준 재료 원가
+   * -------------------------------------------------------
+   */
   const ingredientCostPerCraft = recipe.ingredients.reduce((sum, ingredient) => {
     const unitPrice = input.prices.ingredientUnitPrices[ingredient.id] ?? 0;
     return sum + unitPrice * ingredient.quantity;
   }, 0);
 
+  /**
+   * -------------------------------------------------------
+   * 2) 등급 / 성공 확률
+   * -------------------------------------------------------
+   */
   const dexterityGradeUpChancePercent = dexterity * 0.1;
   const gourmetGradeUpChancePercent =
     GOURMET_GRADE_UP_BONUS_PERCENT[gourmet] ?? 0;
@@ -191,7 +348,9 @@ export function calculateCooking(
   );
 
   /**
-   * 손재주 기본 시간 감소
+   * -------------------------------------------------------
+   * 3) 제작 시간
+   * -------------------------------------------------------
    */
   const dexterityTimeReductionSeconds =
     0.2 * dexterity * (1 - additionalCookTimeReductionPercent / 100);
@@ -201,10 +360,6 @@ export function calculateCooking(
     recipe.baseCraftTimeSeconds - dexterityTimeReductionSeconds,
   );
 
-  /**
-   * 손질 달인:
-   * 위키 설명상 손재주 감소와 별도 곱연산 중첩
-   */
   const preparationMasterReductionPercent =
     PREPARATION_MASTER_REDUCTION_PERCENT[preparationMaster] ?? 0;
 
@@ -213,14 +368,58 @@ export function calculateCooking(
     afterDexterityCraftTime * (1 - preparationMasterReductionPercent / 100),
   );
 
+  /**
+   * -------------------------------------------------------
+   * 4) 액티브 스킬 기대값
+   * -------------------------------------------------------
+   *
+   * 즉시 완성:
+   * - 발동 시 해당 1회 제작 시간이 0초
+   * - 기대 시간 = 기본시간 * (1 - 발동확률)
+   *
+   * 연회 준비:
+   * - 발동 시 추가 제작 횟수만큼 더 제작
+   * - 추가 제작 시간은 0초
+   * - 기대 제작 횟수 = 1 + (발동확률 * 추가 제작 횟수)
+   *
+   * 예:
+   * - 추가 제작 횟수 3, 발동확률 42%
+   * -> 기대 추가 제작 = 0.42 * 3 = 1.26회
+   * -> 기대 총 제작 = 2.26회
+   */
+  const instantCompletionProcChancePercent = useInstantCompletion
+    ? getInstantCompletionProcChancePercent(instantCompletion)
+    : 0;
+
+  const banquetPreparationProcChancePercent = useBanquetPreparation
+    ? getBanquetPreparationProcChancePercent(banquetPreparation)
+    : 0;
+
+  const banquetPreparationExtraCraftCount = useBanquetPreparation
+    ? getBanquetPreparationExtraCraftCount(banquetPreparation)
+    : 0;
+
+  const instantCompletionChanceRatio = instantCompletionProcChancePercent / 100;
+  const banquetPreparationChanceRatio = banquetPreparationProcChancePercent / 100;
+  const successChanceRatio = finalSuccessChancePercent / 100;
+
+  const expectedActionTimeSeconds =
+    finalCraftTimeSeconds * (1 - instantCompletionChanceRatio);
+
+  const expectedCraftCountPerAction =
+    1 + banquetPreparationChanceRatio * banquetPreparationExtraCraftCount;
+
+  const expectedSuccessfulCraftCountPerAction =
+    expectedCraftCountPerAction * successChanceRatio;
+
+  /**
+   * -------------------------------------------------------
+   * 5) 희귀 재료 효과
+   * -------------------------------------------------------
+   */
   const balanceOfTasteBonusPercent =
     BALANCE_OF_TASTE_DURATION_BONUS_PERCENT[balanceOfTaste] ?? 0;
 
-  /**
-   * 희귀 재료 선택 개수
-   * - 체크된 재료 라인의 quantity 전체를 희귀 재료 개수로 환산
-   *   예: 토마토 x3 체크 -> 3개
-   */
   const selectedRareIngredients = recipe.ingredients.filter(
     (ingredient) => input.rareIngredientFlags[ingredient.id] === true,
   );
@@ -279,21 +478,52 @@ export function calculateCooking(
     recipe.baseDurationSeconds == null
       ? null
       : recipe.baseDurationSeconds *
-          (1 + additionalFoodDurationBonusPercent / 100) *
           (1 + balanceOfTasteBonusPercent / 100) +
         rareIngredientDurationBonusSeconds;
 
+  /**
+   * -------------------------------------------------------
+   * 6) 수익 기대값
+   * -------------------------------------------------------
+   */
   const expectedRevenuePerCraft =
-    (finalSuccessChancePercent / 100) *
+    successChanceRatio *
     ((finalNormalChancePercent / 100) * input.prices.normalDishPrice +
       (finalSpecialChancePercent / 100) * input.prices.specialDishPrice);
+
+  const expectedRevenuePerAction =
+    expectedRevenuePerCraft * expectedCraftCountPerAction;
 
   const expectedNetProfitPerCraft =
     expectedRevenuePerCraft - ingredientCostPerCraft;
 
+  const expectedNetProfitPerAction =
+    expectedRevenuePerAction -
+    ingredientCostPerCraft * expectedCraftCountPerAction;
+
   const expectedNetProfitPerHour =
-    finalCraftTimeSeconds > 0
-      ? expectedNetProfitPerCraft * (3600 / finalCraftTimeSeconds)
+    expectedActionTimeSeconds > 0
+      ? expectedNetProfitPerAction * (3600 / expectedActionTimeSeconds)
+      : 0;
+
+  /**
+   * -------------------------------------------------------
+   * 7) 경험치 기대값
+   * -------------------------------------------------------
+   * - 경험치는 사용자 입력값 유지
+   * - 성공한 제작만 경험치를 준다고 가정
+   */
+  const experiencePerSuccessfulCraft = Math.max(
+    0,
+    input.experiencePerSuccessfulCraft,
+  );
+
+  const expectedExperiencePerAction =
+    experiencePerSuccessfulCraft * expectedSuccessfulCraftCountPerAction;
+
+  const expectedExperiencePerHour =
+    expectedActionTimeSeconds > 0
+      ? expectedExperiencePerAction * (3600 / expectedActionTimeSeconds)
       : 0;
 
   return {
@@ -325,12 +555,25 @@ export function calculateCooking(
     ),
     finalCraftTimeSeconds: round(finalCraftTimeSeconds, 2),
 
-    baseDurationSeconds: recipe.baseDurationSeconds,
-    balanceOfTasteBonusPercent: round(balanceOfTasteBonusPercent, 2),
-    additionalFoodDurationBonusPercent: round(
-      additionalFoodDurationBonusPercent,
+    useInstantCompletion,
+    useBanquetPreparation,
+    instantCompletionProcChancePercent: round(
+      instantCompletionProcChancePercent,
       2,
     ),
+    banquetPreparationProcChancePercent: round(
+      banquetPreparationProcChancePercent,
+      2,
+    ),
+    expectedActionTimeSeconds: round(expectedActionTimeSeconds, 2),
+    expectedCraftCountPerAction: round(expectedCraftCountPerAction, 4),
+    expectedSuccessfulCraftCountPerAction: round(
+      expectedSuccessfulCraftCountPerAction,
+      4,
+    ),
+
+    baseDurationSeconds: recipe.baseDurationSeconds,
+    balanceOfTasteBonusPercent: round(balanceOfTasteBonusPercent, 2),
     rareIngredientDurationBonusSeconds: round(
       rareIngredientDurationBonusSeconds,
       2,
@@ -342,7 +585,13 @@ export function calculateCooking(
     rareEffectSummaryLines,
 
     expectedRevenuePerCraft: round(expectedRevenuePerCraft, 2),
+    expectedRevenuePerAction: round(expectedRevenuePerAction, 2),
     expectedNetProfitPerCraft: round(expectedNetProfitPerCraft, 2),
+    expectedNetProfitPerAction: round(expectedNetProfitPerAction, 2),
     expectedNetProfitPerHour: round(expectedNetProfitPerHour, 2),
+
+    experiencePerSuccessfulCraft: round(experiencePerSuccessfulCraft, 2),
+    expectedExperiencePerAction: round(expectedExperiencePerAction, 2),
+    expectedExperiencePerHour: round(expectedExperiencePerHour, 2),
   };
 }

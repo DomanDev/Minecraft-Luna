@@ -61,13 +61,25 @@ const INITIAL_FORM = {
    * 일단 계산기 내부 입력값으로 둔다.
    */
   additionalCookTimeReductionPercent: 0,
-  additionalFoodDurationBonusPercent: 0,
 
   preparationMaster: 0,
   balanceOfTaste: 0,
   gourmet: 0,
   instantCompletion: 0,
   banquetPreparation: 0,
+
+  /**
+   * 액티브 스킬 사용 여부
+   * - 낚시 계산기처럼 "레벨이 있어도 체크해야 사용" 정책 적용
+   */
+  useInstantCompletion: false,
+  useBanquetPreparation: false,
+
+  /**
+   * 현재 공개 코드/업로드 파일에는 레시피별 정확한 경험치 테이블이 없으므로
+   * 우선 "1회 성공 경험치"를 입력값으로 둔다.
+   */
+  experiencePerSuccessfulCraft: 0,
 
   recipeId: "ssambap" as CookingRecipeId,
   normalDishPrice: 100,
@@ -201,9 +213,6 @@ function pickSavedCookingResultPrice(
   recipeId: CookingRecipeId,
   grade: Extract<MarketGrade, "normal_result" | "special_result">,
 ): number | null {
-  /**
-   * 1순위: 현재 기준 키 (recipeId)
-   */
   const currentRow = rows.find(
     (row) => row.item_key === recipeId && row.grade === grade,
   );
@@ -212,11 +221,6 @@ function pickSavedCookingResultPrice(
     return currentRow.price;
   }
 
-  /**
-   * 2순위: 이전 구형 키 호환
-   * - result:{recipeId}:normal
-   * - result:{recipeId}:special
-   */
   const legacyItemKey =
     grade === "normal_result"
       ? `result:${recipeId}:normal`
@@ -351,8 +355,6 @@ function createInitialCalculationInput(): CookingCalculationInput {
       cookingGradeUpChance: INITIAL_FORM.cookingGradeUpChance,
       additionalCookTimeReductionPercent:
         INITIAL_FORM.additionalCookTimeReductionPercent,
-      additionalFoodDurationBonusPercent:
-        INITIAL_FORM.additionalFoodDurationBonusPercent,
     },
     skills: {
       preparationMaster: INITIAL_FORM.preparationMaster,
@@ -360,12 +362,15 @@ function createInitialCalculationInput(): CookingCalculationInput {
       gourmet: INITIAL_FORM.gourmet,
       instantCompletion: INITIAL_FORM.instantCompletion,
       banquetPreparation: INITIAL_FORM.banquetPreparation,
+      useInstantCompletion: INITIAL_FORM.useInstantCompletion,
+      useBanquetPreparation: INITIAL_FORM.useBanquetPreparation,
     },
     prices: {
       normalDishPrice: initialNormalDishPrice,
       specialDishPrice: initialSpecialDishPrice,
       ingredientUnitPrices: initialIngredientPrices,
     },
+    experiencePerSuccessfulCraft: INITIAL_FORM.experiencePerSuccessfulCraft,
     rareIngredientFlags: initialRareFlags,
   };
 }
@@ -379,14 +384,6 @@ function syncIngredientPrices(
   const next: Record<string, number> = {};
 
   recipe.ingredients.forEach((ingredient) => {
-    /**
-     * 현재 레시피에 필요한 재료 키만 유지한다.
-     *
-     * 우선순위:
-     * 1) 이미 입력 중이던 현재 값
-     * 2) defaultPrices.ts 기본값(advanced / rare)
-     * 3) 없으면 0
-     */
     if (typeof current[ingredient.id] === "number") {
       next[ingredient.id] = current[ingredient.id];
       return;
@@ -452,13 +449,6 @@ export default function CookingCalculatorPage() {
 
   /**
    * 현재 선택 레시피 기준 시세를 자동으로 불러오는 중인지 여부
-   *
-   * 왜 필요한가?
-   * - recipeId 변경
-   * - 희귀 재료 체크 변경
-   * - 최초 프로필 로드 완료
-   * - auth state 변화
-   * 시점이 겹치면 동일한 조회가 짧은 시간에 중복될 수 있기 때문이다.
    */
   const loadingMarketPriceRef = useRef(false);
 
@@ -477,11 +467,6 @@ export default function CookingCalculatorPage() {
     setAdditionalCookTimeReductionPercent,
   ] = useState(INITIAL_FORM.additionalCookTimeReductionPercent);
 
-  const [
-    additionalFoodDurationBonusPercent,
-    setAdditionalFoodDurationBonusPercent,
-  ] = useState(INITIAL_FORM.additionalFoodDurationBonusPercent);
-
   const [preparationMaster, setPreparationMaster] = useState(
     INITIAL_FORM.preparationMaster,
   );
@@ -495,6 +480,24 @@ export default function CookingCalculatorPage() {
   const [banquetPreparation, setBanquetPreparation] = useState(
     INITIAL_FORM.banquetPreparation,
   );
+
+  /**
+   * 액티브 스킬 사용 여부
+   * - 레벨이 있어도 사용 체크를 해야 계산 반영
+   */
+  const [useInstantCompletion, setUseInstantCompletion] = useState(
+    INITIAL_FORM.useInstantCompletion,
+  );
+  const [useBanquetPreparation, setUseBanquetPreparation] = useState(
+    INITIAL_FORM.useBanquetPreparation,
+  );
+
+  /**
+   * 1회 성공 경험치 입력값
+   * - 정확한 서버 고정값 테이블 부재로 인해 현재는 입력값 방식
+   */
+  const [experiencePerSuccessfulCraft, setExperiencePerSuccessfulCraft] =
+    useState(INITIAL_FORM.experiencePerSuccessfulCraft);
 
   const [recipeId, setRecipeId] = useState<CookingRecipeId>(INITIAL_FORM.recipeId);
 
@@ -538,7 +541,6 @@ export default function CookingCalculatorPage() {
         dexterity,
         cookingGradeUpChance,
         additionalCookTimeReductionPercent,
-        additionalFoodDurationBonusPercent,
       },
       skills: {
         preparationMaster,
@@ -546,31 +548,19 @@ export default function CookingCalculatorPage() {
         gourmet,
         instantCompletion,
         banquetPreparation,
+        useInstantCompletion,
+        useBanquetPreparation,
       },
       prices: {
         normalDishPrice,
         specialDishPrice,
         ingredientUnitPrices,
       },
+      experiencePerSuccessfulCraft,
       rareIngredientFlags,
     };
   };
 
-  /**
-   * 현재 선택 레시피의 시세를 불러와
-   * 요리 계산기 입력 상태에 반영한다.
-   *
-   * 최종 정책:
-   * 1) 재료 단가
-   *    - 희귀 체크 해제(false): advanced
-   *    - 희귀 체크 선택(true): rare
-   *    - Pro 사용자면 farming / fishing 저장값 우선
-   *    - 없으면 defaultPrices.ts 하드코딩 기본값 사용
-   *
-   * 2) 결과물 시세
-   *    - cooking user_market_prices 저장값 우선
-   *    - 없으면 defaultPrices.ts의 요리 결과물 기본값 사용
-   */
   const applySavedMarketPriceToCalculator = useCallback(
     async (targetRecipeId: CookingRecipeId) => {
       if (loadingMarketPriceRef.current) return;
@@ -582,11 +572,6 @@ export default function CookingCalculatorPage() {
       try {
         const targetRecipe = getCookingRecipe(targetRecipeId);
 
-        /**
-         * 1) 먼저 현재 체크 상태를 반영한 defaultPrices 기본값으로 채운다.
-         *    - free 사용자는 여기서 끝난다.
-         *    - pro 사용자도 저장값이 없는 항목은 이 기본값을 fallback 으로 사용한다.
-         */
         const nextIngredientUnitPrices: Record<string, number> = {};
 
         targetRecipe.ingredients.forEach((ingredient) => {
@@ -633,10 +618,6 @@ export default function CookingCalculatorPage() {
             ? defaultSpecialDishPrice
             : INITIAL_FORM.specialDishPrice;
 
-        /**
-         * Free 사용자는 개인 저장 시세를 쓰지 않고
-         * 기본값만 반영한다.
-         */
         if (planType !== "pro") {
           setIngredientUnitPrices(nextIngredientUnitPrices);
           setNormalDishPrice(nextNormalDishPrice);
@@ -658,23 +639,12 @@ export default function CookingCalculatorPage() {
         const user = session?.user;
         if (!user) return;
 
-        /**
-         * 재료 기본 시세 출처:
-         * - farming
-         * - fishing
-         *
-         * 결과물 시세 출처:
-         * - cooking
-         */
         const [farmingRows, fishingRows, cookingRows] = await Promise.all([
           loadUserMarketPrices(user.id, "farming"),
           loadUserMarketPrices(user.id, "fishing"),
           loadUserMarketPrices(user.id, "cooking"),
         ]);
 
-        /**
-         * 2) Pro 사용자는 farming / fishing 저장값이 있으면 우선 적용
-         */
         targetRecipe.ingredients.forEach((ingredient) => {
           const category = getIngredientMarketCategory(ingredient.id);
 
@@ -713,9 +683,6 @@ export default function CookingCalculatorPage() {
           }
         });
 
-        /**
-         * 3) 결과물 시세는 cooking 저장값 우선
-         */
         const savedNormalDishPrice = pickSavedCookingResultPrice(
           cookingRows,
           targetRecipeId,
@@ -750,21 +717,6 @@ export default function CookingCalculatorPage() {
     [allowed, guardLoading, planType, rareIngredientFlags],
   );
 
-  /**
-   * 현재 선택 레시피의 재료 시세 + 결과물 시세를 user_market_prices 에 저장한다.
-   *
-   * 저장 정책:
-   * 1) 재료 단가:
-   *    - 농작물 재료 -> farming
-   *    - 물고기/수산 재료 -> fishing
-   *    - 희귀 체크 해제(false): advanced
-   *    - 희귀 체크 선택(true): rare
-   *
-   * 2) 결과물 시세:
-   *    - item_key = recipeId
-   *    - grade = normal_result / special_result
-   *    - cooking 카테고리에 저장
-   */
   const handleSaveCurrentRecipePrice = useCallback(async () => {
     if (!isProUser) {
       toast.error("시세 저장은 Pro 사용자만 가능합니다.");
@@ -792,13 +744,6 @@ export default function CookingCalculatorPage() {
 
       const rows: UserMarketPriceRow[] = [];
 
-      /**
-       * 1) 현재 레시피 재료 단가 저장
-       *
-       * 저장 정책:
-       * - category: farming / fishing
-       * - grade: advanced / rare
-       */
       selectedRecipe.ingredients.forEach((ingredient) => {
         const category = getIngredientMarketCategory(ingredient.id);
 
@@ -817,11 +762,6 @@ export default function CookingCalculatorPage() {
         });
       });
 
-      /**
-       * 2) 현재 레시피 결과물 시세 저장
-       *
-       * 결과물은 요리 레시피별 시세이므로 cooking 카테고리에 저장한다.
-       */
       rows.push({
         user_id: user.id,
         category: "cooking",
@@ -841,11 +781,6 @@ export default function CookingCalculatorPage() {
       await upsertUserMarketPrices(rows);
 
       toast.success("현재 레시피 재료/결과물 시세를 저장했습니다.");
-
-      /**
-       * 저장 직후 다시 자동 불러오기를 실행해
-       * 화면 상태를 DB 기준으로 한 번 더 정렬한다.
-       */
       await applySavedMarketPriceToCalculator(recipeId);
     } catch (error) {
       console.error("현재 레시피 재료/결과물 시세 저장 실패:", error);
@@ -863,9 +798,6 @@ export default function CookingCalculatorPage() {
   ]);
 
   const loadProfileToCalculator = useCallback(async () => {
-    /**
-     * 최초 1회만 프로필 로드
-     */
     if (loadingProfileRef.current) return;
     if (hasLoadedProfileRef.current) return;
 
@@ -988,6 +920,15 @@ export default function CookingCalculatorPage() {
       setGourmet(nextGourmet);
       setInstantCompletion(nextInstantCompletion);
       setBanquetPreparation(nextBanquetPreparation);
+
+      /**
+       * 액티브 스킬은 자동으로 켜지지 않게 한다.
+       * - 레벨은 불러오되
+       * - 실제 사용 여부는 체크박스로 사용자가 선택
+       */
+      setUseInstantCompletion(false);
+      setUseBanquetPreparation(false);
+
       setPlanType(nextPlanType);
       setProfileLoaded(true);
 
@@ -998,7 +939,6 @@ export default function CookingCalculatorPage() {
           dexterity: nextDexterity,
           cookingGradeUpChance: nextCookingGradeUpChance,
           additionalCookTimeReductionPercent,
-          additionalFoodDurationBonusPercent,
         },
         skills: {
           preparationMaster: nextPreparationMaster,
@@ -1006,21 +946,20 @@ export default function CookingCalculatorPage() {
           gourmet: nextGourmet,
           instantCompletion: nextInstantCompletion,
           banquetPreparation: nextBanquetPreparation,
+          useInstantCompletion: false,
+          useBanquetPreparation: false,
         },
         prices: {
           normalDishPrice,
           specialDishPrice,
           ingredientUnitPrices,
         },
+        experiencePerSuccessfulCraft,
         rareIngredientFlags,
       });
 
       setResult(nextResult);
       setIsDirty(false);
-
-      /**
-       * 최초 1회 로드 완료 표시
-       */
       hasLoadedProfileRef.current = true;
     } finally {
       loadingProfileRef.current = false;
@@ -1028,17 +967,13 @@ export default function CookingCalculatorPage() {
   }, [
     recipeId,
     additionalCookTimeReductionPercent,
-    additionalFoodDurationBonusPercent,
     normalDishPrice,
     specialDishPrice,
     ingredientUnitPrices,
     rareIngredientFlags,
+    experiencePerSuccessfulCraft,
   ]);
 
-  /**
-   * 공통 가드를 통과한 뒤에만
-   * 프로필 기반 계산기 자동 입력값을 불러온다.
-   */
   useEffect(() => {
     if (guardLoading) return;
     if (!allowed) return;
@@ -1046,23 +981,6 @@ export default function CookingCalculatorPage() {
     void loadProfileToCalculator();
   }, [guardLoading, allowed, loadProfileToCalculator]);
 
-  /**
-   * 현재 선택 레시피의 시세를 자동 반영한다.
-   *
-   * 중요:
-   * - 이전에는 profileLoaded 가 true 여야만 실행됐는데,
-   *   이 경우 cooking_profiles 로드가 끝나지 않으면
-   *   재료/결과물 시세 자동 반영까지 같이 막히는 문제가 있었다.
-   *
-   * - 하지만 시세 자동 로딩은
-   *   cooking_profiles 성공 여부와 직접 관계가 없다.
-   *   로그인 + 접근 허용이면 getSession 기반으로 읽을 수 있다.
-   *
-   * 또한 현재 정책상
-   * - 레시피 변경 시
-   * - 희귀 재료 체크 상태 변경 시
-   * 다시 불러와야 한다.
-   */
   useEffect(() => {
     if (guardLoading) return;
     if (!allowed) return;
@@ -1083,10 +1001,6 @@ export default function CookingCalculatorPage() {
       if (!session?.user) {
         setPlanType(null);
         setProfileLoaded(false);
-
-        /**
-         * 로그아웃 시 다음 로그인에 다시 1회 로드할 수 있도록 리셋
-         */
         hasLoadedProfileRef.current = false;
         return;
       }
@@ -1102,19 +1016,12 @@ export default function CookingCalculatorPage() {
   }, [loadProfileToCalculator]);
 
   useEffect(() => {
-    /**
-     * 레시피 변경 시 현재 레시피에 필요한 재료 키만 유지한다.
-     * 없는 재료는 현재 희귀 체크 상태 기준 defaultPrices 로 초기화한다.
-     */
     setIngredientUnitPrices((prev) =>
       syncIngredientPrices(recipeId, prev, rareIngredientFlags),
     );
   }, [recipeId, rareIngredientFlags]);
 
   useEffect(() => {
-    /**
-     * 레시피 변경 시 현재 레시피 재료들만 희귀 체크 상태를 유지한다.
-     */
     setRareIngredientFlags((prev) => syncRareIngredientFlags(recipeId, prev));
   }, [recipeId]);
 
@@ -1127,17 +1034,19 @@ export default function CookingCalculatorPage() {
     dexterity,
     cookingGradeUpChance,
     additionalCookTimeReductionPercent,
-    additionalFoodDurationBonusPercent,
     preparationMaster,
     balanceOfTaste,
     gourmet,
     instantCompletion,
     banquetPreparation,
+    useInstantCompletion,
+    useBanquetPreparation,
     recipeId,
     ingredientUnitPrices,
     rareIngredientFlags,
     normalDishPrice,
     specialDishPrice,
+    experiencePerSuccessfulCraft,
   ]);
 
   const handleReset = () => {
@@ -1163,15 +1072,16 @@ export default function CookingCalculatorPage() {
     setAdditionalCookTimeReductionPercent(
       INITIAL_FORM.additionalCookTimeReductionPercent,
     );
-    setAdditionalFoodDurationBonusPercent(
-      INITIAL_FORM.additionalFoodDurationBonusPercent,
-    );
 
     setPreparationMaster(INITIAL_FORM.preparationMaster);
     setBalanceOfTaste(INITIAL_FORM.balanceOfTaste);
     setGourmet(INITIAL_FORM.gourmet);
     setInstantCompletion(INITIAL_FORM.instantCompletion);
     setBanquetPreparation(INITIAL_FORM.banquetPreparation);
+
+    setUseInstantCompletion(INITIAL_FORM.useInstantCompletion);
+    setUseBanquetPreparation(INITIAL_FORM.useBanquetPreparation);
+    setExperiencePerSuccessfulCraft(INITIAL_FORM.experiencePerSuccessfulCraft);
 
     setRecipeId(INITIAL_FORM.recipeId);
     setIngredientUnitPrices(resetIngredientPrices);
@@ -1182,9 +1092,6 @@ export default function CookingCalculatorPage() {
     setIsDirty(false);
   };
 
-  /**
-   * 공통 가드 확인 중이거나 아직 접근이 허용되지 않은 경우
-   */
   if (guardLoading || !allowed) {
     return (
       <div className="space-y-6">
@@ -1215,6 +1122,9 @@ export default function CookingCalculatorPage() {
               <p className="mt-2 text-xs text-gray-600">
                 * 도감-요리 등급업 확률은 항상 회색 비활성 입력으로 표시됩니다.
               </p>
+              <p className="mt-1 text-xs text-gray-600">
+                * 즉시 완성 / 연회 준비는 레벨을 불러오되, 실제 계산 반영은 체크박스로 켭니다.
+              </p>
             </div>
           )}
 
@@ -1228,11 +1138,6 @@ export default function CookingCalculatorPage() {
                   onChange={(value) => {
                     const nextRecipeId = value as CookingRecipeId;
 
-                    /**
-                     * 레시피만 먼저 변경한다.
-                     * 시세 자동 반영은 recipeId 변경 useEffect에서 처리한다.
-                     * 이렇게 하면 중복 조회를 피할 수 있다.
-                     */
                     setRecipeId(nextRecipeId);
                     setIsDirty(true);
                   }}
@@ -1302,7 +1207,11 @@ export default function CookingCalculatorPage() {
 
           <div className="mt-6">
             <h3 className="mb-3 text-lg font-semibold">요리 스킬</h3>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+
+            {/* =========================
+                1행: 패시브 스킬 3개
+            ========================= */}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <Field label="손질 달인">
                 <NumberInput
                   value={preparationMaster}
@@ -1335,18 +1244,90 @@ export default function CookingCalculatorPage() {
                   disabled={disableProfileFields}
                 />
               </Field>
+            </div>
 
+            {/* =========================
+                2행: 액티브 스킬 2개
+                - 즉시 완성을 아래 줄로 내려
+                  연회 준비와 같은 줄에 배치
+                - Pro는 레벨 수정 가능
+                - Free는 비활성
+            ========================= */}
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="즉시 완성">
-                <div className="w-full rounded-xl border bg-gray-100 px-3 py-2 text-gray-700">
-                  Lv.{instantCompletion}
+                <div className="space-y-2">
+                  <NumberInput
+                    value={instantCompletion}
+                    onChange={(value) => {
+                      setInstantCompletion(value);
+                      setIsDirty(true);
+                    }}
+                    disabled={disableProfileFields}
+                  />
+
+                  {instantCompletion > 0 ? (
+                    <label className="flex items-center gap-2 text-sm text-zinc-700">
+                      <input
+                        type="checkbox"
+                        checked={useInstantCompletion}
+                        onChange={(e) => {
+                          setUseInstantCompletion(e.target.checked);
+                          setIsDirty(true);
+                        }}
+                      />
+                      액티브 스킬 사용
+                    </label>
+                  ) : (
+                    <div className="text-xs text-zinc-500">
+                      현재 레벨이 0이므로 사용할 수 없습니다.
+                    </div>
+                  )}
                 </div>
               </Field>
 
               <Field label="연회 준비">
-                <div className="w-full rounded-xl border bg-gray-100 px-3 py-2 text-gray-700">
-                  Lv.{banquetPreparation}
+                <div className="space-y-2">
+                  <NumberInput
+                    value={banquetPreparation}
+                    onChange={(value) => {
+                      setBanquetPreparation(value);
+                      setIsDirty(true);
+                    }}
+                    disabled={disableProfileFields}
+                  />
+
+                  {banquetPreparation > 0 ? (
+                    <label className="flex items-center gap-2 text-sm text-zinc-700">
+                      <input
+                        type="checkbox"
+                        checked={useBanquetPreparation}
+                        onChange={(e) => {
+                          setUseBanquetPreparation(e.target.checked);
+                          setIsDirty(true);
+                        }}
+                      />
+                      액티브 스킬 사용
+                    </label>
+                  ) : (
+                    <div className="text-xs text-zinc-500">
+                      현재 레벨이 0이므로 사용할 수 없습니다.
+                    </div>
+                  )}
                 </div>
               </Field>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="font-semibold">액티브 스킬 계산 기준</div>
+              <div className="mt-1">
+                - 즉시 완성: 발동 시 해당 1회 제작 시간 0초 처리
+              </div>
+              <div className="mt-1">
+                - 연회 준비: 발동 시 재료가 자동 투입되어 추가 제작이 진행
+              </div>
+              <div className="mt-1 text-xs text-amber-800">
+                * 연회 준비는 재료 공짜가 아니라 추가 제작으로 계산하므로, 원가/수익/경험치가 함께 증가합니다.
+              </div>
             </div>
           </div>
 
@@ -1415,15 +1396,6 @@ export default function CookingCalculatorPage() {
             </div>
           </div>
 
-          {/**
-           * 현재 선택 레시피 시세 저장 버튼
-           *
-           * 최종 정책:
-           * - 재료 단가는 농사/낚시 시세를 기본값으로 자동 불러온다.
-           * - 희귀 재료 체크 해제면 advanced,
-           *   체크 선택이면 rare 등급 가격을 사용한다.
-           * - 결과물 시세(일반 / 일품)도 함께 저장한다.
-           */}
           <div className="mt-3 flex flex-wrap gap-2">
             <ActionButton
               onClick={handleSaveCurrentRecipePrice}
@@ -1517,8 +1489,21 @@ export default function CookingCalculatorPage() {
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
-                <span>최종 제작 시간</span>
+                <span>최종 1회 제작 시간</span>
                 <span>{formatSeconds(result.finalCraftTimeSeconds)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>[즉시 완성] 사용 여부</span>
+                <span>{result.useInstantCompletion ? "사용" : "미사용"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>[즉시 완성] 발동 확률</span>
+                <span>{formatPercent(result.instantCompletionProcChancePercent)}</span>
+              </div>
+              <div className="border-t border-gray-800/20 my-2" />
+              <div className="flex justify-between">
+                <span>액티브 반영 기대 시간</span>
+                <span>{formatSeconds(result.expectedActionTimeSeconds)}</span>
               </div>
             </div>
           </ResultCard>
@@ -1528,10 +1513,6 @@ export default function CookingCalculatorPage() {
               <div className="flex justify-between">
                 <span>기본 유지 시간</span>
                 <span>{formatSeconds(result.baseDurationSeconds, 0)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>[음식 효과연장]</span>
-                <span>{formatPercent(result.additionalFoodDurationBonusPercent)}</span>
               </div>
               <div className="flex justify-between">
                 <span>[맛의 균형]</span>
@@ -1580,16 +1561,36 @@ export default function CookingCalculatorPage() {
           <ResultCard title="기대 결과">
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span>재료 원가</span>
+                <span>1회 제작 재료 원가</span>
                 <span>{formatCell(result.ingredientCostPerCraft)}셀</span>
               </div>
               <div className="flex justify-between">
-                <span>1회 기대 매출</span>
+                <span>[연회 준비] 사용 여부</span>
+                <span>{result.useBanquetPreparation ? "사용" : "미사용"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>[연회 준비] 발동 확률</span>
+                <span>{formatPercent(result.banquetPreparationProcChancePercent)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>액티브 반영 기대 제작 횟수</span>
+                <span>{formatDecimal(result.expectedCraftCountPerAction, 4)}회</span>
+              </div>
+              <div className="flex justify-between">
+                <span>1회 제작 기대 매출</span>
                 <span>{formatCell(result.expectedRevenuePerCraft)}셀</span>
               </div>
               <div className="flex justify-between">
-                <span>1회 기대 순이익</span>
+                <span>1회 행동 기대 매출</span>
+                <span>{formatCell(result.expectedRevenuePerAction)}셀</span>
+              </div>
+              <div className="flex justify-between">
+                <span>1회 제작 기대 순이익</span>
                 <span>{formatCell(result.expectedNetProfitPerCraft)}셀</span>
+              </div>
+              <div className="flex justify-between">
+                <span>1회 행동 기대 순이익</span>
+                <span>{formatCell(result.expectedNetProfitPerAction)}셀</span>
               </div>
 
               <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
@@ -1605,6 +1606,54 @@ export default function CookingCalculatorPage() {
             </div>
           </ResultCard>
 
+          <ResultCard title="경험치 계산기">
+            <div className="space-y-4">
+              {/* =========================
+                  경험치 입력칸
+                  - 다른 계산기들처럼 오른쪽 하단에 배치
+                  - 현재 정책상 레시피별 고정 경험치가 아니라
+                    사용자가 직접 입력
+              ========================= */}
+              <Field label="1회 성공 경험치">
+                <NumberInput
+                  value={experiencePerSuccessfulCraft}
+                  onChange={(value) => {
+                    setExperiencePerSuccessfulCraft(value);
+                    setIsDirty(true);
+                  }}
+                />
+              </Field>
+
+              <div className="border-t border-gray-800/20 my-2" />
+
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>1회 성공 경험치</span>
+                  <span>{formatDecimal(result.experiencePerSuccessfulCraft, 2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>기대 성공 제작 횟수/행동</span>
+                  <span>{formatDecimal(result.expectedSuccessfulCraftCountPerAction, 4)}회</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>1회 행동 기대 경험치</span>
+                  <span>{formatDecimal(result.expectedExperiencePerAction, 2)}</span>
+                </div>
+
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-emerald-900">
+                      시간당 기대 경험치
+                    </span>
+                    <span className="text-lg font-bold text-emerald-700">
+                      {formatDecimal(result.expectedExperiencePerHour, 2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ResultCard>
+
           <div className="mt-6">
             <h3 className="mb-3 text-lg font-semibold">메모</h3>
 
@@ -1613,13 +1662,16 @@ export default function CookingCalculatorPage() {
                 - 현재 계산기는 "일반 결과물 vs 일품(희귀) 결과물" 2버킷으로 계산합니다.
               </div>
               <div className="mt-2">
-                - 첨부 이미지 기준 희귀 결과물이 실제로 일품 요리에 해당하므로 시세 입력도 그 기준으로 받습니다.
+                - 희귀 재료는 체크된 라인의 필요 수량 전체를 희귀 재료로 계산합니다.
               </div>
               <div className="mt-2">
-                - 희귀 재료 보너스는 현재 v1에서 "재료 라인 1개당"으로 계산합니다.
+                - 즉시 완성은 발동 시 해당 제작 시간이 0초가 되는 것으로 계산합니다.
               </div>
               <div className="mt-2">
-                - 즉시 완성 / 연회 준비는 현재 수익식에 직접 반영하지 않고, 프로필 연동 및 확장 대비용으로만 보관합니다.
+                - 연회 준비는 재료가 공짜가 아니라, 재료 자동 투입으로 1회 추가 제작이 진행되는 것으로 계산합니다.
+              </div>
+              <div className="mt-2">
+                - 경험치는 오른쪽 하단 "경험치 계산기"의 1회 성공 경험치 입력값을 기준으로 계산합니다.
               </div>
             </div>
           </div>
