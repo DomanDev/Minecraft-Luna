@@ -672,13 +672,4 @@ export const ENHANCEMENT_MARKET_ITEMS: MarketPriceItem[] = [
     gradeType: "single",
     prices: { single: 20000 },
   },
-  {
-    key: "moonConcentrate",
-    name: "달빛 기운 농축액",
-    iconPath: "/icons/enhancement/moonConcentrate.png",
-    category: "enhancement",
-    order: 5,
-    gradeType: "single",
-    prices: { single: 12000 },
-  },
 ];
