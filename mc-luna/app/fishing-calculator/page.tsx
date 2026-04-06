@@ -114,6 +114,7 @@ const thirstOptions: { value: ThirstMin; label: string }[] = [
 const INITIAL_FORM = {
   luck: 0,
   sense: 0,
+  remainingExp: 0,
 
   /**
    * 도감 효과

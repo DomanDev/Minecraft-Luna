@@ -48,7 +48,7 @@ const recipeOptions = COOKING_RECIPES.map((recipe) => ({
 const INITIAL_FORM = {
   mastery: 0,
   dexterity: 0,
-
+  remainingExp: 0,
   /**
    * 도감 효과
    * - 프로필에서 자동 불러오며 계산에 반영
@@ -89,6 +89,30 @@ const INITIAL_FORM = {
 function formatSeconds(value: number | null, digits = 1): string {
   if (value == null) return "-";
   return `${formatDecimal(value, digits)}초`;
+}
+
+/**
+ * 경험치 계산기용 시간 포맷
+ * - 다른 계산기들처럼 "몇 시간 몇 분" 형태로 보기 쉽게 변환
+ * - 시간당 경험치가 0 이하인 경우는 "-" 처리
+ */
+function formatLevelUpTime(hours: number): string {
+  if (!Number.isFinite(hours) || hours <= 0) {
+    return "-";
+  }
+
+  const totalMinutes = Math.ceil(hours * 60);
+  const day = Math.floor(totalMinutes / (24 * 60));
+  const hour = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minute = totalMinutes % 60;
+
+  const parts: string[] = [];
+
+  if (day > 0) parts.push(`${day}일`);
+  if (hour > 0) parts.push(`${hour}시간`);
+  if (minute > 0) parts.push(`${minute}분`);
+
+  return parts.length > 0 ? parts.join(" ") : "1분 미만";
 }
 
 /**
@@ -497,7 +521,19 @@ export default function CookingCalculatorPage() {
    * - 정확한 서버 고정값 테이블 부재로 인해 현재는 입력값 방식
    */
   const [experiencePerSuccessfulCraft, setExperiencePerSuccessfulCraft] =
-    useState(INITIAL_FORM.experiencePerSuccessfulCraft);
+  useState(INITIAL_FORM.experiencePerSuccessfulCraft);
+
+  /**
+   * 경험치 계산기 전용 입력값
+   * - 다른 계산기(낚시/농사)처럼
+   *   "레벨업까지 남은 경험치"를 별도로 받아 예상 시간을 계산한다.
+   */
+  const [remainingExp, setRemainingExp] = useState(INITIAL_FORM.remainingExp);
+  const [isExpDirty, setIsExpDirty] = useState(false);
+  const [expResult, setExpResult] = useState<{
+    expPerHour: number;
+    levelUpHours: number;
+  } | null>(null);
 
   const [recipeId, setRecipeId] = useState<CookingRecipeId>(INITIAL_FORM.recipeId);
 
@@ -1049,6 +1085,71 @@ export default function CookingCalculatorPage() {
     experiencePerSuccessfulCraft,
   ]);
 
+    /**
+   * 경험치 계산기 전용 계산
+   *
+   * 동작 방식:
+   * 1) 현재 입력값으로 최신 요리 계산 결과를 다시 계산
+   * 2) 그 결과의 시간당 기대 경험치(expectedExperiencePerHour)를 사용
+   * 3) 남은 경험치와 비교해서 레벨업까지 예상 시간을 계산
+   *
+   * 주의:
+   * - 메인 계산 결과가 아직 갱신되지 않았더라도
+   *   경험치 계산 버튼만 눌러도 최신 입력값 기준으로 계산되게 한다.
+   */
+  const handleCalculateExp = useCallback(() => {
+    const latestResult = calculateCooking(buildCalculationInput());
+
+    setResult(latestResult);
+
+    const expPerHour = latestResult.expectedExperiencePerHour;
+    const levelUpHours =
+      expPerHour > 0 ? remainingExp / expPerHour : Number.POSITIVE_INFINITY;
+
+    setExpResult({
+      expPerHour,
+      levelUpHours,
+    });
+
+    setIsDirty(false);
+    setIsExpDirty(false);
+  }, [
+    mastery,
+    dexterity,
+    cookingGradeUpChance,
+    additionalCookTimeReductionPercent,
+    preparationMaster,
+    balanceOfTaste,
+    gourmet,
+    instantCompletion,
+    banquetPreparation,
+    useInstantCompletion,
+    useBanquetPreparation,
+    recipeId,
+    ingredientUnitPrices,
+    rareIngredientFlags,
+    normalDishPrice,
+    specialDishPrice,
+    experiencePerSuccessfulCraft,
+    remainingExp,
+  ]);
+
+  /**
+   * 경험치 계산기 전용 초기화
+   * - 전체 계산기 입력값은 건드리지 않고
+   *   경험치 계산기에 해당하는 값만 초기화한다.
+   */
+  const handleResetExp = useCallback(() => {
+    setExperiencePerSuccessfulCraft(INITIAL_FORM.experiencePerSuccessfulCraft);
+    setRemainingExp(INITIAL_FORM.remainingExp);
+    setExpResult(null);
+    setIsExpDirty(false);
+    setIsDirty(true);
+    setRemainingExp(INITIAL_FORM.remainingExp);
+    setIsExpDirty(false);
+    setExpResult(null);
+  }, []);
+
   const handleReset = () => {
     const resetRareFlags = createInitialRareIngredientFlags(INITIAL_FORM.recipeId);
     const resetIngredientPrices = createInitialIngredientPrices(
@@ -1483,10 +1584,10 @@ export default function CookingCalculatorPage() {
                 <span>[손질 달인] 추가 감소</span>
                 <span>{formatPercent(result.preparationMasterReductionPercent)}</span>
               </div>
-              <div className="flex justify-between">
+              {/* <div className="flex justify-between">
                 <span>[조리 단축] 적용값</span>
                 <span>{formatPercent(result.additionalCookTimeReductionPercent)}</span>
-              </div>
+              </div> */}
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>최종 1회 제작 시간</span>
@@ -1606,55 +1707,76 @@ export default function CookingCalculatorPage() {
             </div>
           </ResultCard>
 
-          <ResultCard title="경험치 계산기">
-            <div className="space-y-4">
-              {/* =========================
-                  경험치 입력칸
-                  - 다른 계산기들처럼 오른쪽 하단에 배치
-                  - 현재 정책상 레시피별 고정 경험치가 아니라
-                    사용자가 직접 입력
-              ========================= */}
+                    <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">경험치 계산기</h3>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="1회 성공 경험치">
                 <NumberInput
                   value={experiencePerSuccessfulCraft}
+                  min={0}
                   onChange={(value) => {
                     setExperiencePerSuccessfulCraft(value);
                     setIsDirty(true);
+                    setIsExpDirty(true);
                   }}
                 />
               </Field>
 
-              <div className="border-t border-gray-800/20 my-2" />
+              <Field label="레벨업까지 남은 경험치">
+                <NumberInput
+                  value={remainingExp}
+                  min={0}
+                  onChange={(value) => {
+                    setRemainingExp(value);
+                    setIsExpDirty(true);
+                  }}
+                />
+              </Field>
+            </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>1회 성공 경험치</span>
-                  <span>{formatDecimal(result.experiencePerSuccessfulCraft, 2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>기대 성공 제작 횟수/행동</span>
-                  <span>{formatDecimal(result.expectedSuccessfulCraftCountPerAction, 4)}회</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>1회 행동 기대 경험치</span>
-                  <span>{formatDecimal(result.expectedExperiencePerAction, 2)}</span>
-                </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <ActionButton onClick={handleCalculateExp}>경험치 계산</ActionButton>
+              <ActionButton variant="secondary" onClick={handleResetExp}>
+                경험치 초기화
+              </ActionButton>
+            </div>
 
-                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-emerald-900">
-                      시간당 기대 경험치
-                    </span>
-                    <span className="text-lg font-bold text-emerald-700">
-                      {formatDecimal(result.expectedExperiencePerHour, 2)}
+            {isExpDirty && (
+              <div className="mt-3 text-sm text-amber-700">
+                경험치 입력값이 변경되었습니다.
+              </div>
+            )}
+
+            <br />
+
+            {expResult && (
+              <ResultCard title="경험치 결과">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>시간당 획득 경험치</span>
+                    <span>{Math.floor(expResult.expPerHour).toString()} exp</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>레벨업까지 예상 시간</span>
+                    <span>{formatLevelUpTime(expResult.levelUpHours)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>기대 성공 제작 횟수/행동</span>
+                    <span>
+                      {formatDecimal(result.expectedSuccessfulCraftCountPerAction, 4)}회
                     </span>
                   </div>
+                  <div className="flex justify-between">
+                    <span>1회 행동 기대 경험치</span>
+                    <span>{formatDecimal(result.expectedExperiencePerAction, 2)} exp</span>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </ResultCard>
+              </ResultCard>
+            )}
+          </div>
 
-          <div className="mt-6">
+          {/* <div className="mt-6">
             <h3 className="mb-3 text-lg font-semibold">메모</h3>
 
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
@@ -1674,7 +1796,7 @@ export default function CookingCalculatorPage() {
                 - 경험치는 오른쪽 하단 "경험치 계산기"의 1회 성공 경험치 입력값을 기준으로 계산합니다.
               </div>
             </div>
-          </div>
+          </div> */}
         </CalculatorPanel>
       }
     />
