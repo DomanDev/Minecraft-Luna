@@ -126,21 +126,28 @@ export const FARMING_MARKET_ITEMS: MarketPriceItem[] = [
  * 낚시 시세 기본값
  * =========================
  *
- * 현재는 시세 탭 UI와 저장/불러오기 구조를 먼저 완성하는 단계라서
- * 품목은 대표 예시 위주로 넣어 둔다.
+ * 기준:
+ * - 사용자가 제공한 실제 낚시 물고기 순서 그대로 반영
+ * - 모든 물고기는 일반 / 고급 / 희귀 3등급 시세를 가짐
+ * - 기본값은 공통으로 10 / 20 / 45 셀 사용
  *
- * 나중에 실제 낚시 계산 로직에 들어가는 품목 기준으로
- * 순서/이름/아이콘/기본 시세를 정교하게 맞추면 된다.
+ * 아이콘 경로 규칙:
+ * - public/icons/fishing/{key}.png
+ * - 코드에서는 /icons/fishing/{key}.png 로 접근
+ *
+ * 주의:
+ * - key는 요리 레시피 재료 id와 최대한 맞춰 두는 것이 중요하다.
+ * - 그래야 요리 계산기에서 낚시 시세를 자동 불러올 때 1:1로 연결된다.
  */
 export const FISHING_MARKET_ITEMS: MarketPriceItem[] = [
   {
-    key: "commonFish",
-    name: "일반 물고기",
-    iconPath: "/icons/fishing/commonFish.png",
+    key: "miscFish",
+    name: "잡어",
+    iconPath: "/icons/fishing/miscFish.png",
     category: "fishing",
     order: 1,
     gradeType: "triple",
-    prices: { normal: 6, advanced: 12, rare: 20 },
+    prices: { normal: 10, advanced: 20, rare: 30 },
   },
   {
     key: "carp",
@@ -149,34 +156,196 @@ export const FISHING_MARKET_ITEMS: MarketPriceItem[] = [
     category: "fishing",
     order: 2,
     gradeType: "triple",
-    prices: { normal: 7, advanced: 14, rare: 24 },
+    prices: { normal: 10, advanced: 20, rare: 30 },
+  },
+  {
+    key: "catfish",
+    name: "메기",
+    iconPath: "/icons/fishing/catfish.png",
+    category: "fishing",
+    order: 3,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 30 },
+  },
+  {
+    key: "sardine",
+    name: "정어리",
+    iconPath: "/icons/fishing/sardine.png",
+    category: "fishing",
+    order: 4,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 30 },
+  },
+  {
+    key: "tuna",
+    name: "다랑어",
+    iconPath: "/icons/fishing/tuna.png",
+    category: "fishing",
+    order: 5,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
   },
   {
     key: "salmon",
     name: "연어",
     iconPath: "/icons/fishing/salmon.png",
     category: "fishing",
-    order: 3,
+    order: 6,
     gradeType: "triple",
-    prices: { normal: 8, advanced: 16, rare: 27 },
+    prices: { normal: 10, advanced: 20, rare: 45 },
   },
   {
-    key: "pufferfish",
-    name: "복어",
-    iconPath: "/icons/fishing/pufferfish.png",
+    key: "eel",
+    name: "뱀장어",
+    iconPath: "/icons/fishing/eel.png",
     category: "fishing",
-    order: 4,
+    order: 7,
     gradeType: "triple",
-    prices: { normal: 9, advanced: 18, rare: 30 },
+    prices: { normal: 10, advanced: 20, rare: 45 },
   },
   {
-    key: "tuna",
-    name: "참치",
-    iconPath: "/icons/fishing/tuna.png",
+    key: "octopus",
+    name: "문어",
+    iconPath: "/icons/fishing/octopus.png",
     category: "fishing",
-    order: 5,
+    order: 8,
     gradeType: "triple",
-    prices: { normal: 10, advanced: 20, rare: 34 },
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "seaBass",
+    name: "농어",
+    iconPath: "/icons/fishing/seaBass.png",
+    category: "fishing",
+    order: 9,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "goldfish",
+    name: "금붕어",
+    iconPath: "/icons/fishing/goldfish.png",
+    category: "fishing",
+    order: 10,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "mullet",
+    name: "숭어",
+    iconPath: "/icons/fishing/mullet.png",
+    category: "fishing",
+    order: 11,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "sunfish",
+    name: "개복치",
+    iconPath: "/icons/fishing/sunfish.png",
+    category: "fishing",
+    order: 12,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "pike",
+    name: "강꼬치고기",
+    iconPath: "/icons/fishing/pike.png",
+    category: "fishing",
+    order: 13,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "redSnapper",
+    name: "적색퉁돔",
+    iconPath: "/icons/fishing/redSnapper.png",
+    category: "fishing",
+    order: 14,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "sturgeon",
+    name: "철갑상어",
+    iconPath: "/icons/fishing/sturgeon.png",
+    category: "fishing",
+    order: 15,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "anglerfish",
+    name: "아귀",
+    iconPath: "/icons/fishing/anglerfish.png",
+    category: "fishing",
+    order: 16,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "lobster",
+    name: "랍스터",
+    iconPath: "/icons/fishing/lobster.png",
+    category: "fishing",
+    order: 17,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "mantaRay",
+    name: "만타 가오리",
+    iconPath: "/icons/fishing/mantaRay.png",
+    category: "fishing",
+    order: 18,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "clownfish",
+    name: "흰동가리",
+    iconPath: "/icons/fishing/clownfish.png",
+    category: "fishing",
+    order: 19,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "blueTang",
+    name: "블루탱",
+    iconPath: "/icons/fishing/blueTang.png",
+    category: "fishing",
+    order: 20,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "stripedSeabream",
+    name: "줄돔",
+    iconPath: "/icons/fishing/stripedSeabream.png",
+    category: "fishing",
+    order: 21,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "blueJellyfish",
+    name: "푸른 해파리",
+    iconPath: "/icons/fishing/blueJellyfish.png",
+    category: "fishing",
+    order: 22,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
+  },
+  {
+    key: "swampFrog",
+    name: "습지 개구리",
+    iconPath: "/icons/fishing/swampFrog.png",
+    category: "fishing",
+    order: 23,
+    gradeType: "triple",
+    prices: { normal: 10, advanced: 20, rare: 45 },
   },
 ];
 
@@ -187,9 +356,6 @@ export const FISHING_MARKET_ITEMS: MarketPriceItem[] = [
  *
  * 현재 채광 계산기 상세 구현은 보류 상태이므로
  * 대표 광물 위주로 먼저 탭/DB 구조만 준비한다.
- *
- * 나중에 실제 채광 계산 로직에 맞춰
- * 품목을 더 늘리면 된다.
  */
 export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
   {

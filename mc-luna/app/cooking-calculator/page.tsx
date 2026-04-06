@@ -27,7 +27,12 @@ import {
 } from "@/src/lib/format";
 import { toast } from "sonner";
 import { loadUserMarketPrices, upsertUserMarketPrices } from "@/src/lib/market/db";
-import type { MarketGrade, UserMarketPriceRow } from "@/src/lib/market/types";
+import type { MarketGrade, UserMarketPriceRow, MarketCategory } from "@/src/lib/market/types";
+import {
+  FARMING_MARKET_ITEMS,
+  FISHING_MARKET_ITEMS,
+  COOKING_MARKET_ITEMS,
+} from "@/src/lib/market/defaultPrices";
 
 const recipeOptions = COOKING_RECIPES.map((recipe) => ({
   value: recipe.id,
@@ -145,6 +150,157 @@ function syncRareIngredientFlags(
 
   return next;
 }
+
+/**
+ * 요리 재료 ID가 어느 시세 카테고리를 참조해야 하는지 반환
+ *
+ * 정책:
+ * - 농작물 재료 -> farming
+ * - 물고기/수산 재료 -> fishing
+ *
+ * 주의:
+ * - 이 함수는 "재료 원가 계산용 자동 불러오기"에만 사용한다.
+ * - 요리 결과물 시세(일반/일품)는 별도로 cooking 카테고리를 사용한다.
+ */
+function getIngredientMarketCategory(
+  ingredientId: string,
+): MarketCategory | null {
+  const farmingIngredientIds = new Set([
+    "lettuce",
+    "corn",
+    "cabbage",
+    "radish",
+    "tomato",
+    "strawberry",
+    "grape",
+    "lemon",
+    "orange",
+    "pineapple",
+    "banana",
+    "pomegranate",
+  ]);
+
+  const fishingIngredientIds = new Set([
+    "miscFish",
+    "sardine",
+    "catfish",
+    "carp",
+    "redSnapper",
+    "anglerfish",
+    "tuna",
+    "lobster",
+    "seaBass",
+    "mullet",
+    "blueTang",
+    "clownfish",
+    "sunfish",
+    "stripedSeabream",
+    "swampFrog",
+    "mantaRay",
+    "octopus",
+    "salmon",
+    "sturgeon",
+    "pike",
+    "goldfish",
+    "blueJellyfish",
+    "eel",
+    "pufferfish",
+  ]);
+
+  if (farmingIngredientIds.has(ingredientId)) {
+    return "farming";
+  }
+
+  if (fishingIngredientIds.has(ingredientId)) {
+    return "fishing";
+  }
+
+  return null;
+}
+
+/**
+ * 농사/낚시 시세 테이블의 3등급 가격 중
+ * 요리 재료 단가로 어떤 값을 가져올지 결정한다.
+ *
+ * 현재 정책:
+ * - 일반(normal) 시세를 기본 재료 단가로 사용
+ *
+ * 이유:
+ * - 요리 재료 입력은 "개당 가격" 1개만 받고 있고
+ * - 현재 요리 레시피 재료는 일반/고급/희귀를 따로 분기하지 않는다.
+ */
+function pickBaseIngredientPrice(rows: UserMarketPriceRow[], itemKey: string): number | null {
+  const normalRow = rows.find(
+    (row) => row.item_key === itemKey && row.grade === "normal",
+  );
+
+  if (normalRow && typeof normalRow.price === "number") {
+    return normalRow.price;
+  }
+
+  return null;
+}
+
+/**
+ * defaultPrices.ts 에 정의된 하드코딩 기본 시세에서
+ * 특정 카테고리 + itemKey + grade 조합의 가격을 찾는다.
+ *
+ * 왜 필요한가?
+ * - 현재 요리 재료 자동 불러오기는 user_market_prices만 읽고 있어서
+ *   사용자가 농사/낚시 시세를 아직 저장하지 않았다면 0으로 남을 수 있다.
+ * - 하지만 시세 탭에는 이미 하드코딩 기본값이 있으므로,
+ *   DB 저장값이 없을 때는 그 기본값을 fallback으로 사용해야 한다.
+ */
+function pickDefaultMarketPrice(
+  category: MarketCategory,
+  itemKey: string,
+  grade: MarketGrade,
+): number | null {
+  const source =
+    category === "farming"
+      ? FARMING_MARKET_ITEMS
+      : category === "fishing"
+      ? FISHING_MARKET_ITEMS
+      : category === "cooking"
+      ? COOKING_MARKET_ITEMS
+      : [];
+
+  const matchedItem = source.find((item) => item.key === itemKey);
+
+  if (!matchedItem) {
+    return null;
+  }
+
+  const value = matchedItem.prices[grade];
+
+  return typeof value === "number" ? value : null;
+}
+
+/**
+ * 농사/낚시 재료 단가를 결정한다.
+ *
+ * 우선순위:
+ * 1) user_market_prices 저장값(normal)
+ * 2) defaultPrices.ts의 하드코딩 기본값(normal)
+ * 3) 없으면 null
+ *
+ * 현재 정책:
+ * - 요리 재료 단가는 일반(normal) 시세를 사용
+ */
+function resolveIngredientBasePrice(
+  category: Extract<MarketCategory, "farming" | "fishing">,
+  rows: UserMarketPriceRow[],
+  itemKey: string,
+): number | null {
+  const saved = pickBaseIngredientPrice(rows, itemKey);
+
+  if (typeof saved === "number") {
+    return saved;
+  }
+
+  return pickDefaultMarketPrice(category, itemKey, "normal");
+}
+
 
 export default function CookingCalculatorPage() {
   /**
@@ -264,24 +420,23 @@ export default function CookingCalculatorPage() {
   };
 
   /**
-   * 현재 선택 레시피의 저장 시세를 user_market_prices 에서 불러와
+   * 현재 선택 레시피의 시세를 불러와
    * 요리 계산기 입력 상태에 반영한다.
    *
-   * 저장 키 규칙:
-   * - category = "cooking"
-   * - item_key:
-   *   1) 재료 시세  -> ingredient:{레시피ID}:{재료ID}
-   *   2) 결과물 시세 -> result:{레시피ID}:normal
-   *   3) 결과물 시세 -> result:{레시피ID}:special
+   * 최종 정책:
+   * 1) 재료 단가
+   *    - farming / fishing user_market_prices 저장값 우선
+   *    - 없으면 defaultPrices.ts 하드코딩 기본값 사용
+   *    - 그리고 현재 레시피에 대해 cooking 카테고리에 저장한
+   *      ingredient override 값이 있으면 최종 우선 적용
    *
-   * 예:
-   * - ingredient:ssambap:cabbage
-   * - result:ssambap:normal
-   * - result:ssambap:special
+   * 2) 결과물 시세
+   *    - cooking user_market_prices 저장값 우선
+   *    - 없으면 defaultPrices.ts의 요리 결과물 기본값 사용
    *
-   * 왜 레시피ID를 포함하나?
-   * - 같은 재료라도 레시피별로 따로 관리하고 싶을 수 있기 때문
-   * - 지금 요청도 "현재 레시피 시세 저장" UX와 잘 맞는다
+   * 즉 우선순위는:
+   * - 재료: cooking override > farming/fishing saved > farming/fishing default
+   * - 결과물: cooking saved > cooking default
    */
   const applySavedMarketPriceToCalculator = useCallback(
     async (targetRecipeId: CookingRecipeId) => {
@@ -305,15 +460,25 @@ export default function CookingCalculatorPage() {
         const user = session?.user;
         if (!user) return;
 
-        const rows = await loadUserMarketPrices(user.id, "cooking");
+        /**
+         * 재료 기본 시세 출처:
+         * - farming
+         * - fishing
+         *
+         * 재료 override / 결과물 시세 출처:
+         * - cooking
+         */
+        const [farmingRows, fishingRows, cookingRows] = await Promise.all([
+          loadUserMarketPrices(user.id, "farming"),
+          loadUserMarketPrices(user.id, "fishing"),
+          loadUserMarketPrices(user.id, "cooking"),
+        ]);
+
         const targetRecipe = getCookingRecipe(targetRecipeId);
 
         /**
-         * 현재 레시피용 재료 가격 상태를 먼저 준비
-         *
-         * 기본 원칙:
-         * - 저장값이 있는 재료만 덮어쓴다.
-         * - 저장값이 없는 재료는 기존 값 유지
+         * 현재 레시피에 필요한 재료 키만 유지하는 초기 상태를 만든다.
+         * 이후 아래 단계에서 순차적으로 덮어쓴다.
          */
         const nextIngredientUnitPrices = syncIngredientPrices(
           targetRecipeId,
@@ -321,46 +486,96 @@ export default function CookingCalculatorPage() {
         );
 
         targetRecipe.ingredients.forEach((ingredient) => {
-          const row = rows.find(
-            (savedRow) =>
-              savedRow.item_key === `ingredient:${targetRecipeId}:${ingredient.id}` &&
-              savedRow.grade === "single",
-          );
+          const category = getIngredientMarketCategory(ingredient.id);
 
-          if (row && typeof row.price === "number") {
-            nextIngredientUnitPrices[ingredient.id] = row.price;
+          /**
+           * 1단계: farming / fishing 저장값 또는 기본값 반영
+           */
+          if (category === "farming") {
+            const resolved = resolveIngredientBasePrice(
+              "farming",
+              farmingRows,
+              ingredient.id,
+            );
+
+            if (typeof resolved === "number") {
+              nextIngredientUnitPrices[ingredient.id] = resolved;
+            }
+          }
+
+          if (category === "fishing") {
+            const resolved = resolveIngredientBasePrice(
+              "fishing",
+              fishingRows,
+              ingredient.id,
+            );
+
+            if (typeof resolved === "number") {
+              nextIngredientUnitPrices[ingredient.id] = resolved;
+            }
+          }
+
+          /**
+           * 2단계: 현재 레시피 기준 cooking override 재료 시세가 있으면 최우선 적용
+           *
+           * 저장 키 예시:
+           * - ingredient:ssambap:lettuce
+           * - ingredient:ssambap:miscFish
+           */
+          const savedIngredientOverride = cookingRows.find(
+            (row) =>
+              row.item_key === `ingredient:${targetRecipeId}:${ingredient.id}` &&
+              row.grade === "single",
+          )?.price;
+
+          if (typeof savedIngredientOverride === "number") {
+            nextIngredientUnitPrices[ingredient.id] = savedIngredientOverride;
           }
         });
 
         /**
-         * 결과물 시세도 저장값이 있으면 덮어쓴다.
+         * 결과물 시세:
+         * - cooking 저장값 우선
+         * - 없으면 defaultPrices.ts 기본값 fallback
          */
-        const savedNormalDishPrice = rows.find(
+        const savedNormalDishPrice = cookingRows.find(
           (row) =>
             row.item_key === `result:${targetRecipeId}:normal` &&
             row.grade === "normal_result",
         )?.price;
 
-        const savedSpecialDishPrice = rows.find(
+        const savedSpecialDishPrice = cookingRows.find(
           (row) =>
             row.item_key === `result:${targetRecipeId}:special` &&
             row.grade === "special_result",
         )?.price;
 
+        const defaultNormalDishPrice = pickDefaultMarketPrice(
+          "cooking",
+          targetRecipeId,
+          "normal_result",
+        );
+
+        const defaultSpecialDishPrice = pickDefaultMarketPrice(
+          "cooking",
+          targetRecipeId,
+          "special_result",
+        );
+
         setIngredientUnitPrices(nextIngredientUnitPrices);
 
         if (typeof savedNormalDishPrice === "number") {
           setNormalDishPrice(savedNormalDishPrice);
+        } else if (typeof defaultNormalDishPrice === "number") {
+          setNormalDishPrice(defaultNormalDishPrice);
         }
 
         if (typeof savedSpecialDishPrice === "number") {
           setSpecialDishPrice(savedSpecialDishPrice);
+        } else if (typeof defaultSpecialDishPrice === "number") {
+          setSpecialDishPrice(defaultSpecialDishPrice);
         }
 
-        /**
-         * 자동 불러오기로 입력값이 바뀌었으므로
-         * 사용자가 다시 계산 버튼을 눌러 결과를 갱신할 수 있게 dirty 처리
-         */
         setIsDirty(true);
         hasAppliedMarketPriceRef.current = true;
       } catch (error) {
@@ -375,12 +590,18 @@ export default function CookingCalculatorPage() {
   /**
    * 현재 선택 레시피의 재료 시세 + 결과물 시세를 user_market_prices 에 저장한다.
    *
-   * 저장 대상:
-   * - 현재 레시피에 표시 중인 모든 재료 단가
-   * - 일반 결과물 시세
-   * - 일품 결과물 시세
+   * 저장 정책:
+   * 1) 재료 단가:
+   *    - ingredient:{recipeId}:{ingredientId}
+   *    - grade = single
    *
-   * Pro 사용자만 저장 가능
+   * 2) 결과물 시세:
+   *    - result:{recipeId}:normal
+   *    - result:{recipeId}:special
+   *
+   * 이렇게 저장해 두면,
+   * 다음에 같은 레시피를 열었을 때
+   * farming/fishing 기본값보다 이 레시피 전용 override 값이 우선 적용된다.
    */
   const handleSaveCurrentRecipePrice = useCallback(async () => {
     if (!isProUser) {
@@ -410,7 +631,7 @@ export default function CookingCalculatorPage() {
       const rows: UserMarketPriceRow[] = [];
 
       /**
-       * 1) 현재 레시피의 재료 단가 저장
+       * 1) 현재 레시피 재료 단가 저장
        */
       selectedRecipe.ingredients.forEach((ingredient) => {
         rows.push({
@@ -423,7 +644,7 @@ export default function CookingCalculatorPage() {
       });
 
       /**
-       * 2) 현재 레시피의 결과물 시세 저장
+       * 2) 현재 레시피 결과물 시세 저장
        */
       rows.push({
         user_id: user.id,
@@ -443,9 +664,83 @@ export default function CookingCalculatorPage() {
 
       await upsertUserMarketPrices(rows);
 
-      toast.success("현재 레시피 시세를 저장했습니다.");
+      toast.success("현재 레시피 재료/결과물 시세를 저장했습니다.");
     } catch (error) {
-      console.error("현재 레시피 시세 저장 실패:", error);
+      console.error("현재 레시피 재료/결과물 시세 저장 실패:", error);
+      toast.error("시세 저장 중 오류가 발생했습니다.");
+    }
+  }, [
+    isProUser,
+    selectedRecipe.ingredients,
+    recipeId,
+    ingredientUnitPrices,
+    normalDishPrice,
+    specialDishPrice,
+  ]);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.warn("요리 시세 저장용 getSession 실패:", sessionError.message);
+        toast.error("로그인 정보를 확인하지 못했습니다.");
+        return;
+      }
+
+      const user = session?.user;
+
+      if (!user) {
+        toast.error("로그인 정보가 없습니다.");
+        return;
+      }
+
+      const rows: UserMarketPriceRow[] = [];
+
+      /**
+       * 1) 현재 레시피 재료 단가 저장
+       *
+       * 저장 키 예시:
+       * - ingredient:ssambap:lettuce
+       * - ingredient:ssambap:corn
+       * - ingredient:ssambap:miscFish
+       */
+      selectedRecipe.ingredients.forEach((ingredient) => {
+        rows.push({
+          user_id: user.id,
+          category: "cooking",
+          item_key: `ingredient:${recipeId}:${ingredient.id}`,
+          grade: "single" as MarketGrade,
+          price: ingredientUnitPrices[ingredient.id] ?? 0,
+        });
+      });
+
+      /**
+       * 2) 현재 레시피 결과물 시세 저장
+       */
+      rows.push({
+        user_id: user.id,
+        category: "cooking",
+        item_key: `result:${recipeId}:normal`,
+        grade: "normal_result" as MarketGrade,
+        price: normalDishPrice,
+      });
+
+      rows.push({
+        user_id: user.id,
+        category: "cooking",
+        item_key: `result:${recipeId}:special`,
+        grade: "special_result" as MarketGrade,
+        price: specialDishPrice,
+      });
+
+      await upsertUserMarketPrices(rows);
+
+      toast.success("현재 레시피 재료/결과물 시세를 저장했습니다.");
+    } catch (error) {
+      console.error("현재 레시피 재료/결과물 시세 저장 실패:", error);
       toast.error("시세 저장 중 오류가 발생했습니다.");
     }
   }, [
@@ -642,28 +937,30 @@ export default function CookingCalculatorPage() {
   }, [guardLoading, allowed, loadProfileToCalculator]);
 
   /**
- * 프로필 자동 로드가 끝난 뒤,
- * 현재 선택 레시피의 저장 시세를 자동 반영한다.
- *
- * 기존에는 요리 스탯/스킬만 프로필에서 자동 반영되고
- * 재료/결과물 시세는 화면 기본값으로 시작했다.
- *
- * 이제는 user_market_prices 에 저장된 값이 있으면
- * 페이지 진입 직후 자동 반영한다.
- */
-useEffect(() => {
-  if (guardLoading) return;
-  if (!allowed) return;
-  if (!profileLoaded) return;
+   * 현재 선택 레시피의 시세를 자동 반영한다.
+   *
+   * 중요 변경:
+   * - 이전에는 profileLoaded 가 true 여야만 실행됐는데,
+   *   이 경우 cooking_profiles 로드가 끝나지 않으면
+   *   재료/결과물 시세 자동 반영까지 같이 막히는 문제가 있었다.
+   *
+   * - 하지만 시세 자동 로딩은
+   *   cooking_profiles 성공 여부와 직접 관계가 없다.
+   *   로그인 + 접근 허용만 되면 getSession 기반으로 읽을 수 있다.
+   *
+   * 따라서 profileLoaded 의존성을 제거한다.
+   */
+  useEffect(() => {
+    if (guardLoading) return;
+    if (!allowed) return;
 
-  void applySavedMarketPriceToCalculator(recipeId);
-}, [
-  guardLoading,
-  allowed,
-  profileLoaded,
-  recipeId,
-  applySavedMarketPriceToCalculator,
-]);
+    void applySavedMarketPriceToCalculator(recipeId);
+  }, [
+    guardLoading,
+    allowed,
+    recipeId,
+    applySavedMarketPriceToCalculator,
+  ]);
 
   useEffect(() => {
     const {
@@ -997,15 +1294,11 @@ useEffect(() => {
           {/**
            * 현재 선택 레시피 시세 저장 버튼
            *
-           * UX 의도:
-           * - 시세 탭에서 전체 관리할 수도 있지만
-           * - 계산기 안에서 재료 단가/결과물가를 조정한 뒤
-           *   현재 레시피만 바로 저장할 수 있게 한다.
-           *
-           * 저장 범위:
-           * - 현재 레시피의 모든 재료 단가
-           * - 일반 결과물가
-           * - 일품 결과물가
+           * 최종 정책:
+           * - 재료 단가는 농사/낚시 시세를 기본값으로 자동 불러온다.
+           * - 사용자가 현재 레시피에서 재료 단가를 직접 수정한 경우,
+           *   이 버튼으로 레시피별 재료 override 값을 저장할 수 있다.
+           * - 결과물 시세(일반 / 일품)도 함께 저장한다.
            */}
           <div className="mt-3 flex flex-wrap gap-2">
             <ActionButton onClick={handleSaveCurrentRecipePrice} disabled={!isProUser}>
