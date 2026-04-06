@@ -362,7 +362,7 @@ export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
     category: "mining",
     order: 1,
     gradeType: "single",
-    prices: { single: 120 },
+    prices: { single: 0 },
   },
   {
     key: "argentite_ore",
@@ -371,7 +371,7 @@ export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
     category: "mining",
     order: 2,
     gradeType: "single",
-    prices: { single: 150 },
+    prices: { single: 0 },
   },
   {
     key: "vellium_ore",
@@ -380,7 +380,7 @@ export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
     category: "mining",
     order: 3,
     gradeType: "single",
-    prices: { single: 220 },
+    prices: { single: 0 },
   },
   {
     key: "magma_block",
@@ -389,7 +389,7 @@ export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
     category: "mining",
     order: 4,
     gradeType: "single",
-    prices: { single: 35 },
+    prices: { single: 0 },
   },
   {
     key: "netherite_ingot",
@@ -398,7 +398,7 @@ export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
     category: "mining",
     order: 5,
     gradeType: "single",
-    prices: { single: 1500 },
+    prices: { single: 0 },
   },
 
   /**
@@ -412,8 +412,8 @@ export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
     iconPath: "/icons/mining/mithril_ingot.png",
     category: "mining",
     order: 10,
-    gradeType: "triple",
-    prices: { normal: 520, advanced: 880, rare: 1450 },
+    gradeType: "single",
+    prices: { single: 0 },
   },
   {
     key: "argentite_ingot",
@@ -421,8 +421,8 @@ export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
     iconPath: "/icons/mining/argentite_ingot.png",
     category: "mining",
     order: 11,
-    gradeType: "triple",
-    prices: { normal: 650, advanced: 1080, rare: 1780 },
+    gradeType: "single",
+    prices: { single: 0 },
   },
   {
     key: "vellium_ingot",
@@ -430,8 +430,8 @@ export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
     iconPath: "/icons/mining/vellium_ingot.png",
     category: "mining",
     order: 12,
-    gradeType: "triple",
-    prices: { normal: 980, advanced: 1650, rare: 2650 },
+    gradeType: "single",
+    prices: { single: 0 },
   },
 
   /**
@@ -446,7 +446,7 @@ export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
     category: "mining",
     order: 20,
     gradeType: "single",
-    prices: { single: 4200 },
+    prices: { single: 0 },
   },
   {
     key: "pure_vellium",
@@ -455,7 +455,7 @@ export const MINING_MARKET_ITEMS: MarketPriceItem[] = [
     category: "mining",
     order: 21,
     gradeType: "single",
-    prices: { single: 7800 },
+    prices: { single: 0 },
   },
 ];
 

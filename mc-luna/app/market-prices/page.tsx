@@ -514,7 +514,8 @@ export default function MarketPricesPage() {
               </tbody>
             </table>
           </div>
-        ) : activeTabMeta.category === 'enhancement' ? (
+        ) : activeTabMeta.category === 'enhancement' ||
+               activeTabMeta.category === 'mining' ? (
           /**
            * 강화 탭:
            * - 단일 가격 1열
