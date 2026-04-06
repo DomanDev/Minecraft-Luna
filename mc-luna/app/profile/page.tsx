@@ -1389,12 +1389,12 @@ export default function ProfilePage() {
                   value={manualForm.common.dexterity}
                   onChange={(value) => updateCommonStat('dexterity', value)}
                 />
-                <NumberField
+                {/* <NumberField
                   label="카리스마"
                   step="0.1"
                   value={manualForm.common.charisma}
                   onChange={(value) => updateCommonStat('charisma', value)}
-                />
+                /> */}
               </div>
             </div>
 
