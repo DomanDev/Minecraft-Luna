@@ -18,7 +18,7 @@ const navItems = [
   { href: "/cooking-calculator", label: "요리" },
   { href: "/enhancement-calculator", label: "강화" },
   { href: "/market-prices", label: "시세" },
-  { href: "/arca-trade", label: "아르카샵" },
+  { href: "/arca-market", label: "아르카샵" },
 ];
 
 export default function GlobalNav() {

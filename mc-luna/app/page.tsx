@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ArcaMarketSummaryCard from "@/src/components/market/ArcaMarketSummaryCard";
 
 export default function Home() {
   return (
@@ -45,6 +46,8 @@ export default function Home() {
             생활 정보 불러오기 / 직접 입력 / 스탯 저장
           </div>
         </Link>
+
+        <ArcaMarketSummaryCard />
       </div>
     </main>
   );
