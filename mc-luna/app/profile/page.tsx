@@ -39,7 +39,7 @@ import {
   type MinecraftLinkStatus,
   type MinecraftLookupResult,
 } from '../../src/lib/minecraft-profile';
-import StatNumberInput from "../../src/components/calculator/StatNumberInput";
+
 
 /**
  * profiles 테이블에서 가져오는 기본 프로필 타입
@@ -513,32 +513,217 @@ function tabClass(active: boolean): string {
 }
 
 /**
- * 숫자 input 공통 렌더링용 작은 컴포넌트
+ * 프로필 페이지 전용:
+ * 소수 2자리까지 허용하는 입력 컴포넌트
  *
- * 변경 사항:
- * - 기존 native number input 대신
- *   소수 + 콤마 표시를 지원하는 StatNumberInput 사용
- * - 스탯 입력 시 111.38 같은 값이 11,138로 깨지는 문제 방지
+ * 정책:
+ * - 천 단위 콤마 표시 안 함
+ * - 입력 중 반올림 안 함
+ * - 소수 둘째 자리까지만 허용
+ * - 빈 문자열은 입력 중간 상태로 허용
  */
-function NumberField(props: {
+function DecimalPlainInput(props: {
+  value: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  const { value, onChange, disabled = false } = props;
+
+  const [inputValue, setInputValue] = useState(String(value));
+
+  useEffect(() => {
+    setInputValue(String(value));
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={inputValue}
+      disabled={disabled}
+      onChange={(e) => {
+        const raw = e.target.value;
+
+        /**
+         * 허용 형식:
+         * - ""
+         * - "12"
+         * - "12."
+         * - "12.3"
+         * - "12.34"
+         *
+         * 불허:
+         * - 음수
+         * - 소수 셋째 자리 이상
+         * - 문자
+         * - 콤마
+         */
+        if (!/^\d*(\.\d{0,2})?$/.test(raw)) {
+          return;
+        }
+
+        setInputValue(raw);
+
+        /**
+         * 입력 중간 상태("", "12.")는 number 변환을 강제하지 않음
+         */
+        if (raw === "" || raw.endsWith(".")) {
+          return;
+        }
+
+        const parsed = Number(raw);
+        if (!Number.isNaN(parsed)) {
+          onChange(parsed);
+        }
+      }}
+      onBlur={() => {
+        /**
+         * blur 시에도 반올림/콤마 처리 없이
+         * 현재 입력값 그대로 정리
+         */
+        if (inputValue === "") {
+          setInputValue("0");
+          onChange(0);
+          return;
+        }
+
+        if (inputValue.endsWith(".")) {
+          const normalized = inputValue.slice(0, -1);
+          const parsed = Number(normalized === "" ? "0" : normalized);
+          setInputValue(String(parsed));
+          onChange(parsed);
+          return;
+        }
+
+        const parsed = Number(inputValue);
+        if (Number.isNaN(parsed) || parsed < 0) {
+          setInputValue("0");
+          onChange(0);
+          return;
+        }
+
+        setInputValue(inputValue);
+        onChange(parsed);
+      }}
+      className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-zinc-100 disabled:text-zinc-500"
+    />
+  );
+}
+
+/**
+ * 프로필 페이지 전용:
+ * 0 이상의 정수만 허용하는 입력 컴포넌트
+ *
+ * 정책:
+ * - 천 단위 콤마 표시 안 함
+ * - 소수 입력 불가
+ * - 음수 입력 불가
+ */
+function PositiveIntegerPlainInput(props: {
+  value: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  const { value, onChange, disabled = false } = props;
+
+  const [inputValue, setInputValue] = useState(String(Math.max(0, Math.trunc(value))));
+
+  useEffect(() => {
+    setInputValue(String(Math.max(0, Math.trunc(value))));
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={inputValue}
+      disabled={disabled}
+      onChange={(e) => {
+        const raw = e.target.value;
+
+        /**
+         * 숫자만 허용
+         */
+        if (!/^\d*$/.test(raw)) {
+          return;
+        }
+
+        setInputValue(raw);
+
+        if (raw === "") {
+          return;
+        }
+
+        const parsed = Number(raw);
+        if (!Number.isNaN(parsed)) {
+          onChange(parsed);
+        }
+      }}
+      onBlur={() => {
+        if (inputValue === "") {
+          setInputValue("0");
+          onChange(0);
+          return;
+        }
+
+        const parsed = Number(inputValue);
+        if (Number.isNaN(parsed) || parsed < 0) {
+          setInputValue("0");
+          onChange(0);
+          return;
+        }
+
+        const normalized = Math.trunc(parsed);
+        setInputValue(String(normalized));
+        onChange(normalized);
+      }}
+      className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-zinc-100 disabled:text-zinc-500"
+    />
+  );
+}
+/**
+ * 소수 2자리 허용 필드
+ * - 공통 스탯
+ * - 도감 효과
+ */
+function DecimalField(props: {
   label: string;
   value: number;
   onChange: (value: number) => void;
-  step?: string;
   help?: string;
 }) {
-  const { label, value, onChange, step = "1", help } = props;
+  const { label, value, onChange, help } = props;
 
   return (
     <label className="block space-y-1">
       <span className="text-sm font-medium text-gray-700">{label}</span>
 
-      <StatNumberInput
-        value={value}
-        step={step}
-        min={0}
-        onChange={onChange}
-      />
+      <DecimalPlainInput value={value} onChange={onChange} />
+
+      {help && <p className="text-xs text-gray-500">{help}</p>}
+    </label>
+  );
+}
+
+/**
+ * 양의 정수 전용 필드
+ * - 명성 레벨
+ * - 직업 레벨
+ * - 스킬 레벨
+ */
+function IntegerField(props: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  help?: string;
+}) {
+  const { label, value, onChange, help } = props;
+
+  return (
+    <label className="block space-y-1">
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+
+      <PositiveIntegerPlainInput value={value} onChange={onChange} />
 
       {help && <p className="text-xs text-gray-500">{help}</p>}
     </label>
@@ -1498,16 +1683,7 @@ export default function ProfilePage() {
           >
             직접 입력
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setInputMode('import');
-              setSaveMessage('');
-            }}
-            className={tabClass(inputMode === 'import')}
-          >
-            가져오기
-          </button>
+          
         </div>
 
         {inputMode === 'import' && (
@@ -1555,44 +1731,38 @@ export default function ProfilePage() {
               <h3 className="text-lg font-semibold">공통 스탯 (total 기준)</h3>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <NumberField
+                <DecimalField
                   label="명성 레벨"
                   value={manualForm.common.reputationLevel}
                   onChange={(value) => updateCommonStat('reputationLevel', value)}
                 />
-                <NumberField
+                <DecimalField
                   label="행운"
-                  step="0.1"
                   value={manualForm.common.luck}
                   onChange={(value) => updateCommonStat('luck', value)}
                 />
-                <NumberField
+                <DecimalField
                   label="감각"
-                  step="0.1"
                   value={manualForm.common.sense}
                   onChange={(value) => updateCommonStat('sense', value)}
                 />
-                <NumberField
+                <DecimalField
                   label="인내력"
-                  step="0.1"
                   value={manualForm.common.endurance}
                   onChange={(value) => updateCommonStat('endurance', value)}
                 />
-                <NumberField
+                <DecimalField
                   label="노련함"
-                  step="0.1"
                   value={manualForm.common.mastery}
                   onChange={(value) => updateCommonStat('mastery', value)}
                 />
-                <NumberField
+                <DecimalField
                   label="손재주"
-                  step="0.1"
                   value={manualForm.common.dexterity}
                   onChange={(value) => updateCommonStat('dexterity', value)}
                 />
-                {/* <NumberField
+                {/* <DecimalField
                   label="카리스마"
-                  step="0.1"
                   value={manualForm.common.charisma}
                   onChange={(value) => updateCommonStat('charisma', value)}
                 /> */}
@@ -1641,7 +1811,7 @@ export default function ProfilePage() {
               {manualJobTab === 'fishing' && (
                 <div className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <NumberField
+                    <IntegerField
                       label="낚시 레벨"
                       value={manualForm.fishing.level}
                       onChange={(value) => updateJobLevel('fishing', value)}
@@ -1651,35 +1821,35 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">스킬 레벨</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <IntegerField
                         label="보물 감지"
                         value={manualForm.fishing.skills.treasureDetection}
                         onChange={(value) =>
                           updateJobSkill('fishing', 'treasureDetection', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="소문난 미끼"
                         value={manualForm.fishing.skills.famousBait}
                         onChange={(value) =>
                           updateJobSkill('fishing', 'famousBait', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="낚싯줄 장력"
                         value={manualForm.fishing.skills.lineTension}
                         onChange={(value) =>
                           updateJobSkill('fishing', 'lineTension', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="쌍걸이"
                         value={manualForm.fishing.skills.doubleCatch}
                         onChange={(value) =>
                           updateJobSkill('fishing', 'doubleCatch', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="떼낚시"
                         value={manualForm.fishing.skills.schoolFishing}
                         onChange={(value) =>
@@ -1692,17 +1862,15 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">도감 효과</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <DecimalField
                         label="일반 물고기 감소비율"
-                        step="0.1"
                         value={manualForm.fishing.codex.normalFishReduction}
                         onChange={(value) =>
                           updateJobCodex('fishing', 'normalFishReduction', value)
                         }
                       />
-                      <NumberField
+                      <DecimalField
                         label="기척 시간 감소"
-                        step="0.1"
                         value={manualForm.fishing.codex.nibbleTimeReduction}
                         onChange={(value) =>
                           updateJobCodex('fishing', 'nibbleTimeReduction', value)
@@ -1716,7 +1884,7 @@ export default function ProfilePage() {
               {manualJobTab === 'farming' && (
                 <div className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <NumberField
+                    <IntegerField
                       label="농사 레벨"
                       value={manualForm.farming.level}
                       onChange={(value) => updateJobLevel('farming', value)}
@@ -1726,35 +1894,35 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">스킬 레벨</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <IntegerField
                         label="풍년의 축복"
                         value={manualForm.farming.skills.blessingOfHarvest}
                         onChange={(value) =>
                           updateJobSkill('farming', 'blessingOfHarvest', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="비옥한 토양"
                         value={manualForm.farming.skills.fertileSoil}
                         onChange={(value) =>
                           updateJobSkill('farming', 'fertileSoil', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="개간의 서약"
                         value={manualForm.farming.skills.oathOfCultivation}
                         onChange={(value) =>
                           updateJobSkill('farming', 'oathOfCultivation', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="수확의 손길"
                         value={manualForm.farming.skills.handOfHarvest}
                         onChange={(value) =>
                           updateJobSkill('farming', 'handOfHarvest', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="되뿌리기"
                         value={manualForm.farming.skills.reseeding}
                         onChange={(value) =>
@@ -1767,9 +1935,8 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">도감 효과</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <DecimalField
                         label="일반 작물 감소비율"
-                        step="0.1"
                         value={manualForm.farming.codex.normalCropReduction}
                         onChange={(value) =>
                           updateJobCodex('farming', 'normalCropReduction', value)
@@ -1783,7 +1950,7 @@ export default function ProfilePage() {
               {manualJobTab === 'mining' && (
                 <div className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <NumberField
+                    <IntegerField
                       label="채광 레벨"
                       value={manualForm.mining.level}
                       onChange={(value) => updateJobLevel('mining', value)}
@@ -1793,35 +1960,35 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">스킬 레벨</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <IntegerField
                         label="단련된 곡괭이"
                         value={manualForm.mining.skills.temperedPickaxe}
                         onChange={(value) =>
                           updateJobSkill('mining', 'temperedPickaxe', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="광맥 감각"
                         value={manualForm.mining.skills.veinSense}
                         onChange={(value) =>
                           updateJobSkill('mining', 'veinSense', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="광맥 흐름"
                         value={manualForm.mining.skills.veinFlow}
                         onChange={(value) =>
                           updateJobSkill('mining', 'veinFlow', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="광맥 탐지"
                         value={manualForm.mining.skills.veinDetection}
                         onChange={(value) =>
                           updateJobSkill('mining', 'veinDetection', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="폭발적인 채광"
                         value={manualForm.mining.skills.explosiveMining}
                         onChange={(value) =>
@@ -1834,17 +2001,15 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">도감 효과</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <DecimalField
                         label="채광 딜레이 감소"
-                        step="0.1"
                         value={manualForm.mining.codex.miningDelayReduction}
                         onChange={(value) =>
                           updateJobCodex('mining', 'miningDelayReduction', value)
                         }
                       />
-                      <NumberField
+                      <DecimalField
                         label="채광 데미지 증가"
-                        step="0.1"
                         value={manualForm.mining.codex.miningDamageIncrease}
                         onChange={(value) =>
                           updateJobCodex('mining', 'miningDamageIncrease', value)
@@ -1858,7 +2023,7 @@ export default function ProfilePage() {
               {manualJobTab === 'cooking' && (
                 <div className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <NumberField
+                    <IntegerField
                       label="요리 레벨"
                       value={manualForm.cooking.level}
                       onChange={(value) => updateJobLevel('cooking', value)}
@@ -1868,35 +2033,35 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">스킬 레벨</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <IntegerField
                         label="손질 달인"
                         value={manualForm.cooking.skills.preparationMaster}
                         onChange={(value) =>
                           updateJobSkill('cooking', 'preparationMaster', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="맛의 균형"
                         value={manualForm.cooking.skills.balanceOfTaste}
                         onChange={(value) =>
                           updateJobSkill('cooking', 'balanceOfTaste', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="미식가"
                         value={manualForm.cooking.skills.gourmet}
                         onChange={(value) =>
                           updateJobSkill('cooking', 'gourmet', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="즉시 완성"
                         value={manualForm.cooking.skills.instantCompletion}
                         onChange={(value) =>
                           updateJobSkill('cooking', 'instantCompletion', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="연회 준비"
                         value={manualForm.cooking.skills.banquetPreparation}
                         onChange={(value) =>
@@ -1909,9 +2074,8 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">도감 효과</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <DecimalField
                         label="요리 등급업 확률"
-                        step="0.1"
                         value={manualForm.cooking.codex.cookingGradeUpChance}
                         onChange={(value) =>
                           updateJobCodex('cooking', 'cookingGradeUpChance', value)
