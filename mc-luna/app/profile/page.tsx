@@ -1731,7 +1731,7 @@ export default function ProfilePage() {
               <h3 className="text-lg font-semibold">공통 스탯 (total 기준)</h3>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <DecimalField
+                <IntegerField
                   label="명성 레벨"
                   value={manualForm.common.reputationLevel}
                   onChange={(value) => updateCommonStat('reputationLevel', value)}
