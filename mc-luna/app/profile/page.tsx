@@ -268,6 +268,137 @@ function formatStatValue(stat: ParsedStatValue | undefined): string {
   if (!stat) return '-';
   return `base: ${stat.base} / temp: ${stat.temp} / equip: ${stat.equip} / total: ${stat.total}`;
 }
+/**
+ * 값이 숫자가 아니면 0으로 정리하는 작은 헬퍼
+ */
+function toSafeManualNumber(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 0;
+  }
+  return value;
+}
+
+/**
+ * 저장된 ParsedLifeProfile -> 직접 입력 폼 state 로 역변환
+ *
+ * 목적:
+ * - 예전에 "직접 입력 저장"한 데이터를 다시 불러와
+ *   manualForm 입력칸에 자동으로 채워 넣기 위함
+ */
+function buildManualFormFromParsed(
+  parsed: ParsedLifeProfile,
+): ManualProfileState {
+  const fishingJob = parsed.jobs?.fishing;
+  const farmingJob = parsed.jobs?.farming;
+  const miningJob = parsed.jobs?.mining;
+  const cookingJob = parsed.jobs?.cooking;
+
+  const fishingSkills = parsed.skills?.fishing ?? {};
+  const farmingSkills = parsed.skills?.farming ?? {};
+  const miningSkills = parsed.skills?.mining ?? {};
+  const cookingSkills = parsed.skills?.cooking ?? {};
+
+  /**
+   * 공통 스탯은 현재 저장 구조상 각 직업 stats에 반복 저장되므로
+   * 우선순위를 정해서 하나를 기준으로 꺼내온다.
+   *
+   * - luck / sense / endurance 는 fishing 기준 우선
+   * - mastery / dexterity 는 cooking 기준 우선
+   * - 없으면 farming / mining 쪽에서 보조적으로 확인
+   */
+  const commonStatsSource =
+    fishingJob?.stats ??
+    farmingJob?.stats ??
+    miningJob?.stats ??
+    cookingJob?.stats ??
+    {};
+
+  return {
+    common: {
+      reputationLevel: toSafeManualNumber(parsed.reputationLevel),
+      luck: toSafeManualNumber(commonStatsSource.luck?.total),
+      sense: toSafeManualNumber(commonStatsSource.sense?.total),
+      endurance: toSafeManualNumber(commonStatsSource.endurance?.total),
+      mastery: toSafeManualNumber(
+        cookingJob?.stats?.mastery?.total ?? commonStatsSource.mastery?.total,
+      ),
+      dexterity: toSafeManualNumber(
+        cookingJob?.stats?.dexterity?.total ?? commonStatsSource.dexterity?.total,
+      ),
+      charisma: toSafeManualNumber(commonStatsSource.charisma?.total),
+    },
+
+    fishing: {
+      level: toSafeManualNumber(fishingJob?.level),
+      skills: {
+        treasureDetection: toSafeManualNumber(fishingSkills.treasureDetection),
+        famousBait: toSafeManualNumber(fishingSkills.famousBait),
+        lineTension: toSafeManualNumber(fishingSkills.lineTension),
+        doubleCatch: toSafeManualNumber(fishingSkills.doubleCatch),
+        schoolFishing: toSafeManualNumber(fishingSkills.schoolFishing),
+      },
+      codex: {
+        normalFishReduction: toSafeManualNumber(
+          fishingJob?.stats?.normalFishReduction?.total,
+        ),
+        nibbleTimeReduction: toSafeManualNumber(
+          fishingJob?.stats?.nibbleTimeReduction?.total,
+        ),
+      },
+    },
+
+    farming: {
+      level: toSafeManualNumber(farmingJob?.level),
+      skills: {
+        blessingOfHarvest: toSafeManualNumber(farmingSkills.blessingOfHarvest),
+        fertileSoil: toSafeManualNumber(farmingSkills.fertileSoil),
+        oathOfCultivation: toSafeManualNumber(farmingSkills.oathOfCultivation),
+        handOfHarvest: toSafeManualNumber(farmingSkills.handOfHarvest),
+        reseeding: toSafeManualNumber(farmingSkills.reseeding),
+      },
+      codex: {
+        normalCropReduction: toSafeManualNumber(
+          farmingJob?.stats?.normalCropReduction?.total,
+        ),
+      },
+    },
+
+    mining: {
+      level: toSafeManualNumber(miningJob?.level),
+      skills: {
+        temperedPickaxe: toSafeManualNumber(miningSkills.temperedPickaxe),
+        veinSense: toSafeManualNumber(miningSkills.veinSense),
+        veinFlow: toSafeManualNumber(miningSkills.veinFlow),
+        veinDetection: toSafeManualNumber(miningSkills.veinDetection),
+        explosiveMining: toSafeManualNumber(miningSkills.explosiveMining),
+      },
+      codex: {
+        miningDelayReduction: toSafeManualNumber(
+          miningJob?.stats?.miningDelayReduction?.total,
+        ),
+        miningDamageIncrease: toSafeManualNumber(
+          miningJob?.stats?.miningDamageIncrease?.total,
+        ),
+      },
+    },
+
+    cooking: {
+      level: toSafeManualNumber(cookingJob?.level),
+      skills: {
+        preparationMaster: toSafeManualNumber(cookingSkills.preparationMaster),
+        balanceOfTaste: toSafeManualNumber(cookingSkills.balanceOfTaste),
+        gourmet: toSafeManualNumber(cookingSkills.gourmet),
+        instantCompletion: toSafeManualNumber(cookingSkills.instantCompletion),
+        banquetPreparation: toSafeManualNumber(cookingSkills.banquetPreparation),
+      },
+      codex: {
+        cookingGradeUpChance: toSafeManualNumber(
+          cookingJob?.stats?.cookingGradeUpChance?.total,
+        ),
+      },
+    },
+  };
+}
 
 /**
  * 공통 스탯을 각 직업에 반복 주입해
@@ -436,7 +567,7 @@ export default function ProfilePage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaveMessage, setProfileSaveMessage] = useState('');
 
-  const [inputMode, setInputMode] = useState<InputMode>('import');
+  const [inputMode, setInputMode] = useState<InputMode>('manual');
   const [manualJobTab, setManualJobTab] = useState<ManualJobTab>('fishing');
 
   const [rawText, setRawText] = useState('');
@@ -445,6 +576,7 @@ export default function ProfilePage() {
 
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
+  const [manualLoadLoading, setManualLoadLoading] = useState(false);
   const [parsedPreview, setParsedPreview] = useState<ParsedLifeProfile | null>(null);
 
   /**
@@ -991,6 +1123,68 @@ export default function ProfilePage() {
     }
   };
 
+  const handleLoadLastManualProfile = async () => {
+    try {
+      setManualLoadLoading(true);
+      setSaveMessage('');
+
+      if (!user) {
+        const message = '사용자 정보를 불러올 수 없습니다.';
+        setSaveMessage(message);
+        toast.error(message);
+        return;
+      }
+
+      /**
+       * 직접 입력으로 저장했던 가장 최근 스냅샷 1개 조회
+       *
+       * 저장 구조 근거:
+       * - saveManualLifeProfile() -> saveParsedLifeProfile(...)
+       * - life_profile_imports 에 input_method = "manual" 로 저장됨
+       */
+      const { data, error } = await supabase
+        .from('life_profile_imports')
+        .select('parsed_json, created_at')
+        .eq('user_id', user.id)
+        .eq('input_method', 'manual')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`이전 직접 입력 데이터 조회 실패: ${error.message}`);
+      }
+
+      const parsed = (data?.parsed_json ?? null) as ParsedLifeProfile | null;
+
+      if (!parsed) {
+        const message = '이전에 직접 입력하여 저장한 데이터가 없습니다.';
+        setSaveMessage(message);
+        toast.error(message);
+        return;
+      }
+
+      const loadedForm = buildManualFormFromParsed(parsed);
+
+      setManualForm(loadedForm);
+      setParsedPreview(parsed);
+      setManualJobTab('fishing');
+
+      const message = '이전에 직접 입력한 데이터를 불러왔습니다.';
+      setSaveMessage(message);
+      toast.success(message);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : '이전 직접 입력 데이터를 불러오는 중 오류가 발생했습니다.';
+      setSaveMessage(message);
+      toast.error(message);
+    } finally {
+      setManualLoadLoading(false);
+    }
+  };
+
   const resetImportState = () => {
     setRawText('');
     setParsedPreview(null);
@@ -1163,20 +1357,29 @@ export default function ProfilePage() {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={handleSaveBasicProfile}
-              disabled={profileSaving}
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={handleSaveManualProfile}
+              disabled={saving || !isMinecraftLinked}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {profileSaving ? '저장 중...' : '기본 프로필 저장'}
+              {saving ? '저장 중...' : '직접 입력 저장'}
             </button>
 
             <button
               type="button"
-              onClick={resetBasicProfileForm}
-              disabled={profileSaving}
+              onClick={handleLoadLastManualProfile}
+              disabled={manualLoadLoading}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {manualLoadLoading ? '불러오는 중...' : '이전 입력 불러오기'}
+            </button>
+
+            <button
+              type="button"
+              onClick={resetManualState}
+              disabled={saving || manualLoadLoading}
               className="rounded-lg bg-gray-500 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              되돌리기
+              초기화
             </button>
           </div>
 
@@ -1293,17 +1496,7 @@ export default function ProfilePage() {
         )}
 
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setInputMode('import');
-              setSaveMessage('');
-            }}
-            className={tabClass(inputMode === 'import')}
-          >
-            가져오기
-          </button>
-
+          
           <button
             type="button"
             onClick={() => {
@@ -1313,6 +1506,16 @@ export default function ProfilePage() {
             className={tabClass(inputMode === 'manual')}
           >
             직접 입력
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setInputMode('import');
+              setSaveMessage('');
+            }}
+            className={tabClass(inputMode === 'import')}
+          >
+            가져오기
           </button>
         </div>
 
