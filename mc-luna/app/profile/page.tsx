@@ -1487,6 +1487,7 @@ export default function ProfilePage() {
         )}
 
         <div className="flex flex-wrap gap-2">
+
           <button
             type="button"
             onClick={() => {
@@ -1524,26 +1525,17 @@ export default function ProfilePage() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={handleSaveManualProfile}
-                disabled={saving || !isMinecraftLinked}
+                onClick={handleSaveImportProfile}
+                disabled={saving || rawText.trim().length === 0 || !isMinecraftLinked}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {saving ? '저장 중...' : '직접 입력 저장'}
+                {saving ? '저장 중...' : '파싱 후 저장'}
               </button>
 
               <button
                 type="button"
-                onClick={handleLoadLastManualProfile}
-                disabled={manualLoadLoading}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {manualLoadLoading ? '불러오는 중...' : '이전 입력 불러오기'}
-              </button>
-
-              <button
-                type="button"
-                onClick={resetManualState}
-                disabled={saving || manualLoadLoading}
+                onClick={resetImportState}
+                disabled={saving}
                 className="rounded-lg bg-gray-500 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 초기화
@@ -1943,8 +1935,17 @@ export default function ProfilePage() {
 
               <button
                 type="button"
+                onClick={handleLoadLastManualProfile}
+                disabled={manualLoadLoading}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {manualLoadLoading ? '불러오는 중...' : '이전 입력 불러오기'}
+              </button>
+
+              <button
+                type="button"
                 onClick={resetManualState}
-                disabled={saving}
+                disabled={saving || manualLoadLoading}
                 className="rounded-lg bg-gray-500 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 초기화
