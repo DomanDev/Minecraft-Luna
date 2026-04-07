@@ -35,6 +35,7 @@ import type {
 } from "@/src/lib/market/types";
 import { MINING_MARKET_ITEMS } from "@/src/lib/market/defaultPrices";
 import { formatCell, formatDecimal, formatPercent } from "@/src/lib/format";
+import StatNumberInput from "@/src/components/calculator/StatNumberInput";
 
 const recipeOptions = MINING_RECIPES.map((recipe) => ({
   value: recipe.id,
@@ -478,8 +479,11 @@ export default function MiningCalculatorPage() {
               </Field>
 
               <Field label="손재주">
-                <NumberInput
+                <StatNumberInput
                   value={dexterity}
+                  step="0.01"
+                  min={0}
+                  max={999}
                   onChange={(value) => {
                     setDexterity(value);
                     setIsDirty(true);

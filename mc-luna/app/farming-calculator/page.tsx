@@ -28,6 +28,7 @@ import {
 import { toast } from "sonner";
 import { loadUserMarketPrices, upsertUserMarketPrices } from "@/src/lib/market/db";
 import type { MarketGrade, UserMarketPriceRow } from "@/src/lib/market/types";
+import StatNumberInput from "@/src/components/calculator/StatNumberInput";
 
 const cropOptions: { value: FarmingCropType; label: string }[] = [
   { value: "lettuce", label: "상추" },
@@ -769,8 +770,11 @@ export default function FarmingCalculatorPage() {
             <h3 className="mb-3 text-lg font-semibold">농사 스탯</h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="행운">
-                <NumberInput
+                <StatNumberInput
                   value={luck}
+                  step="0.01"
+                  min={0}
+                  max={999}
                   onChange={(value) => {
                     setLuck(value);
                     setIsDirty(true);
@@ -780,8 +784,11 @@ export default function FarmingCalculatorPage() {
               </Field>
 
               <Field label="감각">
-                <NumberInput
+                <StatNumberInput
                   value={sense}
+                  step="0.01"
+                  min={0}
+                  max={999}
                   onChange={(value) => {
                     setSense(value);
                     setIsDirty(true);
@@ -796,7 +803,10 @@ export default function FarmingCalculatorPage() {
             <h3 className="mb-3 text-lg font-semibold">도감 효과</h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="일반 작물 감소비율">
-                <NumberInput
+                <StatNumberInput
+                  step="0.01"
+                  min={0}
+                  max={999}
                   value={normalCropReduction}
                   onChange={() => {}}
                   disabled
@@ -808,7 +818,10 @@ export default function FarmingCalculatorPage() {
           <h3 className="mb-3 mt-6 text-lg font-semibold">농사 스킬</h3>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field label="풍년의 축복">
-              <NumberInput
+              <StatNumberInput
+                step="0.01"
+                min={0}
+                max={999}
                 value={blessingOfHarvest}
                 onChange={(value) => {
                   setBlessingOfHarvest(value);

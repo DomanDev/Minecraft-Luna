@@ -39,6 +39,7 @@ import {
   type MinecraftLinkStatus,
   type MinecraftLookupResult,
 } from '../../src/lib/minecraft-profile';
+import StatNumberInput from "../../src/components/calculator/StatNumberInput";
 
 /**
  * profiles 테이블에서 가져오는 기본 프로필 타입
@@ -382,6 +383,11 @@ function tabClass(active: boolean): string {
 
 /**
  * 숫자 input 공통 렌더링용 작은 컴포넌트
+ *
+ * 변경 사항:
+ * - 기존 native number input 대신
+ *   소수 + 콤마 표시를 지원하는 StatNumberInput 사용
+ * - 스탯 입력 시 111.38 같은 값이 11,138로 깨지는 문제 방지
  */
 function NumberField(props: {
   label: string;
@@ -390,19 +396,20 @@ function NumberField(props: {
   step?: string;
   help?: string;
 }) {
-  const { label, value, onChange, step = '1', help } = props;
+  const { label, value, onChange, step = "1", help } = props;
 
   return (
-    <label className="space-y-1">
-      <div className="text-sm font-medium">{label}</div>
-      <input
-        type="number"
-        step={step}
+    <label className="block space-y-1">
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+
+      <StatNumberInput
         value={value}
-        onChange={(e) => onChange(toNumberValue(e.target.value))}
-        className="w-full rounded-lg border p-2"
+        step={step}
+        min={0}
+        onChange={onChange}
       />
-      {help && <div className="text-xs text-gray-500">{help}</div>}
+
+      {help && <p className="text-xs text-gray-500">{help}</p>}
     </label>
   );
 }

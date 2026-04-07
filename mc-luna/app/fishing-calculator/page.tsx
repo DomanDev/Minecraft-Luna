@@ -26,6 +26,7 @@ import {
   formatPercent,
   formatPercentFromRatio,
 } from "@/src/lib/format";
+import StatNumberInput from "@/src/components/calculator/StatNumberInput";
 
 const baitOptions: {
   value: BaitType;
@@ -114,7 +115,7 @@ const thirstOptions: { value: ThirstMin; label: string }[] = [
 const INITIAL_FORM = {
   luck: 0,
   sense: 0,
-  remainingExp: 0,
+  
 
   /**
    * 도감 효과
@@ -668,10 +669,11 @@ export default function FishingCalculatorPage() {
                 <h3 className="text-lg font-semibold text-zinc-900">낚시 스탯</h3>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="행운">
-                    <NumberInput
+                    <StatNumberInput
                       value={luck}
+                      step="0.01"
                       min={0}
-                      max={9999}
+                      max={999}
                       disabled={disableProfileFields}
                       onChange={(value) => {
                         setLuck(value);
@@ -681,10 +683,11 @@ export default function FishingCalculatorPage() {
                   </Field>
 
                   <Field label="감각">
-                    <NumberInput
+                    <StatNumberInput
                       value={sense}
+                      step="0.01"
                       min={0}
-                      max={9999}
+                      max={999}
                       disabled={disableProfileFields}
                       onChange={(value) => {
                         setSense(value);
@@ -699,20 +702,22 @@ export default function FishingCalculatorPage() {
                 <h3 className="text-lg font-semibold text-zinc-900">도감 효과</h3>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="일반 물고기 감소비율">
-                    <NumberInput
-                      value={normalFishReduction}
+                    <StatNumberInput
+                      step="0.01"
                       min={0}
-                      max={9999}
+                      max={999}
+                      value={normalFishReduction}
                       disabled
                       onChange={() => {}}
                     />
                   </Field>
 
                   <Field label="기척 시간 감소">
-                    <NumberInput
+                    <StatNumberInput
+                      step="0.01"
                       value={nibbleTimeReduction}
                       min={0}
-                      max={9999}
+                      max={999}
                       disabled
                       onChange={() => {}}
                     />

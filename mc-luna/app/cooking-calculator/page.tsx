@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/src/lib/supabase";
-
+import StatNumberInput from "@/src/components/calculator/StatNumberInput";
 import CalculatorLayout from "@/src/components/calculator/CalculatorLayout";
 import CalculatorPanel from "@/src/components/calculator/CalculatorPanel";
 import Field from "@/src/components/calculator/Field";
@@ -1270,7 +1270,10 @@ export default function CookingCalculatorPage() {
             <h3 className="mb-3 text-lg font-semibold">요리 스탯</h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="노련함">
-                <NumberInput
+                <StatNumberInput
+                  step="0.01"
+                  min={0}
+                  max={999}
                   value={mastery}
                   onChange={(value) => {
                     setMastery(value);
@@ -1281,7 +1284,10 @@ export default function CookingCalculatorPage() {
               </Field>
 
               <Field label="손재주">
-                <NumberInput
+                <StatNumberInput
+                  step="0.01"
+                  min={0}
+                  max={999}
                   value={dexterity}
                   onChange={(value) => {
                     setDexterity(value);
@@ -1297,7 +1303,10 @@ export default function CookingCalculatorPage() {
             <h3 className="mb-3 text-lg font-semibold">도감 효과</h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="요리 등급업 확률">
-                <NumberInput
+                <StatNumberInput
+                  step="0.01"
+                  min={0}
+                  max={999}
                   value={cookingGradeUpChance}
                   onChange={() => {}}
                   disabled
