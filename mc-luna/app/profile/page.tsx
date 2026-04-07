@@ -40,15 +40,24 @@ import {
   type MinecraftLookupResult,
 } from '../../src/lib/minecraft-profile';
 
-
 /**
  * profiles 테이블에서 가져오는 기본 프로필 타입
+ *
+ * 추가:
+ * - role:
+ *   관리자/일반 사용자 구분용
+ *   -> 생활 정보 저장 쿨타임 계산에 사용
+ *
+ * 전제:
+ * - DB의 profiles 테이블에 role 컬럼이 있어야 한다.
+ * - 예: 'admin' | 'user'
  */
 type Profile = {
   id: string;
   username: string | null;
   display_name: string | null;
   plan_type: 'free' | 'pro';
+  role: 'admin' | 'user' | null;
   minecraft_uuid: string | null;
   minecraft_link_status: MinecraftLinkStatus;
   minecraft_linked_at: string | null;
@@ -268,6 +277,7 @@ function formatStatValue(stat: ParsedStatValue | undefined): string {
   if (!stat) return '-';
   return `base: ${stat.base} / temp: ${stat.temp} / equip: ${stat.equip} / total: ${stat.total}`;
 }
+
 /**
  * 값이 숫자가 아니면 0으로 정리하는 작은 헬퍼
  */
@@ -513,6 +523,132 @@ function tabClass(active: boolean): string {
 }
 
 /**
+ * 생활 정보 저장 쿨타임 정책
+ *
+ * - 관리자: 제한 없음
+ * - Pro: 1시간
+ * - Free: 6시간
+ */
+const PRO_LIFE_PROFILE_COOLDOWN_MS = 60 * 60 * 1000; // 1시간
+const FREE_LIFE_PROFILE_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6시간;
+
+function getLifeProfileCooldownMs(profile: Profile | null): number {
+  if (!profile) {
+    return FREE_LIFE_PROFILE_COOLDOWN_MS;
+  }
+
+  if (profile.role === 'admin') {
+    return 0;
+  }
+
+  if (profile.plan_type === 'pro') {
+    return PRO_LIFE_PROFILE_COOLDOWN_MS;
+  }
+
+  return FREE_LIFE_PROFILE_COOLDOWN_MS;
+}
+
+/**
+ * 남은 시간을 사람이 읽기 쉬운 문구로 변환
+ *
+ * 예:
+ * - 2시간 13분
+ * - 14분 20초
+ * - 12초
+ */
+function formatRemainingDuration(ms: number): string {
+  if (ms <= 0) return '지금 저장 가능';
+
+  const totalSeconds = Math.ceil(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `남은 시간 ${hours}시간 ${minutes}분`;
+  }
+
+  if (minutes > 0) {
+    return `남은 시간 ${minutes}분 ${seconds}초`;
+  }
+
+  return `남은 시간 ${seconds}초`;
+}
+
+/**
+ * 현재 사용자의 쿨타임 정책 문구 반환
+ *
+ * 예:
+ * - 관리자 제한 없음
+ * - Pro 1시간
+ * - Free 6시간
+ */
+function getCooldownPolicyLabel(profile: Profile | null): string {
+  if (!profile) return 'Free 6시간';
+
+  if (profile.role === 'admin') {
+    return '관리자 제한 없음';
+  }
+
+  if (profile.plan_type === 'pro') {
+    return 'Pro 1시간';
+  }
+
+  return 'Free 6시간';
+}
+
+/**
+ * 저장 가능 여부 공통 판정
+ *
+ * 사용 위치:
+ * - 저장 버튼 disabled
+ * - 저장 핸들러 맨 앞 가드
+ * - 안내 문구 표시
+ */
+function canSaveLifeProfile(
+  profile: Profile | null,
+  cooldownLoading: boolean,
+  lastSavedAt: string | null,
+  remainingCooldownMs: number,
+): {
+  allowed: boolean;
+  message: string;
+} {
+  if (cooldownLoading) {
+    return {
+      allowed: false,
+      message: '저장 가능 시간을 확인하는 중...',
+    };
+  }
+
+  if (!profile) {
+    return {
+      allowed: false,
+      message: '프로필 정보를 불러오는 중입니다.',
+    };
+  }
+
+  if (profile.role === 'admin') {
+    return {
+      allowed: true,
+      message: '관리자 계정: 제한 없이 저장 가능',
+    };
+  }
+
+  if (!lastSavedAt || remainingCooldownMs <= 0) {
+    return {
+      allowed: true,
+      message: `지금 저장 가능 (${getCooldownPolicyLabel(profile)})`,
+    };
+  }
+
+  return {
+    allowed: false,
+    message: `${formatRemainingDuration(remainingCooldownMs)} (${getCooldownPolicyLabel(profile)})`,
+  };
+}
+
+/**
  * 프로필 페이지 전용:
  * 소수 2자리까지 허용하는 입력 컴포넌트
  *
@@ -567,7 +703,7 @@ function DecimalPlainInput(props: {
         /**
          * 입력 중간 상태("", "12.")는 number 변환을 강제하지 않음
          */
-        if (raw === "" || raw.endsWith(".")) {
+        if (raw === '' || raw.endsWith('.')) {
           return;
         }
 
@@ -581,15 +717,15 @@ function DecimalPlainInput(props: {
          * blur 시에도 반올림/콤마 처리 없이
          * 현재 입력값 그대로 정리
          */
-        if (inputValue === "") {
-          setInputValue("0");
+        if (inputValue === '') {
+          setInputValue('0');
           onChange(0);
           return;
         }
 
-        if (inputValue.endsWith(".")) {
+        if (inputValue.endsWith('.')) {
           const normalized = inputValue.slice(0, -1);
-          const parsed = Number(normalized === "" ? "0" : normalized);
+          const parsed = Number(normalized === '' ? '0' : normalized);
           setInputValue(String(parsed));
           onChange(parsed);
           return;
@@ -597,7 +733,7 @@ function DecimalPlainInput(props: {
 
         const parsed = Number(inputValue);
         if (Number.isNaN(parsed) || parsed < 0) {
-          setInputValue("0");
+          setInputValue('0');
           onChange(0);
           return;
         }
@@ -626,7 +762,9 @@ function PositiveIntegerPlainInput(props: {
 }) {
   const { value, onChange, disabled = false } = props;
 
-  const [inputValue, setInputValue] = useState(String(Math.max(0, Math.trunc(value))));
+  const [inputValue, setInputValue] = useState(
+    String(Math.max(0, Math.trunc(value))),
+  );
 
   useEffect(() => {
     setInputValue(String(Math.max(0, Math.trunc(value))));
@@ -650,7 +788,7 @@ function PositiveIntegerPlainInput(props: {
 
         setInputValue(raw);
 
-        if (raw === "") {
+        if (raw === '') {
           return;
         }
 
@@ -660,15 +798,15 @@ function PositiveIntegerPlainInput(props: {
         }
       }}
       onBlur={() => {
-        if (inputValue === "") {
-          setInputValue("0");
+        if (inputValue === '') {
+          setInputValue('0');
           onChange(0);
           return;
         }
 
         const parsed = Number(inputValue);
         if (Number.isNaN(parsed) || parsed < 0) {
-          setInputValue("0");
+          setInputValue('0');
           onChange(0);
           return;
         }
@@ -681,6 +819,7 @@ function PositiveIntegerPlainInput(props: {
     />
   );
 }
+
 /**
  * 소수 2자리 허용 필드
  * - 공통 스탯
@@ -752,6 +891,9 @@ export default function ProfilePage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaveMessage, setProfileSaveMessage] = useState('');
 
+  /**
+   * 직접 입력을 왼쪽/기본값으로 유지
+   */
   const [inputMode, setInputMode] = useState<InputMode>('manual');
   const [manualJobTab, setManualJobTab] = useState<ManualJobTab>('fishing');
 
@@ -762,7 +904,24 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [manualLoadLoading, setManualLoadLoading] = useState(false);
-  const [parsedPreview, setParsedPreview] = useState<ParsedLifeProfile | null>(null);
+  const [parsedPreview, setParsedPreview] =
+    useState<ParsedLifeProfile | null>(null);
+
+  /**
+   * 생활 정보 저장 제한 관련 state
+   *
+   * - lastLifeProfileSavedAt:
+   *   마지막 생활 정보 저장 시각
+   * - remainingCooldownMs:
+   *   지금 기준으로 남아 있는 제한 시간
+   * - cooldownLoading:
+   *   최근 저장 시각을 조회 중인지 여부
+   */
+  const [lastLifeProfileSavedAt, setLastLifeProfileSavedAt] = useState<
+    string | null
+  >(null);
+  const [remainingCooldownMs, setRemainingCooldownMs] = useState(0);
+  const [cooldownLoading, setCooldownLoading] = useState(true);
 
   /**
    * 마인크래프트 프로필 연동 관련 state
@@ -779,6 +938,33 @@ export default function ProfilePage() {
   const [minecraftModalOpen, setMinecraftModalOpen] = useState(false);
   const [minecraftLinkSaving, setMinecraftLinkSaving] = useState(false);
 
+  /**
+   * 최근 생활 정보 저장 시각 조회
+   *
+   * 기준:
+   * - import/manual 구분 없이 가장 최근 1건
+   * - created_at이 가장 최신인 row를 사용
+   *
+   * 이유:
+   * - DB 과다 사용 방지는 "생활 정보 수정 전체"에 대해 적용해야 하므로
+   *   입력 방식과 무관하게 마지막 저장 시각 하나만 보면 된다.
+   */
+  const fetchLastLifeProfileSavedAt = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('life_profile_imports')
+      .select('created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`최근 생활정보 저장 시각 조회 실패: ${error.message}`);
+    }
+
+    return data?.created_at ?? null;
+  };
+
   useEffect(() => {
     if (!user) {
       setProfile(null);
@@ -792,11 +978,15 @@ export default function ProfilePage() {
       /**
        * 1차 조회:
        * - 기존 profiles row가 있는지 확인
+       *
+       * 추가:
+       * - role도 함께 조회한다.
+       *   -> 관리자 쿨타임 예외 처리에 필요
        */
       let { data, error } = await supabase
         .from('profiles')
         .select(
-          'id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
         )
         .eq('id', user.id)
         .maybeSingle();
@@ -817,6 +1007,7 @@ export default function ProfilePage() {
           username: null,
           display_name: null,
           plan_type: 'free' as const,
+          role: 'user' as const,
           minecraft_uuid: null,
           minecraft_link_status: 'needs_lookup' as const,
           minecraft_linked_at: null,
@@ -838,7 +1029,7 @@ export default function ProfilePage() {
         const retry = await supabase
           .from('profiles')
           .select(
-            'id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+            'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
           )
           .eq('id', user.id)
           .single();
@@ -863,6 +1054,76 @@ export default function ProfilePage() {
 
     void fetchProfile();
   }, [user]);
+
+  useEffect(() => {
+    const loadCooldownInfo = async () => {
+      if (!user) {
+        setLastLifeProfileSavedAt(null);
+        setRemainingCooldownMs(0);
+        setCooldownLoading(false);
+        return;
+      }
+
+      try {
+        setCooldownLoading(true);
+
+        const lastSavedAt = await fetchLastLifeProfileSavedAt(user.id);
+        setLastLifeProfileSavedAt(lastSavedAt);
+      } catch (error) {
+        console.error(error);
+        setLastLifeProfileSavedAt(null);
+      } finally {
+        setCooldownLoading(false);
+      }
+    };
+
+    void loadCooldownInfo();
+  }, [user]);
+
+  useEffect(() => {
+    const updateRemaining = () => {
+      if (!profile) {
+        setRemainingCooldownMs(0);
+        return;
+      }
+
+      const cooldownMs = getLifeProfileCooldownMs(profile);
+
+      if (cooldownMs <= 0 || !lastLifeProfileSavedAt) {
+        setRemainingCooldownMs(0);
+        return;
+      }
+
+      const lastSavedTime = new Date(lastLifeProfileSavedAt).getTime();
+      const nextAllowedTime = lastSavedTime + cooldownMs;
+      const now = Date.now();
+
+      setRemainingCooldownMs(Math.max(0, nextAllowedTime - now));
+    };
+
+    updateRemaining();
+
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [profile, lastLifeProfileSavedAt]);
+
+  /**
+   * 현재 저장 가능 상태를 한 번만 계산해서 재사용
+   *
+   * 사용 위치:
+   * - 상단 안내 배너
+   * - import 저장 버튼
+   * - manual 저장 버튼
+   * - 저장 핸들러 시작 가드
+   */
+  const saveAvailability = useMemo(() => {
+    return canSaveLifeProfile(
+      profile,
+      cooldownLoading,
+      lastLifeProfileSavedAt,
+      remainingCooldownMs,
+    );
+  }, [profile, cooldownLoading, lastLifeProfileSavedAt, remainingCooldownMs]);
 
   /**
    * 공통 스탯 업데이트
@@ -977,6 +1238,7 @@ export default function ProfilePage() {
     uuid: profile?.minecraft_uuid,
     size: 64,
   });
+
   /**
    * 기본 프로필 저장
    *
@@ -1192,7 +1454,7 @@ export default function ProfilePage() {
         .from('profiles')
         .upsert(updatePayload, { onConflict: 'id' })
         .select(
-          'id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
         )
         .single();
 
@@ -1219,6 +1481,17 @@ export default function ProfilePage() {
     }
   };
 
+  /**
+   * 가져오기 저장
+   *
+   * 추가:
+   * - 저장 직전 쿨타임 가드
+   * - 저장 성공 시 lastLifeProfileSavedAt 즉시 갱신
+   *
+   * 이유:
+   * - 버튼 비활성화만으로는 우회가 가능할 수 있으므로
+   *   핸들러 진입 시에도 한 번 더 막아준다.
+   */
   const handleSaveImportProfile = async () => {
     try {
       setSaving(true);
@@ -1239,6 +1512,13 @@ export default function ProfilePage() {
         return;
       }
 
+      if (!saveAvailability.allowed) {
+        const message = `생활 정보 수정 제한 중 · ${saveAvailability.message}`;
+        setSaveMessage(message);
+        toast.error(message);
+        return;
+      }
+
       /**
        * 1) 생활 정보 원문을 파싱하고
        * 2) DB에 저장한 뒤
@@ -1246,6 +1526,14 @@ export default function ProfilePage() {
        */
       const parsed = await saveLifeProfileFromText(user.id, rawText);
       setParsedPreview(parsed);
+
+      /**
+       * 저장 성공 즉시 마지막 저장 시각을 현재 시각으로 갱신
+       *
+       * 이유:
+       * - DB 재조회 없이도 화면 카운트다운을 바로 시작하기 위함
+       */
+      setLastLifeProfileSavedAt(new Date().toISOString());
 
       /**
        * 저장 완료 메시지
@@ -1267,6 +1555,13 @@ export default function ProfilePage() {
     }
   };
 
+  /**
+   * 직접 입력 저장
+   *
+   * 추가:
+   * - 저장 직전 쿨타임 가드
+   * - 저장 성공 시 lastLifeProfileSavedAt 즉시 갱신
+   */
   const handleSaveManualProfile = async () => {
     try {
       setSaving(true);
@@ -1287,12 +1582,24 @@ export default function ProfilePage() {
         return;
       }
 
+      if (!saveAvailability.allowed) {
+        const message = `생활 정보 수정 제한 중 · ${saveAvailability.message}`;
+        setSaveMessage(message);
+        toast.error(message);
+        return;
+      }
+
       /**
        * manual 입력값을 표준 구조로 변환해서 저장
        */
       const manualInput = buildManualLifeProfileInput(manualForm);
       const parsed = await saveManualLifeProfile(user.id, manualInput);
       setParsedPreview(parsed);
+
+      /**
+       * 저장 성공 즉시 마지막 저장 시각 반영
+       */
+      setLastLifeProfileSavedAt(new Date().toISOString());
 
       setSaveMessage('직접 입력 프로필 저장 완료');
       toast.success('프로필이 저장되었습니다.');
@@ -1671,8 +1978,18 @@ export default function ProfilePage() {
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2">
+        <div
+          className={`rounded-lg border p-4 text-sm ${
+            saveAvailability.allowed
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              : 'border-amber-200 bg-amber-50 text-amber-900'
+          }`}
+        >
+          <div className="font-semibold">생활 정보 수정 제한</div>
+          <p className="mt-1">{saveAvailability.message}</p>
+        </div>
 
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => {
@@ -1683,7 +2000,17 @@ export default function ProfilePage() {
           >
             직접 입력
           </button>
-          
+
+          <button
+            type="button"
+            onClick={() => {
+              setInputMode('import');
+              setSaveMessage('');
+            }}
+            className={tabClass(inputMode === 'import')}
+          >
+            가져오기
+          </button>
         </div>
 
         {inputMode === 'import' && (
@@ -1702,7 +2029,12 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={handleSaveImportProfile}
-                disabled={saving || rawText.trim().length === 0 || !isMinecraftLinked}
+                disabled={
+                  saving ||
+                  rawText.trim().length === 0 ||
+                  !isMinecraftLinked ||
+                  !saveAvailability.allowed
+                }
                 className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {saving ? '저장 중...' : '파싱 후 저장'}
@@ -2091,7 +2423,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={handleSaveManualProfile}
-                disabled={saving || !isMinecraftLinked}
+                disabled={saving || !isMinecraftLinked || !saveAvailability.allowed}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {saving ? '저장 중...' : '직접 입력 저장'}
@@ -2139,12 +2471,24 @@ export default function ProfilePage() {
 
             <div className="rounded-xl border p-4">
               <h3 className="mb-2 font-semibold">공통 스탯 확인</h3>
-              <div className="text-sm">행운: {formatStatValue(previewFishingJob?.stats?.luck)}</div>
-              <div className="text-sm">감각: {formatStatValue(previewFishingJob?.stats?.sense)}</div>
-              <div className="text-sm">손재주: {formatStatValue(previewCookingJob?.stats?.dexterity)}</div>
-              <div className="text-sm">노련함: {formatStatValue(previewCookingJob?.stats?.mastery)}</div>
-              <div className="text-sm">인내력: {formatStatValue(previewFishingJob?.stats?.endurance)}</div>
-              <div className="text-sm">카리스마: {formatStatValue(previewFishingJob?.stats?.charisma)}</div>
+              <div className="text-sm">
+                행운: {formatStatValue(previewFishingJob?.stats?.luck)}
+              </div>
+              <div className="text-sm">
+                감각: {formatStatValue(previewFishingJob?.stats?.sense)}
+              </div>
+              <div className="text-sm">
+                손재주: {formatStatValue(previewCookingJob?.stats?.dexterity)}
+              </div>
+              <div className="text-sm">
+                노련함: {formatStatValue(previewCookingJob?.stats?.mastery)}
+              </div>
+              <div className="text-sm">
+                인내력: {formatStatValue(previewFishingJob?.stats?.endurance)}
+              </div>
+              <div className="text-sm">
+                카리스마: {formatStatValue(previewFishingJob?.stats?.charisma)}
+              </div>
             </div>
 
             <div className="rounded-xl border p-4">
