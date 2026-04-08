@@ -224,6 +224,9 @@ export default function ArcaMarketPage() {
   const [requestQuantity, setRequestQuantity] = useState("1");
   const [requestSubmitting, setRequestSubmitting] = useState(false);
 
+  const [myRequests, setMyRequests] = useState<ArcaTradeRequestRow[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);  
+
   /**
    * 등록 폼 state
    *
@@ -425,6 +428,29 @@ export default function ArcaMarketPage() {
     }
   }, [activeTab, allowed, guardLoading, page, sortKey]);
 
+  const fetchMyRequests = useCallback(async () => {
+    if (!sessionUserId) return;
+
+    setLoadingRequests(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("arca_trade_requests")
+        .select("*")
+        .eq("requester_id", sessionUserId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("신청 목록 조회 실패:", error);
+        return;
+      }
+
+      setMyRequests(data ?? []);
+    } finally {
+      setLoadingRequests(false);
+    }
+  }, [sessionUserId]);
+
   const fetchMyOpenPostSummary = useCallback(async (): Promise<MyOpenPostSummary> => {
     if (!sessionUserId) {
       return { hasOpenSell: false, hasOpenBuy: false };
@@ -454,6 +480,10 @@ export default function ArcaMarketPage() {
   useEffect(() => {
     void fetchPosts();
   }, [fetchPosts]);
+
+  useEffect(() => {
+    fetchMyRequests();
+  }, [fetchMyRequests]);
 
   useEffect(() => {
     setPage(1);
@@ -660,6 +690,29 @@ export default function ArcaMarketPage() {
       setRequestSubmitting(false);
     }
   }, [fetchPosts, requestQuantity, sessionUserId]);
+
+  const handleCancelRequest = useCallback(async (requestId: string) => {
+    setRequestSubmitting(true);
+
+    try {
+      const { error } = await supabase.rpc("cancel_arca_trade_request", {
+        p_request_id: requestId,
+      });
+
+      if (error) {
+        console.error("신청 취소 실패:", error);
+        toast.error("신청 취소에 실패했습니다.");
+        return;
+      }
+
+      toast.success("신청을 취소했습니다.");
+
+      await fetchMyRequests();
+      await fetchPosts();
+    } finally {
+      setRequestSubmitting(false);
+    }
+  }, [fetchMyRequests, fetchPosts]);
 
   const handleUpdateStatus = useCallback(
     async (post: ArcaTradePostRow, nextStatus: TradeStatus) => {
@@ -1250,6 +1303,42 @@ export default function ArcaMarketPage() {
           </div>
         </section>
       </section>
+      <section className="mt-10 rounded-2xl border border-zinc-200 bg-white p-6">
+        <div className="mb-4 text-lg font-semibold text-zinc-900">내 거래 신청</div>
+
+        {loadingRequests ? (
+          <div className="text-sm text-zinc-500">불러오는 중...</div>
+        ) : myRequests.length === 0 ? (
+          <div className="text-sm text-zinc-500">신청 내역이 없습니다.</div>
+        ) : (
+          <div className="space-y-3">
+            {myRequests.map((req) => (
+              <div
+                key={req.id}
+                className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3"
+              >
+                <div className="text-sm text-zinc-700">
+                  <div>
+                    수량: {formatNumber(req.request_quantity)} 아르카
+                  </div>
+                  <div className="text-xs text-zinc-500">
+                    상태: {req.status}
+                  </div>
+                </div>
+
+                {req.status === "pending" && (
+                  <button
+                    onClick={() => void handleCancelRequest(req.id)}
+                    className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600"
+                  >
+                    취소
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {detailPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
@@ -1421,7 +1510,7 @@ export default function ArcaMarketPage() {
                     </button>
                   </div>
                 )}
-                
+
                 {detailPost.user_id === sessionUserId && detailPost.status === "open" && (
                   <>
                     <button
@@ -1447,5 +1536,8 @@ export default function ArcaMarketPage() {
         </div>
       )}
     </div>
+    
+    
   );
+  
 }
