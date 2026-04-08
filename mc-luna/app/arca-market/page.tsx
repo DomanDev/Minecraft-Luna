@@ -735,8 +735,8 @@ export default function ArcaMarketPage() {
               onClick={handleCreatePost}
               disabled={submitting}
               className={classNames( 
-                "w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-                ,submitting
+                "rounded-xl px-4 py-2 text-sm font-semibold text-white transition",
+                submitting
                 ? "cursor-not-allowed bg-zinc-400"
                 : "bg-emerald-600 hover:bg-emerald-700",
               )}
