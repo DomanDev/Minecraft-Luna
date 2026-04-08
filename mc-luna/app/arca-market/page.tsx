@@ -36,6 +36,11 @@ type ArcaTradePostRow = {
   seller_mc_nickname: string | null;
 };
 
+type MyOpenPostSummary = {
+  hasOpenSell: boolean;
+  hasOpenBuy: boolean;
+};
+
 const PAGE_SIZE = 15;
 const FEATURED_LIMIT = 8;
 
@@ -68,6 +73,54 @@ function formatDate(value: string): string {
 
 function classNames(...values: Array<string | false | null | undefined>): string {
   return values.filter(Boolean).join(" ");
+}
+
+function getArcaCreatePostErrorMessage(message: string): string {
+  if (message.includes("1시간")) {
+    return "새 거래글 작성은 마지막 작성 후 1시간이 지나야 가능합니다.";
+  }
+
+  if (message.includes("열린 판매글은 계정당 1개만")) {
+    return "현재 열린 판매글이 이미 있습니다. 판매글은 1개만 등록할 수 있습니다.";
+  }
+
+  if (message.includes("열린 구매글은 계정당 1개만")) {
+    return "현재 열린 구매글이 이미 있습니다. 구매글은 1개만 등록할 수 있습니다.";
+  }
+
+  if (message.includes("로그인이 필요합니다")) {
+    return "로그인 후 다시 시도해 주세요.";
+  }
+
+  if (message.includes("post_type은 buy 또는 sell")) {
+    return "거래 종류 값이 올바르지 않습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.";
+  }
+
+  if (message.includes("비율은 0보다 커야")) {
+    return "비율을 올바르게 입력해 주세요.";
+  }
+
+  if (message.includes("수량은 1 이상")) {
+    return "수량을 올바르게 입력해 주세요.";
+  }
+
+  return "거래글 등록에 실패했습니다.";
+}
+
+function resetArcaTradeForm(
+  setFormTitle: (value: string) => void,
+  setFormNote: (value: string) => void,
+  setFormRatio: (value: string) => void,
+  setFormArcaAmount: (value: string) => void,
+  setFormContactValue: (value: string) => void,
+  setFormFeatured: (value: boolean) => void,
+) {
+  setFormTitle("");
+  setFormNote("");
+  setFormRatio("300");
+  setFormArcaAmount("1000");
+  setFormContactValue("");
+  setFormFeatured(false);
 }
 
 export default function ArcaMarketPage() {
@@ -291,6 +344,28 @@ export default function ArcaMarketPage() {
     }
   }, [activeTab, allowed, guardLoading, page, sortKey]);
 
+  const fetchMyOpenPostSummary = useCallback(async (): Promise<MyOpenPostSummary> => {
+    if (!sessionUserId) {
+      return { hasOpenSell: false, hasOpenBuy: false };
+    }
+
+    const { data, error } = await supabase
+      .from("arca_trade_posts")
+      .select("post_type")
+      .eq("user_id", sessionUserId)
+      .eq("status", "open");
+
+    if (error) {
+      console.warn("내 열린 거래글 조회 실패:", error.message);
+      return { hasOpenSell: false, hasOpenBuy: false };
+    }
+
+    return {
+      hasOpenSell: (data ?? []).some((row) => row.post_type === "sell"),
+      hasOpenBuy: (data ?? []).some((row) => row.post_type === "buy"),
+    };
+  }, [sessionUserId]);
+
   useEffect(() => {
     void fetchSessionAndProfile();
   }, [fetchSessionAndProfile]);
@@ -306,6 +381,18 @@ export default function ArcaMarketPage() {
   const handleCreatePost = useCallback(async () => {
     if (!sessionUserId) {
       toast.error("로그인 정보가 없습니다.");
+      return;
+    }
+
+    const openSummary = await fetchMyOpenPostSummary();
+
+    if (formType === "sell" && openSummary.hasOpenSell) {
+      toast.error("현재 열린 판매글이 이미 있습니다. 판매글은 1개만 등록할 수 있습니다.");
+      return;
+    }
+
+    if (formType === "buy" && openSummary.hasOpenBuy) {
+      toast.error("현재 열린 구매글이 이미 있습니다. 구매글은 1개만 등록할 수 있습니다.");
       return;
     }
 
@@ -335,39 +422,40 @@ export default function ArcaMarketPage() {
     setSubmitting(true);
 
     try {
-      const payload = {
-        user_id: sessionUserId,
-        post_type: formType,
-        ratio,
-        arca_amount: arcaAmount,
-        cell_amount: Math.round(ratio * arcaAmount),
-        title: formTitle.trim() || null,
-        note: formNote.trim() || null,
-        contact_preference: formContactPreference,
-        contact_value:
+      const { data, error } = await supabase.rpc("create_arca_trade_post", {
+        p_post_type: formType,
+        p_ratio: ratio,
+        p_arca_amount: arcaAmount,
+        p_title: formTitle.trim() || null,
+        p_note: formNote.trim() || null,
+        p_contact_preference: formContactPreference,
+        p_contact_value:
           formContactPreference === "discord" ? formContactValue.trim() || null : null,
-        is_featured: isProUser ? formFeatured : false,
-        status: "open" as TradeStatus,
-        seller_display_name: displayName,
-        seller_mc_nickname: minecraftNickname || null,
-      };
-
-      const { error } = await supabase.from("arca_trade_posts").insert(payload);
+        p_is_featured: isProUser ? formFeatured : false,
+        p_seller_display_name: displayName,
+        p_seller_mc_nickname: minecraftNickname || null,
+      });
 
       if (error) {
         console.error("아르카 거래글 등록 실패:", error);
-        toast.error("거래글 등록에 실패했습니다.");
+
+        const friendlyMessage = getArcaCreatePostErrorMessage(error.message || "");
+        toast.error(friendlyMessage);
         return;
       }
 
+      console.log("아르카 거래글 등록 성공:", data);
       toast.success("거래글을 등록했습니다.");
 
-      setFormTitle("");
-      setFormNote("");
-      setFormRatio("300");
-      setFormArcaAmount("1000");
-      setFormContactValue("");
-      setFormFeatured(false);
+      resetArcaTradeForm(
+        setFormTitle,
+        setFormNote,
+        setFormRatio,
+        setFormArcaAmount,
+        setFormContactValue,
+        setFormFeatured,
+      );
+
       setActiveTab(formType);
       setPage(1);
 
@@ -646,7 +734,12 @@ export default function ArcaMarketPage() {
               type="button"
               onClick={handleCreatePost}
               disabled={submitting}
-              className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className={classNames( 
+                "w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                ,submitting
+                ? "cursor-not-allowed bg-zinc-400"
+                : "bg-emerald-600 hover:bg-emerald-700",
+              )}
             >
               {submitting ? "등록 중..." : "거래글 등록"}
             </button>
