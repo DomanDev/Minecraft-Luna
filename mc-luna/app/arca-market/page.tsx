@@ -34,6 +34,8 @@ type ArcaTradePostRow = {
   completed_at: string | null;
   seller_display_name: string | null;
   seller_mc_nickname: string | null;
+  trade_mode: "bulk" | "split";
+  split_unit: number | null;
 };
 
 type MyOpenPostSummary = {
@@ -104,6 +106,18 @@ function getArcaCreatePostErrorMessage(message: string): string {
     return "수량을 올바르게 입력해 주세요.";
   }
 
+  if (message.includes("trade_mode는 bulk 또는 split")) {
+    return "거래 방식 값이 올바르지 않습니다.";
+  }
+
+  if (message.includes("분할 거래 단위는 1 이상")) {
+    return "분할 거래 단위를 올바르게 입력해 주세요.";
+  }
+
+  if (message.includes("총 수량은 거래 단위의 배수")) {
+    return "총 수량은 거래 단위의 배수여야 합니다.";
+  }
+
   return "거래글 등록에 실패했습니다.";
 }
 
@@ -114,6 +128,8 @@ function resetArcaTradeForm(
   setFormArcaAmount: (value: string) => void,
   setFormContactValue: (value: string) => void,
   setFormFeatured: (value: boolean) => void,
+  setFormTradeMode: (value: "bulk" | "split") => void,
+  setFormSplitUnit: (value: string) => void,
 ) {
   setFormTitle("");
   setFormNote("");
@@ -121,6 +137,8 @@ function resetArcaTradeForm(
   setFormArcaAmount("1000");
   setFormContactValue("");
   setFormFeatured(false);
+  setFormTradeMode("bulk");
+  setFormSplitUnit("10");
 }
 
 export default function ArcaMarketPage() {
@@ -167,6 +185,9 @@ export default function ArcaMarketPage() {
   >("whisper");
   const [formContactValue, setFormContactValue] = useState("");
   const [formFeatured, setFormFeatured] = useState(false);
+  
+  const [formTradeMode, setFormTradeMode] = useState<"bulk" | "split">("bulk");
+  const [formSplitUnit, setFormSplitUnit] = useState("10");
 
   const isProUser = profile?.plan_type === "pro";
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
@@ -399,6 +420,8 @@ export default function ArcaMarketPage() {
     const ratio = Number(formRatio);
     const arcaAmount = Number(formArcaAmount);
 
+    const splitUnit = formTradeMode === "split" ? Number(formSplitUnit) : null;
+
     if (!Number.isFinite(ratio) || ratio <= 0) {
       toast.error("비율을 올바르게 입력해 주세요.");
       return;
@@ -407,6 +430,18 @@ export default function ArcaMarketPage() {
     if (!Number.isFinite(arcaAmount) || arcaAmount <= 0) {
       toast.error("수량을 올바르게 입력해 주세요.");
       return;
+    }
+
+        if (formTradeMode === "split") {
+      if (!Number.isFinite(splitUnit) || !splitUnit || splitUnit <= 0) {
+        toast.error("분할 거래 단위를 올바르게 입력해 주세요.");
+        return;
+      }
+
+      if (arcaAmount % splitUnit !== 0) {
+        toast.error("총 수량은 거래 단위의 배수여야 합니다.");
+        return;
+      }
     }
 
     if (formContactPreference === "discord" && !formContactValue.trim()) {
@@ -434,6 +469,8 @@ export default function ArcaMarketPage() {
         p_is_featured: isProUser ? formFeatured : false,
         p_seller_display_name: displayName,
         p_seller_mc_nickname: minecraftNickname || null,
+        p_trade_mode: formTradeMode,
+        p_split_unit: formTradeMode === "split" ? splitUnit : null,
       });
 
       if (error) {
@@ -454,6 +491,8 @@ export default function ArcaMarketPage() {
         setFormArcaAmount,
         setFormContactValue,
         setFormFeatured,
+        setFormTradeMode,
+        setFormSplitUnit,
       );
 
       setActiveTab(formType);
@@ -477,6 +516,9 @@ export default function ArcaMarketPage() {
     isProUser,
     minecraftNickname,
     sessionUserId,
+    formSplitUnit,
+    formTradeMode,
+    fetchMyOpenPostSummary,
   ]);
 
   const handleUpdateStatus = useCallback(
@@ -596,7 +638,7 @@ export default function ArcaMarketPage() {
         <aside className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-zinc-900">거래글 등록</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            판매/구매 글을 올리고, 필요하면 Pro 광고 상품으로 상단 노출할 수 있어.
+            판매/구매 글을 올리고, 필요하면 Pro 광고 상품으로 상단 노출할 수 있습니다.
           </p>
 
           <div className="mt-5 space-y-4">
@@ -651,6 +693,57 @@ export default function ArcaMarketPage() {
             </div>
 
             <div>
+              <div className="mb-2 text-sm font-medium text-zinc-700">거래 방식</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormTradeMode("bulk")}
+                  className={classNames(
+                    "rounded-xl border px-4 py-2 text-sm font-medium transition",
+                    formTradeMode === "bulk"
+                      ? "border-emerald-600 bg-emerald-600 text-white"
+                      : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
+                  )}
+                >
+                  일괄 거래
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormTradeMode("split")}
+                  className={classNames(
+                    "rounded-xl border px-4 py-2 text-sm font-medium transition",
+                    formTradeMode === "split"
+                      ? "border-emerald-600 bg-emerald-600 text-white"
+                      : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
+                  )}
+                >
+                  분할 거래
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">
+                일괄 거래는 전체 수량 한 번에 거래, 분할 거래는 거래 단위별 신청이 가능해.
+              </p>
+            </div>
+
+            {formTradeMode === "split" && (
+              <div>
+                <label className="mb-2 block text-sm font-medium text-zinc-700">
+                  거래 단위
+                </label>
+                <input
+                  value={formSplitUnit}
+                  onChange={(e) => setFormSplitUnit(e.target.value)}
+                  inputMode="numeric"
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none ring-0 focus:border-emerald-500"
+                  placeholder="예: 10"
+                />
+                <p className="mt-2 text-xs text-zinc-500">
+                  예: 총 1000 아르카 / 단위 10이면 10, 20, 30 ... 단위로 거래 가능
+                </p>
+              </div>
+            )}
+
+            <div>
               <label className="mb-2 block text-sm font-medium text-zinc-700">
                 제목
               </label>
@@ -671,7 +764,7 @@ export default function ArcaMarketPage() {
                 onChange={(e) => setFormNote(e.target.value)}
                 rows={4}
                 className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none ring-0 focus:border-emerald-500"
-                placeholder="거래 가능 시간, 우선 조건, 참고사항 등을 적어줘."
+                placeholder="거래 가능 시간, 우선 조건, 참고사항 등을 적어주세요."
               />
             </div>
 
@@ -789,7 +882,7 @@ export default function ArcaMarketPage() {
               <div>
                 <h3 className="text-base font-semibold text-amber-900">광고 상품</h3>
                 <p className="text-sm text-amber-700">
-                  Pro 사용자가 올린 상단 노출 글이야.
+                  Pro 사용자가 올린 상단 노출 글입니다.
                 </p>
               </div>
               <div className="text-xs text-amber-700">
@@ -799,7 +892,7 @@ export default function ArcaMarketPage() {
 
             {featuredPosts.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-amber-300 bg-white/60 px-4 py-6 text-sm text-zinc-500">
-                현재 노출 중인 광고 상품이 없어.
+                현재 노출 중인 광고 상품이 없습니다.
               </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -826,7 +919,10 @@ export default function ArcaMarketPage() {
                     <div className="mt-2 space-y-1 text-sm text-zinc-700">
                       <div>비율: {formatNumber(post.ratio)} : 1</div>
                       <div>수량: {formatNumber(post.arca_amount)} 아르카</div>
-                      <div>판매자: {post.seller_display_name || "익명"}</div>
+                      <div>
+                        거래방식: {post.trade_mode === "bulk" ? "일괄" : `분할 (${formatNumber(post.split_unit ?? 0)}단위)`}
+                      </div>
+                      <div>등록자: {post.seller_display_name || "익명"}</div>
                     </div>
                   </button>
                 ))}
@@ -846,6 +942,7 @@ export default function ArcaMarketPage() {
                 <thead className="bg-zinc-50 text-zinc-600">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">구분</th>
+                    <th className="px-4 py-3 text-left font-medium">거래방식</th>
                     <th className="px-4 py-3 text-left font-medium">비율</th>
                     <th className="px-4 py-3 text-left font-medium">수량</th>
                     <th className="px-4 py-3 text-left font-medium">총 셀</th>
@@ -857,14 +954,14 @@ export default function ArcaMarketPage() {
                 <tbody>
                   {loadingPosts ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-10 text-center text-zinc-500">
+                      <td colSpan={8} className="px-4 py-10 text-center text-zinc-500">
                         목록을 불러오는 중...
                       </td>
                     </tr>
                   ) : listPosts.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-10 text-center text-zinc-500">
-                        등록된 글이 없어.
+                      <td colSpan={8} className="px-4 py-10 text-center text-zinc-500">
+                        등록된 글이 없습니다.
                       </td>
                     </tr>
                   ) : (
@@ -892,6 +989,13 @@ export default function ArcaMarketPage() {
                               </span>
                             )}
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700">
+                            {post.trade_mode === "bulk"
+                              ? "일괄"
+                              : `분할 · 단위 ${formatNumber(post.split_unit ?? 0)}`}
+                          </span>
                         </td>
                         <td className="px-4 py-3 font-semibold text-zinc-900">
                           {formatNumber(post.ratio)} : 1
@@ -948,7 +1052,7 @@ export default function ArcaMarketPage() {
           <div className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
             <h3 className="text-base font-semibold text-zinc-900">최근 거래 시세 통계</h3>
             <p className="mt-1 text-sm text-zinc-500">
-              완료 처리된 최근 거래 20개를 기준으로 평균 비율을 간단히 보여줘.
+              완료 처리된 최근 거래 20개를 기준으로 평균 비율을 간단히 보여줍니다.
             </p>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -1060,6 +1164,15 @@ export default function ArcaMarketPage() {
                     {formatNumber(detailPost.cell_amount)}셀
                   </div>
                 </div>
+                                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">거래 방식</div>
+                  <div className="mt-2 text-base font-semibold text-zinc-900">
+                    {detailPost.trade_mode === "bulk"
+                      ? "일괄 거래"
+                      : `분할 거래 · 단위 ${formatNumber(detailPost.split_unit ?? 0)}`}
+                  </div>
+                </div>
+
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">등록일</div>
                   <div className="mt-2 text-base font-semibold text-zinc-900">
@@ -1142,11 +1255,6 @@ export default function ArcaMarketPage() {
                 )}
               </div>
 
-              <div className="rounded-2xl bg-zinc-50 px-4 py-4 text-sm leading-6 text-zinc-600">
-                Discord 자동 메시지 전송은 이 페이지 코드만으로는 넣지 않았어.
-                대신 귓말/디스코드 연락처 복사로 빠르게 거래할 수 있게 구성했고,
-                추후 webhook 또는 Supabase Edge Function을 추가하면 자동 알림까지 확장할 수 있어.
-              </div>
             </div>
           </div>
         </div>
