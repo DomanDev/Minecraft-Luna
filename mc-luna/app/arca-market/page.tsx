@@ -10,6 +10,15 @@ type TradeStatus = "open" | "completed" | "cancelled";
 type SortKey = "recent" | "price_low" | "price_high";
 type PlanType = "free" | "pro";
 
+/**
+ * 화면 우측 패널에서 사용하는 탭
+ *
+ * 중요:
+ * - 기존 최종 요구사항 기준으로 received_requests 탭은 제거
+ * - 우측 큰 패널 내부 콘텐츠만 이 값에 따라 교체됨
+ */
+type ArcaViewTab = "sell" | "buy" | "my_posts" | "my_requests";
+
 type ProfileRow = {
   id: string;
   username: string | null;
@@ -100,6 +109,13 @@ function classNames(...values: Array<string | false | null | undefined>): string
   return values.filter(Boolean).join(" ");
 }
 
+/**
+ * 현재 거래글의 실질 남은 수량 계산
+ *
+ * 남은 수량 = 총 등록 수량 - 예약 수량 - 완료 수량
+ * - 예약 수량: 아직 진행 중인 신청으로 잡혀 있는 수량
+ * - 완료 수량: 실제 거래 완료되어 차감된 수량
+ */
 function getRemainingQuantity(post: ArcaTradePostRow): number {
   return Math.max(0, post.arca_amount - post.reserved_quantity - post.completed_quantity);
 }
@@ -110,33 +126,42 @@ function getRequestStatusLabel(request: ArcaTradeRequestRow): string {
   return "진행중";
 }
 
+/**
+ * 현재 로그인한 사용자의 시점에서 완료 진행 상태 문구를 반환
+ *
+ * 예:
+ * - 내가 완료 안 눌렀고 상대도 안 눌렀다 -> 대기 중
+ * - 내가 완료 눌렀다 -> 내 완료 확인
+ * - 상대가 완료 눌렀다 -> 상대 완료 확인
+ * - 둘 다 눌렀다 -> 양측 완료
+ */
 function getCompletionProgressLabel(
-    request: ArcaTradeRequestRow,
-    sessionUserId: string | null,
-  ): string {
-    const meDone =
-      sessionUserId === request.requester_id
-        ? request.requester_completed_at
-        : sessionUserId === request.owner_id
-          ? request.owner_completed_at
-          : null;
-
-    const otherDone =
-      sessionUserId === request.requester_id
+  request: ArcaTradeRequestRow,
+  sessionUserId: string | null,
+): string {
+  const meDone =
+    sessionUserId === request.requester_id
+      ? request.requester_completed_at
+      : sessionUserId === request.owner_id
         ? request.owner_completed_at
-        : sessionUserId === request.owner_id
-          ? request.requester_completed_at
-          : null;
+        : null;
 
-    if (request.status === "completed") return "양측 완료";
-    if (request.status === "cancelled") return "취소됨";
+  const otherDone =
+    sessionUserId === request.requester_id
+      ? request.owner_completed_at
+      : sessionUserId === request.owner_id
+        ? request.requester_completed_at
+        : null;
 
-    if (meDone && otherDone) return "양측 완료";
-    if (meDone) return "내 완료 확인";
-    if (otherDone) return "상대 완료 확인";
+  if (request.status === "completed") return "양측 완료";
+  if (request.status === "cancelled") return "취소됨";
 
-    return "대기 중";
-  }
+  if (meDone && otherDone) return "양측 완료";
+  if (meDone) return "내 완료 확인";
+  if (otherDone) return "상대 완료 확인";
+
+  return "대기 중";
+}
 
 function getArcaCreateRequestErrorMessage(message: string): string {
   if (message.includes("로그인이 필요합니다")) {
@@ -227,6 +252,7 @@ function resetArcaTradeForm(
   setFormFeatured: (value: boolean) => void,
   setFormTradeMode: (value: "bulk" | "split") => void,
   setFormSplitUnit: (value: string) => void,
+  setFormType: (value: TradeTab) => void,
 ) {
   setFormTitle("");
   setFormNote("");
@@ -236,6 +262,13 @@ function resetArcaTradeForm(
   setFormFeatured(false);
   setFormTradeMode("bulk");
   setFormSplitUnit("10");
+
+  /**
+   * 폼 리셋 시 거래 종류도 기본값으로 되돌린다.
+   * - 사용자가 이전에 buy 글을 등록했더라도 다음 등록 시 기본 sell부터 시작
+   * - 원치 않으면 이 한 줄만 제거해도 됨
+   */
+  setFormType("sell");
 }
 
 export default function ArcaMarketPage() {
@@ -247,8 +280,15 @@ export default function ArcaMarketPage() {
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
-  
-  type ArcaViewTab = "sell" | "buy" | "my_posts" | "my_requests";
+
+  /**
+   * 우측 콘텐츠 전환용 탭 state
+   *
+   * 중요:
+   * - 왼쪽 등록 패널은 이 값과 무관하게 항상 유지
+   * - 오른쪽 패널 상단 탭도 항상 유지
+   * - 오른쪽 콘텐츠만 이 값에 따라 바뀐다
+   */
   const [viewTab, setViewTab] = useState<ArcaViewTab>("sell");
 
   const [sortKey, setSortKey] = useState<SortKey>("recent");
@@ -263,6 +303,10 @@ export default function ArcaMarketPage() {
   const [submitting, setSubmitting] = useState(false);
   const [detailPost, setDetailPost] = useState<ArcaTradePostRow | null>(null);
 
+  /**
+   * "내가 등록한 거래" 탭의 신청 목록에서
+   * 상세보기 버튼을 눌렀을 때 띄우는 신청 상세 모달 state
+   */
   const [detailRequest, setDetailRequest] = useState<ArcaTradeRequestRow | null>(null);
 
   const [requestQuantity, setRequestQuantity] = useState("1");
@@ -270,14 +314,24 @@ export default function ArcaMarketPage() {
 
   const [myRequests, setMyRequests] = useState<ArcaTradeRequestRow[]>([]);
   const [myPosts, setMyPosts] = useState<ArcaTradePostRow[]>([]);
-  const [loadingRequests, setLoadingRequests] = useState(false);  
+  const [loadingRequests, setLoadingRequests] = useState(false);
+
+  /**
+   * 받은 신청 전용 "탭"은 제거했지만,
+   * 내가 등록한 거래(my_posts) 안에서 각 글별 신청 목록을 보여주기 위해
+   * owner 기준 신청 데이터는 계속 필요하다.
+   *
+   * 즉, 이 데이터는
+   * - 우측 별도 탭 용도 X
+   * - 내 글별 신청 목록 공급용 O
+   */
   const [receivedRequests, setReceivedRequests] = useState<ArcaTradeRequestRow[]>([]);
 
   /**
    * 등록 폼 state
    *
    * 아이템매니아식으로 간단한 핵심 정보 위주:
-   * - 탭(판매/구매)
+   * - 거래 종류(판매/구매) -> viewTab과 무관하게 직접 선택
    * - 비율
    * - 수량
    * - 제목/메모
@@ -288,15 +342,21 @@ export default function ArcaMarketPage() {
   const [formArcaAmount, setFormArcaAmount] = useState("1000");
   const [formTitle, setFormTitle] = useState("");
   const [formNote, setFormNote] = useState("");
-  const [formContactPreference, setFormContactPreference] = useState<
-    "whisper" | "discord"
-  >("whisper");
+  const [formContactPreference, setFormContactPreference] = useState<"whisper" | "discord">(
+    "whisper",
+  );
   const [formContactValue, setFormContactValue] = useState("");
   const [formFeatured, setFormFeatured] = useState(false);
-  
+
   const [formTradeMode, setFormTradeMode] = useState<"bulk" | "split">("bulk");
   const [formSplitUnit, setFormSplitUnit] = useState("10");
 
+  /**
+   * 중요:
+   * 거래글 등록 폼 안에서 판매/구매를 직접 선택한다.
+   * - 현재 우측 viewTab이 sell이든 buy든 상관없이
+   * - 폼에서는 sell/buy 둘 다 등록 가능해야 한다.
+   */
   const [formType, setFormType] = useState<TradeTab>("sell");
 
   const isProUser = profile?.plan_type === "pro";
@@ -339,6 +399,10 @@ export default function ArcaMarketPage() {
     };
   }, [completedPosts]);
 
+  /**
+   * 내가 등록한 거래(my_posts) 탭에서
+   * 각 게시글별로 신청 목록을 묶어서 보여주기 위한 그룹핑 결과
+   */
   const receivedRequestsByPostId = useMemo(() => {
     return receivedRequests.reduce<Record<string, ArcaTradeRequestRow[]>>((acc, req) => {
       const key = req.post_id;
@@ -394,10 +458,15 @@ export default function ArcaMarketPage() {
 
   const fetchPosts = useCallback(async () => {
     if (guardLoading || !allowed) return;
+
+    /**
+     * sell / buy 목록은 우측 일반 거래 탭에서만 필요
+     * my_posts / my_requests에서는 이 fetch를 굳이 돌리지 않는다.
+     */
     if (viewTab !== "sell" && viewTab !== "buy") return;
 
     setLoadingPosts(true);
-    
+
     try {
       /**
        * 1) 광고 상품
@@ -409,7 +478,7 @@ export default function ArcaMarketPage() {
       const { data: featuredData, error: featuredError } = await supabase
         .from("arca_trade_posts")
         .select("*")
-        .eq("post_type", viewTab === "sell" ? "sell" : "buy")
+        .eq("post_type", viewTab)
         .eq("status", "open")
         .eq("is_featured", true)
         .order("created_at", { ascending: false })
@@ -445,7 +514,7 @@ export default function ArcaMarketPage() {
       const listQuery = supabase
         .from("arca_trade_posts")
         .select("*", { count: "exact" })
-        .eq("post_type", viewTab === "sell" ? "sell" : "buy")
+        .eq("post_type", viewTab)
         .eq("status", "open")
         .order(orderColumn, { ascending })
         .order("created_at", { ascending: false })
@@ -489,6 +558,11 @@ export default function ArcaMarketPage() {
     if (!sessionUserId) return;
 
     try {
+      /**
+       * 요구사항:
+       * "내가 등록한 거래" 탭에서는 취소/완료된 항목은 보이지 않게 해야 함
+       * -> open 상태만 조회
+       */
       const { data, error } = await supabase
         .from("arca_trade_posts")
         .select("*")
@@ -501,7 +575,7 @@ export default function ArcaMarketPage() {
         return;
       }
 
-      setMyPosts(data ?? []);
+      setMyPosts((data ?? []) as ArcaTradePostRow[]);
     } catch (err) {
       console.error("내 거래글 조회 예외:", err);
     }
@@ -535,7 +609,7 @@ export default function ArcaMarketPage() {
         return;
       }
 
-      setMyRequests(data ?? []);
+      setMyRequests((data ?? []) as ArcaTradeRequestRow[]);
     } finally {
       setLoadingRequests(false);
     }
@@ -545,6 +619,10 @@ export default function ArcaMarketPage() {
     if (!sessionUserId) return;
 
     try {
+      /**
+       * 받은 신청 전용 탭은 제거했지만,
+       * 내가 등록한 거래 탭에서 각 글의 신청 목록을 보여주기 위해 owner_id 기준 조회는 유지한다.
+       */
       const { data, error } = await supabase
         .from("arca_trade_requests")
         .select(`
@@ -567,7 +645,7 @@ export default function ArcaMarketPage() {
         return;
       }
 
-      setReceivedRequests(data ?? []);
+      setReceivedRequests((data ?? []) as ArcaTradeRequestRow[]);
     } catch (error) {
       console.error("받은 신청 목록 조회 중 예외:", error);
     }
@@ -601,29 +679,38 @@ export default function ArcaMarketPage() {
 
   useEffect(() => {
     if (viewTab === "sell" || viewTab === "buy") {
-      fetchPosts();
+      void fetchPosts();
     }
   }, [viewTab, fetchPosts]);
 
   useEffect(() => {
-    fetchMyRequests();
+    void fetchMyRequests();
   }, [fetchMyRequests]);
 
   useEffect(() => {
-    fetchMyPosts();
+    void fetchMyPosts();
   }, [fetchMyPosts]);
 
   useEffect(() => {
-    fetchReceivedRequests();
+    void fetchReceivedRequests();
   }, [fetchReceivedRequests]);
 
   useEffect(() => {
+    /**
+     * 정렬 기준 혹은 우측 탭이 바뀌면 페이지 번호를 1로 되돌린다.
+     * 특히 sell/buy 목록에서 정렬 바뀌었을 때 페이지 유지보다 1페이지 복귀가 안전하다.
+     */
     setPage(1);
   }, [viewTab, sortKey]);
 
   useEffect(() => {
     if (!detailPost) return;
 
+    /**
+     * 상세 모달에서 신청 수량 입력 기본값 설정
+     * - 일괄 거래: 전체 수량
+     * - 분할 거래: 최소 거래 단위
+     */
     if (detailPost.trade_mode === "bulk") {
       setRequestQuantity(String(detailPost.arca_amount));
       return;
@@ -640,7 +727,7 @@ export default function ArcaMarketPage() {
 
     const openSummary = await fetchMyOpenPostSummary();
 
-   if (formType === "sell" && openSummary.hasOpenSell) {
+    if (formType === "sell" && openSummary.hasOpenSell) {
       toast.error("현재 열린 판매글이 이미 있습니다. 판매글은 1개만 등록할 수 있습니다.");
       return;
     }
@@ -652,7 +739,6 @@ export default function ArcaMarketPage() {
 
     const ratio = Number(formRatio);
     const arcaAmount = Number(formArcaAmount);
-
     const splitUnit = formTradeMode === "split" ? Number(formSplitUnit) : null;
 
     if (!Number.isFinite(ratio) || ratio <= 0) {
@@ -665,7 +751,7 @@ export default function ArcaMarketPage() {
       return;
     }
 
-        if (formTradeMode === "split") {
+    if (formTradeMode === "split") {
       if (!Number.isFinite(splitUnit) || !splitUnit || splitUnit <= 0) {
         toast.error("분할 거래 단위를 올바르게 입력해 주세요.");
         return;
@@ -691,6 +777,11 @@ export default function ArcaMarketPage() {
 
     try {
       const { data, error } = await supabase.rpc("create_arca_trade_post", {
+        /**
+         * 중요:
+         * p_post_type은 viewTab이 아니라 formType을 사용해야 한다.
+         * 그래야 현재 보고 있는 탭과 무관하게 판매/구매 직접 등록이 가능하다.
+         */
         p_post_type: formType,
         p_ratio: ratio,
         p_arca_amount: arcaAmount,
@@ -726,159 +817,184 @@ export default function ArcaMarketPage() {
         setFormFeatured,
         setFormTradeMode,
         setFormSplitUnit,
+        setFormType,
       );
 
       setPage(1);
 
+      /**
+       * 등록 후 관련 데이터 재조회
+       * - sell/buy 탭이면 일반 목록 갱신
+       * - my_posts 탭 대비 내 글 목록도 갱신
+       * - 신청 관련 목록은 현 시점엔 직접 변하지 않지만 동기화 차원에서 유지 가능
+       */
       await fetchPosts();
+      await fetchMyPosts();
+      await fetchMyRequests();
+      await fetchReceivedRequests();
     } finally {
       setSubmitting(false);
     }
   }, [
     displayName,
+    fetchMyOpenPostSummary,
+    fetchMyPosts,
+    fetchMyRequests,
     fetchPosts,
+    fetchReceivedRequests,
     formArcaAmount,
     formContactPreference,
     formContactValue,
     formFeatured,
     formNote,
     formRatio,
+    formSplitUnit,
     formTitle,
+    formTradeMode,
     formType,
     isProUser,
     minecraftNickname,
     sessionUserId,
-    formSplitUnit,
-    formTradeMode,
-    fetchMyOpenPostSummary,
-    viewTab,
   ]);
 
-  const handleCreateTradeRequest = useCallback(async (post: ArcaTradePostRow) => {
-    if (!sessionUserId) {
-      toast.error("로그인 정보가 없습니다.");
-      return;
-    }
-
-    if (post.user_id === sessionUserId) {
-      toast.error("본인 글에는 신청할 수 없습니다.");
-      return;
-    }
-
-    const quantity =
-      post.trade_mode === "bulk"
-        ? post.arca_amount
-        : Number(requestQuantity);
-
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      toast.error("신청 수량을 올바르게 입력해 주세요.");
-      return;
-    }
-
-    const remainingQuantity = getRemainingQuantity(post);
-
-    if (quantity > remainingQuantity) {
-      toast.error("남은 수량보다 많이 신청할 수 없습니다.");
-      return;
-    }
-
-    if (post.trade_mode === "split") {
-      const unit = post.split_unit ?? 0;
-
-      if (unit <= 0) {
-        toast.error("분할 거래 단위 정보가 올바르지 않습니다.");
+  const handleCreateTradeRequest = useCallback(
+    async (post: ArcaTradePostRow) => {
+      if (!sessionUserId) {
+        toast.error("로그인 정보가 없습니다.");
         return;
       }
 
-      if (quantity % unit !== 0) {
-        toast.error("신청 수량은 거래 단위의 배수여야 합니다.");
-        return;
-      }
-    }
-
-    setRequestSubmitting(true);
-
-    try {
-      const { error } = await supabase.rpc("create_arca_trade_request", {
-        p_post_id: post.id,
-        p_request_quantity: quantity,
-      });
-
-      if (error) {
-        console.error("거래 신청 실패:", error);
-        toast.error(getArcaCreateRequestErrorMessage(error.message || ""));
+      if (post.user_id === sessionUserId) {
+        toast.error("본인 글에는 신청할 수 없습니다.");
         return;
       }
 
-      toast.success(
-        post.post_type === "sell"
-          ? "구매 신청을 보냈습니다."
-          : "판매 신청을 보냈습니다.",
-      );
+      const quantity = post.trade_mode === "bulk" ? post.arca_amount : Number(requestQuantity);
 
-      setDetailPost(null);
-      await fetchPosts();
-      await fetchMyRequests();
-      await fetchReceivedRequests();
-    } finally {
-      setRequestSubmitting(false);
-    }
-  }, [fetchPosts, fetchMyRequests,fetchReceivedRequests, requestQuantity, sessionUserId]);
-
-  const handleCancelRequest = useCallback(async (requestId: string) => {
-    setRequestSubmitting(true);
-
-    try {
-      const { error } = await supabase.rpc("cancel_arca_trade_request", {
-        p_request_id: requestId,
-      });
-
-      if (error) {
-        console.error("신청 취소 실패:", error);
-        toast.error("신청 취소에 실패했습니다.");
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        toast.error("신청 수량을 올바르게 입력해 주세요.");
         return;
       }
 
-      toast.success("신청을 취소했습니다.");
+      const remainingQuantity = getRemainingQuantity(post);
 
-      await fetchMyRequests();
-      await fetchPosts();
-    } finally {
-      setRequestSubmitting(false);
-    }
-  }, [fetchMyRequests, fetchPosts]);
+      if (quantity > remainingQuantity) {
+        toast.error("남은 수량보다 많이 신청할 수 없습니다.");
+        return;
+      }
 
-  const handleCompleteRequest = useCallback(async (requestId: string) => {
-    setRequestSubmitting(true);
+      if (post.trade_mode === "split") {
+        const unit = post.split_unit ?? 0;
 
-    try {
-      const { error } = await supabase.rpc("complete_arca_trade_request", {
-        p_request_id: requestId,
-      });
-
-      if (error) {
-        console.error("거래 완료 처리 실패:", error);
-        const message = error.message || "";
-
-        if (message.includes("진행 중인 신청만 완료")) {
-          toast.error("진행 중인 신청만 완료 처리할 수 있습니다.");
-        } else if (message.includes("거래 당사자만 완료")) {
-          toast.error("거래 당사자만 완료 처리할 수 있습니다.");
-        } else {
-          toast.error("거래 완료 처리에 실패했습니다.");
+        if (unit <= 0) {
+          toast.error("분할 거래 단위 정보가 올바르지 않습니다.");
+          return;
         }
-        return;
+
+        if (quantity % unit !== 0) {
+          toast.error("신청 수량은 거래 단위의 배수여야 합니다.");
+          return;
+        }
       }
 
-      toast.success("완료 확인이 반영되었습니다.");
+      setRequestSubmitting(true);
 
-      await fetchMyRequests();
-      await fetchReceivedRequests();
-      await fetchPosts();
-    } finally {
-      setRequestSubmitting(false);
-    }
-  }, [fetchMyRequests, fetchReceivedRequests, fetchPosts]);
+      try {
+        const { error } = await supabase.rpc("create_arca_trade_request", {
+          p_post_id: post.id,
+          p_request_quantity: quantity,
+        });
+
+        if (error) {
+          console.error("거래 신청 실패:", error);
+          toast.error(getArcaCreateRequestErrorMessage(error.message || ""));
+          return;
+        }
+
+        toast.success(post.post_type === "sell" ? "구매 신청을 보냈습니다." : "판매 신청을 보냈습니다.");
+
+        setDetailPost(null);
+
+        /**
+         * 신청 후
+         * - 일반 목록 남은 수량 갱신
+         * - 내 신청 목록 갱신
+         * - 내 글 탭의 신청 목록 갱신
+         */
+        await fetchPosts();
+        await fetchMyRequests();
+        await fetchReceivedRequests();
+        await fetchMyPosts();
+      } finally {
+        setRequestSubmitting(false);
+      }
+    },
+    [fetchMyPosts, fetchMyRequests, fetchPosts, fetchReceivedRequests, requestQuantity, sessionUserId],
+  );
+
+  const handleCancelRequest = useCallback(
+    async (requestId: string) => {
+      setRequestSubmitting(true);
+
+      try {
+        const { error } = await supabase.rpc("cancel_arca_trade_request", {
+          p_request_id: requestId,
+        });
+
+        if (error) {
+          console.error("신청 취소 실패:", error);
+          toast.error("신청 취소에 실패했습니다.");
+          return;
+        }
+
+        toast.success("신청을 취소했습니다.");
+
+        await fetchMyRequests();
+        await fetchPosts();
+        await fetchReceivedRequests();
+        await fetchMyPosts();
+      } finally {
+        setRequestSubmitting(false);
+      }
+    },
+    [fetchMyPosts, fetchMyRequests, fetchPosts, fetchReceivedRequests],
+  );
+
+  const handleCompleteRequest = useCallback(
+    async (requestId: string) => {
+      setRequestSubmitting(true);
+
+      try {
+        const { error } = await supabase.rpc("complete_arca_trade_request", {
+          p_request_id: requestId,
+        });
+
+        if (error) {
+          console.error("거래 완료 처리 실패:", error);
+          const message = error.message || "";
+
+          if (message.includes("진행 중인 신청만 완료")) {
+            toast.error("진행 중인 신청만 완료 처리할 수 있습니다.");
+          } else if (message.includes("거래 당사자만 완료")) {
+            toast.error("거래 당사자만 완료 처리할 수 있습니다.");
+          } else {
+            toast.error("거래 완료 처리에 실패했습니다.");
+          }
+          return;
+        }
+
+        toast.success("완료 확인이 반영되었습니다.");
+
+        await fetchMyRequests();
+        await fetchReceivedRequests();
+        await fetchPosts();
+        await fetchMyPosts();
+      } finally {
+        setRequestSubmitting(false);
+      }
+    },
+    [fetchMyPosts, fetchMyRequests, fetchPosts, fetchReceivedRequests],
+  );
 
   const handleUpdateStatus = useCallback(
     async (post: ArcaTradePostRow, nextStatus: TradeStatus) => {
@@ -918,11 +1034,13 @@ export default function ArcaMarketPage() {
       toast.success("거래글을 취소했습니다.");
 
       setDetailPost(null);
+
       await fetchPosts();
       await fetchMyRequests();
       await fetchReceivedRequests();
+      await fetchMyPosts();
     },
-    [fetchMyRequests, fetchPosts, fetchReceivedRequests, sessionUserId],
+    [fetchMyPosts, fetchMyRequests, fetchPosts, fetchReceivedRequests, sessionUserId],
   );
 
   const handleCopyWhisper = useCallback(async (post: ArcaTradePostRow) => {
@@ -950,9 +1068,7 @@ export default function ArcaMarketPage() {
   if (guardLoading || !allowed || profileLoading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-3xl font-bold tracking-tight text-zinc-100">
-          아르카 거래소
-        </h1>
+        <h1 className="text-3xl font-bold tracking-tight text-zinc-100">아르카 거래소</h1>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-zinc-300">
           로그인 및 프로필 연동 상태를 확인하고 있습니다.
         </div>
@@ -965,68 +1081,85 @@ export default function ArcaMarketPage() {
       <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-zinc-900">
-            아르카 거래소
-            </h1>
+            <h1 className="text-3xl font-bold tracking-tight text-zinc-900">아르카 거래소</h1>
             <p className="mt-2 text-sm text-zinc-600">
-            아르카 판매/구매 글을 등록하고, 귓속말과 디스코드 메시지 중심으로 빠르게 거래할 수 있는 거래 페이지
+              아르카 판매/구매 글을 등록하고, 귓속말과 디스코드 메시지 중심으로 빠르게 거래할 수 있는 거래 페이지
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                <div className="text-xs font-medium text-emerald-700">최근 완료 거래 수</div>
-                <div className="mt-1 text-2xl font-bold text-emerald-900">
-                    {formatNumber(completedStats.tradeCount)}건
-                </div>
+              <div className="text-xs font-medium text-emerald-700">최근 완료 거래 수</div>
+              <div className="mt-1 text-2xl font-bold text-emerald-900">
+                {formatNumber(completedStats.tradeCount)}건
+              </div>
             </div>
 
             <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
-                <div className="text-xs font-medium text-sky-700">최근 평균 비율</div>
-                <div className="mt-1 text-2xl font-bold text-sky-900">
-                    {completedStats.tradeCount > 0 ? `${completedStats.averageRatio}:1` : "-"}
-                </div>
+              <div className="text-xs font-medium text-sky-700">최근 평균 비율</div>
+              <div className="mt-1 text-2xl font-bold text-sky-900">
+                {completedStats.tradeCount > 0 ? `${completedStats.averageRatio}:1` : "-"}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <div className="text-xs font-medium text-amber-700">최근 거래 총 아르카</div>
-                <div className="mt-1 text-2xl font-bold text-amber-900">
-                    {formatNumber(completedStats.totalArca)}
-                </div>
+              <div className="text-xs font-medium text-amber-700">최근 거래 총 아르카</div>
+              <div className="mt-1 text-2xl font-bold text-amber-900">
+                {formatNumber(completedStats.totalArca)}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {(viewTab === "sell" || viewTab === "buy") && (
+      {/**
+       * =========================
+       * 메인 2단 레이아웃
+       * =========================
+       *
+       * 중요 구조 변경:
+       * - 왼쪽 등록 패널: 항상 표시
+       * - 오른쪽 상단 탭: 항상 표시
+       * - 오른쪽 콘텐츠 영역만 viewTab에 따라 교체
+       *
+       * 기존 문제:
+       * - sell / buy일 때만 좌/우 2단 레이아웃이 렌더링되어
+       *   my_posts / my_requests에서는 레이아웃이 깨졌음
+       *
+       * 현재는 조건문 없이 항상 이 레이아웃을 유지한다.
+       */}
       <section className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-zinc-900">거래글 등록</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            판매/구매 글을 등록하고, 
-            Pro 광고 상품으로 상단 노출할 수 있습니다.
+            판매/구매 글을 등록하고, Pro 광고 상품으로 상단 노출할 수 있습니다.
           </p>
-          <div>
-            <div className="mb-2 text-sm font-medium text-zinc-700">거래 종류</div>
-            <div className="grid grid-cols-2 gap-2">
-              {(["sell", "buy"] as TradeTab[]).map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setFormType(type)}
-                  className={classNames(
-                    "rounded-xl border px-4 py-2 text-sm font-medium transition",
-                    formType === type
-                      ? "border-emerald-600 bg-emerald-600 text-white"
-                      : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
-                  )}
-                >
-                  {TAB_LABEL[type]}
-                </button>
-              ))}
-            </div>
-          </div>
+
           <div className="mt-5 space-y-4">
+            <div>
+              <div className="mb-2 text-sm font-medium text-zinc-700">거래 종류</div>
+              <div className="grid grid-cols-2 gap-2">
+                {(["sell", "buy"] as TradeTab[]).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setFormType(type)}
+                    className={classNames(
+                      "rounded-xl border px-4 py-2 text-sm font-medium transition",
+                      formType === type
+                        ? "border-emerald-600 bg-emerald-600 text-white"
+                        : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
+                    )}
+                  >
+                    {TAB_LABEL[type]}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">
+                현재 보고 있는 탭과 무관하게 판매/구매 글을 직접 선택해서 등록할 수 있습니다.
+              </p>
+            </div>
+
             <div>
               <label className="mb-2 block text-sm font-medium text-zinc-700">
                 비율 (셀 : 아르카)
@@ -1041,9 +1174,7 @@ export default function ArcaMarketPage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-700">
-                수량 (아르카)
-              </label>
+              <label className="mb-2 block text-sm font-medium text-zinc-700">수량 (아르카)</label>
               <input
                 value={formArcaAmount}
                 onChange={(e) => setFormArcaAmount(e.target.value)}
@@ -1091,9 +1222,7 @@ export default function ArcaMarketPage() {
 
             {formTradeMode === "split" && (
               <div>
-                <label className="mb-2 block text-sm font-medium text-zinc-700">
-                  거래 단위
-                </label>
+                <label className="mb-2 block text-sm font-medium text-zinc-700">거래 단위</label>
                 <input
                   value={formSplitUnit}
                   onChange={(e) => setFormSplitUnit(e.target.value)}
@@ -1108,9 +1237,7 @@ export default function ArcaMarketPage() {
             )}
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-700">
-                제목
-              </label>
+              <label className="mb-2 block text-sm font-medium text-zinc-700">제목</label>
               <input
                 value={formTitle}
                 onChange={(e) => setFormTitle(e.target.value)}
@@ -1120,9 +1247,7 @@ export default function ArcaMarketPage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-zinc-700">
-                메모
-              </label>
+              <label className="mb-2 block text-sm font-medium text-zinc-700">메모</label>
               <textarea
                 value={formNote}
                 onChange={(e) => setFormNote(e.target.value)}
@@ -1191,11 +1316,9 @@ export default function ArcaMarketPage() {
               type="button"
               onClick={handleCreatePost}
               disabled={submitting}
-              className={classNames( 
-                "w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-                ,submitting
-                ? "cursor-not-allowed bg-zinc-400"
-                : "bg-emerald-600 hover:bg-emerald-700",
+              className={classNames(
+                "w-full rounded-xl px-4 py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50",
+                submitting ? "cursor-not-allowed bg-zinc-400" : "bg-emerald-600 hover:bg-emerald-700",
               )}
             >
               {submitting ? "등록 중..." : "거래글 등록"}
@@ -1204,9 +1327,21 @@ export default function ArcaMarketPage() {
         </aside>
 
         <section className="space-y-4">
+          {/**
+           * =========================
+           * 우측 상단 탭 바 (항상 고정)
+           * =========================
+           *
+           * 기존 문제:
+           * - sell/buy 전용 블록 안에 탭 바가 있어서
+           *   my_posts / my_requests에서는 탭 바 자체가 사라졌음
+           *
+           * 현재:
+           * - 우측 패널 최상단에 항상 렌더링
+           */}
           <div className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="mb-6 flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
                 {[
                   { key: "sell", label: "팝니다" },
                   { key: "buy", label: "삽니다" },
@@ -1215,12 +1350,13 @@ export default function ArcaMarketPage() {
                 ].map((tab) => (
                   <button
                     key={tab.key}
+                    type="button"
                     onClick={() => setViewTab(tab.key as ArcaViewTab)}
                     className={classNames(
                       "rounded-xl px-4 py-2 text-sm font-semibold transition",
                       viewTab === tab.key
                         ? "bg-emerald-600 text-white"
-                        : "bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                        : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
                     )}
                   >
                     {tab.label}
@@ -1228,466 +1364,454 @@ export default function ArcaMarketPage() {
                 ))}
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-zinc-500">정렬</span>
-                <select
-                  value={sortKey}
-                  onChange={(e) => setSortKey(e.target.value as SortKey)}
-                  className="rounded-xl border border-zinc-300 px-3 py-2 text-sm"
-                >
-                  {SORT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-amber-900">광고 상품</h3>
-                <p className="text-sm text-amber-700">
-                  Pro 사용자가 올린 상단 노출 글입니다.
-                </p>
-              </div>
-              <div className="text-xs text-amber-700">
-                최대 {FEATURED_LIMIT}개 노출
-              </div>
-            </div>
-
-            {featuredPosts.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-amber-300 bg-white/60 px-4 py-6 text-sm text-zinc-500">
-                현재 노출 중인 광고 상품이 없습니다.
-              </div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {featuredPosts.map((post) => (
-                  <button
-                    key={post.id}
-                    type="button"
-                    onClick={() => setDetailPost(post)}
-                    className="rounded-2xl border border-amber-300 bg-white p-4 text-left transition hover:border-amber-500 hover:shadow-sm"
+              {/**
+               * 정렬 UI는 sell/buy 목록에서만 의미가 있으므로
+               * 내가 등록한 거래 / 내 거래 신청 탭에서는 숨긴다.
+               */}
+              {(viewTab === "sell" || viewTab === "buy") && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-zinc-500">정렬</span>
+                  <select
+                    value={sortKey}
+                    onChange={(e) => setSortKey(e.target.value as SortKey)}
+                    className="rounded-xl border border-zinc-300 px-3 py-2 text-sm"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="rounded-full bg-amber-500 px-2 py-1 text-xs font-bold text-white">
-                        광고
-                      </span>
-                      <span className="text-xs text-zinc-500">
-                        {formatDate(post.created_at)}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 text-sm font-semibold text-zinc-900">
-                      {post.title || `${TAB_LABEL[post.post_type]} 글`}
-                    </div>
-
-                    <div className="mt-2 space-y-1 text-sm text-zinc-700">
-                      <div>비율: {formatNumber(post.ratio)} : 1</div>
-                      <div>수량: {formatNumber(post.arca_amount)} 아르카</div>
-                      <div>
-                        거래방식: {post.trade_mode === "bulk" ? "일괄" : `분할 (${formatNumber(post.split_unit ?? 0)}단위)`}
-                      </div>
-                      <div>등록자: {post.seller_display_name || "익명"}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+                    {SORT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="rounded-3xl border border-zinc-200 bg-white shadow-sm">
-            <div className="border-b border-zinc-200 px-4 py-3">
-              <h3 className="text-base font-semibold text-zinc-900">
-                {viewTab === "sell" ? "판매 상품 목록" : "구매 상품 목록"}
-              </h3>
-            </div>
+          {/**
+           * =========================
+           * 우측 콘텐츠 영역
+           * =========================
+           *
+           * 중요:
+           * - 탭에 따라 "내용만" 교체
+           * - 우측 패널 자체는 유지
+           */}
+          {(viewTab === "sell" || viewTab === "buy") && (
+            <>
+              <div className="rounded-3xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-amber-900">광고 상품</h3>
+                    <p className="text-sm text-amber-700">
+                      Pro 사용자가 올린 상단 노출 글입니다.
+                    </p>
+                  </div>
+                  <div className="text-xs text-amber-700">최대 {FEATURED_LIMIT}개 노출</div>
+                </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-zinc-50 text-zinc-600">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium">구분</th>
-                    <th className="px-4 py-3 text-left font-medium">거래방식</th>
-                    <th className="px-4 py-3 text-left font-medium">비율</th>
-                    <th className="px-4 py-3 text-left font-medium">수량</th>
-                    <th className="px-4 py-3 text-left font-medium">남은 수량</th>
-                    <th className="px-4 py-3 text-left font-medium">총 셀</th>
-                    <th className="px-4 py-3 text-left font-medium">작성자</th>
-                    <th className="px-4 py-3 text-left font-medium">등록일</th>
-                    <th className="px-4 py-3 text-left font-medium">상태</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingPosts ? (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-10 text-center text-zinc-500">
-                        목록을 불러오는 중...
-                      </td>
-                    </tr>
-                  ) : listPosts.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-10 text-center text-zinc-500">
-                        등록된 글이 없습니다.
-                      </td>
-                    </tr>
-                  ) : (
-                    listPosts.map((post) => (
-                      <tr
+                {featuredPosts.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-amber-300 bg-white/60 px-4 py-6 text-sm text-zinc-500">
+                    현재 노출 중인 광고 상품이 없습니다.
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {featuredPosts.map((post) => (
+                      <button
                         key={post.id}
-                        className="cursor-pointer border-t border-zinc-100 transition hover:bg-zinc-50"
+                        type="button"
                         onClick={() => setDetailPost(post)}
+                        className="rounded-2xl border border-amber-300 bg-white p-4 text-left transition hover:border-amber-500 hover:shadow-sm"
                       >
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={classNames(
-                                "rounded-full px-2 py-1 text-xs font-semibold",
-                                post.post_type === "sell"
-                                  ? "bg-rose-100 text-rose-700"
-                                  : "bg-sky-100 text-sky-700",
-                              )}
-                            >
-                              {TAB_LABEL[post.post_type]}
-                            </span>
-                            {post.is_featured && (
-                              <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
-                                광고
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="rounded-full bg-amber-500 px-2 py-1 text-xs font-bold text-white">
+                            광고
+                          </span>
+                          <span className="text-xs text-zinc-500">{formatDate(post.created_at)}</span>
+                        </div>
+
+                        <div className="mt-3 text-sm font-semibold text-zinc-900">
+                          {post.title || `${TAB_LABEL[post.post_type]} 글`}
+                        </div>
+
+                        <div className="mt-2 space-y-1 text-sm text-zinc-700">
+                          <div>비율: {formatNumber(post.ratio)} : 1</div>
+                          <div>수량: {formatNumber(post.arca_amount)} 아르카</div>
+                          <div>
+                            거래방식:{" "}
                             {post.trade_mode === "bulk"
                               ? "일괄"
-                              : `분할 · 단위 ${formatNumber(post.split_unit ?? 0)}`}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-zinc-900">
-                          {formatNumber(post.ratio)} : 1
-                        </td>
-                        <td className="px-4 py-3">{formatNumber(post.arca_amount)}</td>
-                        <td className="px-4 py-3">{formatNumber(getRemainingQuantity(post))}</td>
-                        <td className="px-4 py-3">{formatNumber(post.cell_amount)}셀</td>
-                        <td className="px-4 py-3">{post.seller_display_name || "익명"}</td>
-                        <td className="px-4 py-3 text-zinc-500">
-                          {formatDate(post.created_at)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
-                            진행중
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3">
-              <div className="text-sm text-zinc-500">
-                총 {formatNumber(totalCount)}개 / {page}페이지
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                  disabled={page <= 1}
-                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  이전
-                </button>
-
-                <span className="text-sm text-zinc-700">
-                  {page} / {totalPages}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                  disabled={page >= totalPages}
-                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  다음
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <h3 className="text-base font-semibold text-zinc-900">최근 거래 시세 통계</h3>
-            <p className="mt-1 text-sm text-zinc-500">
-              완료 처리된 최근 거래 20개를 기준으로 평균 비율을 간단히 보여줍니다.
-            </p>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl bg-zinc-50 px-4 py-4">
-                <div className="text-xs text-zinc-500">최근 완료 거래 수</div>
-                <div className="mt-2 text-xl font-bold text-zinc-900">
-                  {formatNumber(completedStats.tradeCount)}건
-                </div>
-              </div>
-              <div className="rounded-2xl bg-zinc-50 px-4 py-4">
-                <div className="text-xs text-zinc-500">평균 거래 비율</div>
-                <div className="mt-2 text-xl font-bold text-zinc-900">
-                  {completedStats.tradeCount > 0
-                    ? `${completedStats.averageRatio}:1`
-                    : "-"}
-                </div>
-              </div>
-              <div className="rounded-2xl bg-zinc-50 px-4 py-4">
-                <div className="text-xs text-zinc-500">최근 누적 거래량</div>
-                <div className="mt-2 text-xl font-bold text-zinc-900">
-                  {formatNumber(completedStats.totalArca)} 아르카
-                </div>
-              </div>
-            </div>
-
-            {completedPosts.length > 0 && (
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-zinc-50 text-zinc-600">
-                    <tr>
-                      <th className="px-4 py-2 text-left font-medium">구분</th>
-                      <th className="px-4 py-2 text-left font-medium">비율</th>
-                      <th className="px-4 py-2 text-left font-medium">수량</th>
-                      <th className="px-4 py-2 text-left font-medium">완료일</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {completedPosts.map((post) => (
-                      <tr key={post.id} className="border-t border-zinc-100">
-                        <td className="px-4 py-2">{TAB_LABEL[post.post_type]}</td>
-                        <td className="px-4 py-2">{formatNumber(post.ratio)} : 1</td>
-                        <td className="px-4 py-2">{formatNumber(post.arca_amount)}</td>
-                        <td className="px-4 py-2 text-zinc-500">
-                          {post.completed_at ? formatDate(post.completed_at) : "-"}
-                        </td>
-                      </tr>
+                              : `분할 (${formatNumber(post.split_unit ?? 0)}단위)`}
+                          </div>
+                          <div>등록자: {post.seller_display_name || "익명"}</div>
+                        </div>
+                      </button>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </section>
-      </section>
-      )}
-      {viewTab === "my_posts" && (
-        <section className="rounded-2xl border border-zinc-200 bg-white p-6">
-          <div className="mb-4 text-lg font-semibold">내가 등록한 거래</div>
 
-          {myPosts.length === 0 ? (
-            <div className="text-sm text-zinc-500">등록한 거래글이 없습니다.</div>
-          ) : (
-            <div className="space-y-4">
-              {myPosts.map((post) => {
-                const postRequests = receivedRequestsByPostId[post.id] ?? [];
+              <div className="rounded-3xl border border-zinc-200 bg-white shadow-sm">
+                <div className="border-b border-zinc-200 px-4 py-3">
+                  <h3 className="text-base font-semibold text-zinc-900">
+                    {viewTab === "sell" ? "판매 상품 목록" : "구매 상품 목록"}
+                  </h3>
+                </div>
 
-                return (
-                  <div
-                    key={post.id}
-                    className="rounded-xl border border-zinc-200 px-4 py-4"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="text-sm">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-zinc-50 text-zinc-600">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-medium">구분</th>
+                        <th className="px-4 py-3 text-left font-medium">거래방식</th>
+                        <th className="px-4 py-3 text-left font-medium">비율</th>
+                        <th className="px-4 py-3 text-left font-medium">수량</th>
+                        <th className="px-4 py-3 text-left font-medium">남은 수량</th>
+                        <th className="px-4 py-3 text-left font-medium">총 셀</th>
+                        <th className="px-4 py-3 text-left font-medium">작성자</th>
+                        <th className="px-4 py-3 text-left font-medium">등록일</th>
+                        <th className="px-4 py-3 text-left font-medium">상태</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingPosts ? (
+                        <tr>
+                          <td colSpan={9} className="px-4 py-10 text-center text-zinc-500">
+                            목록을 불러오는 중...
+                          </td>
+                        </tr>
+                      ) : listPosts.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="px-4 py-10 text-center text-zinc-500">
+                            등록된 글이 없습니다.
+                          </td>
+                        </tr>
+                      ) : (
+                        listPosts.map((post) => (
+                          <tr
+                            key={post.id}
+                            className="cursor-pointer border-t border-zinc-100 transition hover:bg-zinc-50"
+                            onClick={() => setDetailPost(post)}
+                          >
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={classNames(
+                                    "rounded-full px-2 py-1 text-xs font-semibold",
+                                    post.post_type === "sell"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : "bg-sky-100 text-sky-700",
+                                  )}
+                                >
+                                  {TAB_LABEL[post.post_type]}
+                                </span>
+                                {post.is_featured && (
+                                  <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                                    광고
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700">
+                                {post.trade_mode === "bulk"
+                                  ? "일괄"
+                                  : `분할 · 단위 ${formatNumber(post.split_unit ?? 0)}`}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-zinc-900">
+                              {formatNumber(post.ratio)} : 1
+                            </td>
+                            <td className="px-4 py-3">{formatNumber(post.arca_amount)}</td>
+                            <td className="px-4 py-3">{formatNumber(getRemainingQuantity(post))}</td>
+                            <td className="px-4 py-3">{formatNumber(post.cell_amount)}셀</td>
+                            <td className="px-4 py-3">{post.seller_display_name || "익명"}</td>
+                            <td className="px-4 py-3 text-zinc-500">{formatDate(post.created_at)}</td>
+                            <td className="px-4 py-3">
+                              <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                                진행중
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3">
+                  <div className="text-sm text-zinc-500">
+                    총 {formatNumber(totalCount)}개 / {page}페이지
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                      disabled={page <= 1}
+                      className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      이전
+                    </button>
+
+                    <span className="text-sm text-zinc-700">
+                      {page} / {totalPages}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                      disabled={page >= totalPages}
+                      className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      다음
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
+                <h3 className="text-base font-semibold text-zinc-900">최근 거래 시세 통계</h3>
+                <p className="mt-1 text-sm text-zinc-500">
+                  완료 처리된 최근 거래 20개를 기준으로 평균 비율을 간단히 보여줍니다.
+                </p>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                    <div className="text-xs text-zinc-500">최근 완료 거래 수</div>
+                    <div className="mt-2 text-xl font-bold text-zinc-900">
+                      {formatNumber(completedStats.tradeCount)}건
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                    <div className="text-xs text-zinc-500">평균 거래 비율</div>
+                    <div className="mt-2 text-xl font-bold text-zinc-900">
+                      {completedStats.tradeCount > 0 ? `${completedStats.averageRatio}:1` : "-"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                    <div className="text-xs text-zinc-500">최근 누적 거래량</div>
+                    <div className="mt-2 text-xl font-bold text-zinc-900">
+                      {formatNumber(completedStats.totalArca)} 아르카
+                    </div>
+                  </div>
+                </div>
+
+                {completedPosts.length > 0 && (
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-zinc-50 text-zinc-600">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium">구분</th>
+                          <th className="px-4 py-2 text-left font-medium">비율</th>
+                          <th className="px-4 py-2 text-left font-medium">수량</th>
+                          <th className="px-4 py-2 text-left font-medium">완료일</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {completedPosts.map((post) => (
+                          <tr key={post.id} className="border-t border-zinc-100">
+                            <td className="px-4 py-2">{TAB_LABEL[post.post_type]}</td>
+                            <td className="px-4 py-2">{formatNumber(post.ratio)} : 1</td>
+                            <td className="px-4 py-2">{formatNumber(post.arca_amount)}</td>
+                            <td className="px-4 py-2 text-zinc-500">
+                              {post.completed_at ? formatDate(post.completed_at) : "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {viewTab === "my_posts" && (
+            <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+              <div className="mb-4 text-lg font-semibold text-zinc-900">내가 등록한 거래</div>
+
+              {myPosts.length === 0 ? (
+                <div className="text-sm text-zinc-500">등록한 거래글이 없습니다.</div>
+              ) : (
+                <div className="space-y-4">
+                  {myPosts.map((post) => {
+                    const postRequests = receivedRequestsByPostId[post.id] ?? [];
+
+                    return (
+                      <div
+                        key={post.id}
+                        className="rounded-xl border border-zinc-200 px-4 py-4"
+                      >
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="text-sm text-zinc-700">
+                            <div className="font-medium text-zinc-900">
+                              {post.title || `${post.post_type === "sell" ? "판매" : "구매"} 거래`}
+                            </div>
+                            <div className="mt-1">
+                              글 유형: {post.post_type === "sell" ? "판매글" : "구매글"}
+                            </div>
+                            <div>비율: {formatNumber(post.ratio)} : 1</div>
+                            <div>수량: {formatNumber(post.arca_amount)} 아르카</div>
+                            <div>남은 수량: {formatNumber(getRemainingQuantity(post))} 아르카</div>
+                            <div>
+                              거래 방식:{" "}
+                              {post.trade_mode === "bulk"
+                                ? "일괄"
+                                : `분할 (${formatNumber(post.split_unit ?? 0)}단위)`}
+                            </div>
+                            <div>등록일: {formatDate(post.created_at)}</div>
+                            <div className="text-xs text-zinc-500">상태: 진행중</div>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setDetailPost(post)}
+                              className="rounded-lg bg-zinc-800 px-3 py-1 text-xs text-white"
+                            >
+                              글 상세보기
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 rounded-xl bg-zinc-50 p-3">
+                          <div className="mb-2 text-sm font-semibold text-zinc-900">
+                            신청 목록 ({postRequests.length})
+                          </div>
+
+                          {postRequests.length === 0 ? (
+                            <div className="text-sm text-zinc-500">아직 들어온 신청이 없습니다.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {postRequests.map((req) => (
+                                <div
+                                  key={req.id}
+                                  className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-3 md:flex-row md:items-center md:justify-between"
+                                >
+                                  <div className="text-sm text-zinc-700">
+                                    <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
+                                    <div>비율: {formatNumber(req.ratio)} : 1</div>
+                                    <div className="text-xs text-zinc-500">
+                                      상태: {getRequestStatusLabel(req)} /{" "}
+                                      {getCompletionProgressLabel(req, sessionUserId)}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setDetailRequest(req)}
+                                      className="rounded-lg border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                                    >
+                                      상세보기
+                                    </button>
+
+                                    {req.status === "pending" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleCompleteRequest(req.id)}
+                                        disabled={requestSubmitting || !!req.owner_completed_at}
+                                        className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        {req.owner_completed_at ? "완료 확인됨" : "거래 완료"}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {viewTab === "my_requests" && (
+            <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+              <div className="mb-4 text-lg font-semibold text-zinc-900">내 거래 신청</div>
+
+              {loadingRequests ? (
+                <div className="text-sm text-zinc-500">불러오는 중...</div>
+              ) : myRequests.length === 0 ? (
+                <div className="text-sm text-zinc-500">신청 내역이 없습니다.</div>
+              ) : (
+                <div className="space-y-3">
+                  {myRequests.map((req) => (
+                    <div
+                      key={req.id}
+                      className="flex flex-col gap-3 rounded-xl border border-zinc-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between"
+                    >
+                      <div className="text-sm text-zinc-700">
                         <div className="font-medium text-zinc-900">
-                          {post.title || `${post.post_type === "sell" ? "판매" : "구매"} 거래`}
+                          {req.post?.title?.trim() ||
+                            `${req.post?.post_type === "sell" ? "판매" : "구매"} 거래글`}
                         </div>
-                        <div>수량: {formatNumber(post.arca_amount)} 아르카</div>
-                        <div>남은 수량: {formatNumber(getRemainingQuantity(post))} 아르카</div>
                         <div>
-                          거래 방식: {post.trade_mode === "bulk"
-                            ? "일괄"
-                            : `분할 (${formatNumber(post.split_unit ?? 0)}단위)`}
+                          원본 글 유형: {req.post?.post_type === "sell" ? "판매글" : "구매글"}
                         </div>
-                        <div>상태: {post.status}</div>
+                        <div>
+                          거래 방식:{" "}
+                          {req.post?.trade_mode === "bulk"
+                            ? "일괄"
+                            : `분할 (${formatNumber(req.post?.split_unit ?? 0)}단위)`}
+                        </div>
+                        <div>총 등록 수량: {formatNumber(req.post?.arca_amount ?? 0)} 아르카</div>
+                        <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
+                        <div>비율: {formatNumber(req.ratio)} : 1</div>
+                        <div className="text-xs text-zinc-500">
+                          상태: {getRequestStatusLabel(req)} /{" "}
+                          {getCompletionProgressLabel(req, sessionUserId)}
+                        </div>
                       </div>
 
-                      <div className="flex gap-2">
-                        {post.status === "open" && (
-                          <button
-                            onClick={() => setDetailPost(post)}
-                            className="rounded-lg bg-zinc-800 px-3 py-1 text-xs text-white"
-                          >
-                            상세보기
-                          </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDetailRequest(req)}
+                          className="rounded-lg border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                        >
+                          상세보기
+                        </button>
+
+                        {req.status === "pending" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleCompleteRequest(req.id)}
+                              disabled={requestSubmitting || !!req.requester_completed_at}
+                              className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {req.requester_completed_at ? "완료 확인됨" : "거래 완료"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => void handleCancelRequest(req.id)}
+                              disabled={
+                                requestSubmitting ||
+                                !!req.requester_completed_at ||
+                                !!req.owner_completed_at
+                              }
+                              className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {req.requester_completed_at || req.owner_completed_at ? "취소 불가" : "취소"}
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
-
-                    <div className="mt-4 rounded-xl bg-zinc-50 p-3">
-                      <div className="mb-2 text-sm font-semibold text-zinc-900">
-                        신청 목록 ({postRequests.length})
-                      </div>
-
-                      {postRequests.length === 0 ? (
-                        <div className="text-sm text-zinc-500">아직 들어온 신청이 없습니다.</div>
-                      ) : (
-                        <div className="space-y-2">
-                          {postRequests.map((req) => (
-                            <div
-                              key={req.id}
-                              className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-3 py-3"
-                            >
-                              <div className="text-sm text-zinc-700">
-                                <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
-                                <div>비율: {formatNumber(req.ratio)} : 1</div>
-                                <div className="text-xs text-zinc-500">
-                                  상태: {getRequestStatusLabel(req)} / {getCompletionProgressLabel(req, sessionUserId)}
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => setDetailRequest(req)}
-                                  className="rounded-lg border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                                >
-                                  상세보기
-                                </button>
-
-                                {req.status === "pending" && (
-                                  <button
-                                    onClick={() => void handleCompleteRequest(req.id)}
-                                    disabled={requestSubmitting || !!req.owner_completed_at}
-                                    className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {req.owner_completed_at ? "완료 확인됨" : "거래 완료"}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  ))}
+                </div>
+              )}
+            </section>
           )}
         </section>
-        )}
-    {viewTab === "my_requests" && (
-      <section className="mt-10 rounded-2xl border border-zinc-200 bg-white p-6">
-        <div className="mb-4 text-lg font-semibold text-zinc-900">내 거래 신청</div>
-
-        {loadingRequests ? (
-          <div className="text-sm text-zinc-500">불러오는 중...</div>
-        ) : myRequests.length === 0 ? (
-          <div className="text-sm text-zinc-500">신청 내역이 없습니다.</div>
-        ) : (
-          <div className="space-y-3">
-            {myRequests.map((req) => (
-              <div
-                key={req.id}
-                className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3"
-              >
-                <div className="text-sm text-zinc-700">
-                  <div className="font-medium text-zinc-900">
-                    {req.post?.title?.trim() || `${req.post?.post_type === "sell" ? "판매" : "구매"} 거래글`}
-                  </div>
-                  <div>
-                    원본 글 유형: {req.post?.post_type === "sell" ? "판매글" : "구매글"}
-                  </div>
-                  <div>
-                    거래 방식: {req.post?.trade_mode === "bulk"
-                      ? "일괄"
-                      : `분할 (${formatNumber(req.post?.split_unit ?? 0)}단위)`}
-                  </div>
-                  <div>총 등록 수량: {formatNumber(req.post?.arca_amount ?? 0)} 아르카</div>
-                  <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
-                  <div>비율: {formatNumber(req.ratio)} : 1</div>
-                  <div className="text-xs text-zinc-500">
-                    상태: {getRequestStatusLabel(req)} / {getCompletionProgressLabel(req, sessionUserId)}
-                  </div>
-                </div>
-
-                {req.status === "pending" && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => void handleCompleteRequest(req.id)}
-                      disabled={requestSubmitting || !!req.requester_completed_at}
-                      className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {req.requester_completed_at ? "완료 확인됨" : "거래 완료"}
-                    </button>
-
-                    <button
-                      onClick={() => void handleCancelRequest(req.id)}
-                      disabled={
-                        requestSubmitting ||
-                        !!req.requester_completed_at ||
-                        !!req.owner_completed_at
-                      }
-                      className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {req.requester_completed_at || req.owner_completed_at ? "취소 불가" : "취소"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
       </section>
-    )}
-    {/* {viewTab === "received_requests" && ( 
 
-      <section className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6">
-        <div className="mb-4 text-lg font-semibold text-zinc-900">받은 거래 신청</div>
-
-        {loadingRequests ? (
-          <div className="text-sm text-zinc-500">불러오는 중...</div>
-        ) : receivedRequests.length === 0 ? (
-          <div className="text-sm text-zinc-500">받은 신청이 없습니다.</div>
-        ) : (
-          <div className="space-y-3">
-            {receivedRequests.map((req) => (
-              <div
-                key={req.id}
-                className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3"
-              >
-                <div className="text-sm text-zinc-700">
-                  <div className="font-medium text-zinc-900">
-                    {req.post?.title?.trim() || `${req.post?.post_type === "sell" ? "판매" : "구매"} 거래글`}
-                  </div>
-                  <div>
-                    원본 글 유형: {req.post?.post_type === "sell" ? "판매글" : "구매글"}
-                  </div>
-                  <div>
-                    거래 방식: {req.post?.trade_mode === "bulk"
-                      ? "일괄"
-                      : `분할 (${formatNumber(req.post?.split_unit ?? 0)}단위)`}
-                  </div>
-                  <div>총 등록 수량: {formatNumber(req.post?.arca_amount ?? 0)} 아르카</div>
-                  <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
-                  <div>비율: {formatNumber(req.ratio)} : 1</div>
-                  <div className="text-xs text-zinc-500">
-                    상태: {getRequestStatusLabel(req)} / {getCompletionProgressLabel(req, sessionUserId)}
-                  </div>
-                </div>
-
-                {req.status === "pending" && (
-                  <button
-                    onClick={() => void handleCompleteRequest(req.id)}
-                    disabled={requestSubmitting || !!req.owner_completed_at}
-                    className="rounded-lg bg-emerald-600 px-3 py-1 text-xs text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {req.owner_completed_at ? "완료 확인됨" : "거래 완료"}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-    )} */}
       {detailPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
@@ -1732,25 +1856,29 @@ export default function ArcaMarketPage() {
                     {formatNumber(detailPost.ratio)} : 1
                   </div>
                 </div>
+
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">수량</div>
                   <div className="mt-2 text-xl font-bold text-zinc-900">
                     {formatNumber(detailPost.arca_amount)} 아르카
                   </div>
                 </div>
+
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">남은 수량</div>
                   <div className="mt-2 text-xl font-bold text-zinc-900">
                     {formatNumber(getRemainingQuantity(detailPost))} 아르카
                   </div>
                 </div>
+
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">총 셀</div>
                   <div className="mt-2 text-xl font-bold text-zinc-900">
                     {formatNumber(detailPost.cell_amount)}셀
                   </div>
                 </div>
-                                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">거래 방식</div>
                   <div className="mt-2 text-base font-semibold text-zinc-900">
                     {detailPost.trade_mode === "bulk"
@@ -1773,8 +1901,7 @@ export default function ArcaMarketPage() {
                   <div>표시명: {detailPost.seller_display_name || "익명"}</div>
                   <div>마크 닉네임: {detailPost.seller_mc_nickname || "-"}</div>
                   <div>
-                    연락 방식:{" "}
-                    {detailPost.contact_preference === "discord" ? "디스코드" : "귓말"}
+                    연락 방식: {detailPost.contact_preference === "discord" ? "디스코드" : "귓말"}
                   </div>
                   {detailPost.contact_preference === "discord" && (
                     <div>디스코드: {detailPost.contact_value || "-"}</div>
@@ -1860,18 +1987,15 @@ export default function ArcaMarketPage() {
                 )}
 
                 {detailPost.user_id === sessionUserId && detailPost.status === "open" && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => void handleUpdateStatus(detailPost, "cancelled")}
-                      className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
-                    >
-                      글 취소
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={() => void handleUpdateStatus(detailPost, "cancelled")}
+                    className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
+                  >
+                    글 취소
+                  </button>
                 )}
               </div>
-
             </div>
           </div>
         </div>
@@ -1939,17 +2063,65 @@ export default function ArcaMarketPage() {
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">상태</div>
                   <div className="mt-2 text-base font-semibold text-zinc-900">
-                    {getRequestStatusLabel(detailRequest)} / {getCompletionProgressLabel(detailRequest, sessionUserId)}
+                    {getRequestStatusLabel(detailRequest)} /{" "}
+                    {getCompletionProgressLabel(detailRequest, sessionUserId)}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4 md:col-span-2">
+                  <div className="text-xs text-zinc-500">신청 등록일</div>
+                  <div className="mt-2 text-base font-semibold text-zinc-900">
+                    {formatDate(detailRequest.created_at)}
                   </div>
                 </div>
               </div>
+
+              {detailRequest.status === "pending" && (
+                <div className="flex flex-wrap gap-2">
+                  {sessionUserId === detailRequest.owner_id && (
+                    <button
+                      type="button"
+                      onClick={() => void handleCompleteRequest(detailRequest.id)}
+                      disabled={requestSubmitting || !!detailRequest.owner_completed_at}
+                      className="rounded-lg bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {detailRequest.owner_completed_at ? "완료 확인됨" : "거래 완료"}
+                    </button>
+                  )}
+
+                  {sessionUserId === detailRequest.requester_id && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void handleCompleteRequest(detailRequest.id)}
+                        disabled={requestSubmitting || !!detailRequest.requester_completed_at}
+                        className="rounded-lg bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {detailRequest.requester_completed_at ? "완료 확인됨" : "거래 완료"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleCancelRequest(detailRequest.id)}
+                        disabled={
+                          requestSubmitting ||
+                          !!detailRequest.requester_completed_at ||
+                          !!detailRequest.owner_completed_at
+                        }
+                        className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {detailRequest.requester_completed_at || detailRequest.owner_completed_at
+                          ? "취소 불가"
+                          : "취소"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
     </div>
-    
-    
   );
-  
 }
