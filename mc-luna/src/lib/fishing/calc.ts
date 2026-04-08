@@ -346,7 +346,7 @@ export function calculateCatchExpectation(
 
   const doubleCatchChancePercent = clamp(
     6 * effectiveThirstMultiplier +
-      0.3 * stats.luck +
+      0.45 * stats.luck +
       rumoredBaitChancePercent,
     0,
     100,
