@@ -1796,7 +1796,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleDeletePost(post)}
-                                  className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
+                                  className="rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
                                 >
                                   삭제
                                 </button>
@@ -1886,7 +1886,7 @@ export default function ArcaMarketPage() {
                                           <button
                                             type="button"
                                             onClick={() => void handleDeleteRequest(req)}
-                                            className="min-w-[96px] rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
+                                            className="min-w-[96px] rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
                                           >
                                             삭제
                                           </button>
@@ -2040,7 +2040,7 @@ export default function ArcaMarketPage() {
                               <button
                                 type="button"
                                 onClick={() => setDetailRequest(req)}
-                                className="rounded-lg border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                                className="min-w-[96px] rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 shadow-sm hover:bg-zinc-50"
                               >
                                 상세보기
                               </button>
@@ -2050,7 +2050,7 @@ export default function ArcaMarketPage() {
                                   type="button"
                                   onClick={() => void handleCompleteRequest(req)}
                                   disabled={requestSubmitting}
-                                  className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="min-w-[96px] rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   거래 완료
                                 </button>
@@ -2061,7 +2061,7 @@ export default function ArcaMarketPage() {
                                   type="button"
                                   onClick={() => void handleCancelRequest(req)}
                                   disabled={requestSubmitting}
-                                  className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="min-w-[96px] rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   취소
                                 </button>
@@ -2071,7 +2071,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleDeleteRequest(req)}
-                                  className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600"
+                                  className="min-w-[96px] rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
                                 >
                                   삭제
                                 </button>
@@ -2365,7 +2365,7 @@ export default function ArcaMarketPage() {
                   <button
                     type="button"
                     onClick={() => void handleDeletePost(detailPost)}
-                    className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
+                    className="rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
                   >
                     삭제
                   </button>
@@ -2525,7 +2525,7 @@ export default function ArcaMarketPage() {
                   <button
                     type="button"
                     onClick={() => void handleDeleteRequest(detailRequest)}
-                    className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
+                    className="rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
                   >
                     삭제
                   </button>
