@@ -2061,7 +2061,8 @@ export default function ArcaMarketPage() {
                                   type="button"
                                   onClick={() => void handleCancelRequest(req)}
                                   disabled={requestSubmitting}
-                                   className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
+                              
+                                   className="min-w-[96px] rounded-xl bg-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
                                 >
                                   취소
                                 </button>
@@ -2071,7 +2072,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleDeleteRequest(req)}
-                                  className="min-w-[96px] rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-600"
+                                  className="min-w-[96px] rounded-xl bg-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
                                 >
                                   삭제
                                 </button>
