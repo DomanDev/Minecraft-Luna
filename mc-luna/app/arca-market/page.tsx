@@ -60,6 +60,10 @@ type ArcaTradeRequestRow = {
   completed_at: string | null;
   requester_completed_at: string | null;
   owner_completed_at: string | null;
+  post: Pick<
+    ArcaTradePostRow,
+    "id" | "post_type" | "title" | "trade_mode" | "split_unit" | "arca_amount" | "status"
+  > | null;
 };
 
 const PAGE_SIZE = 15;
@@ -473,7 +477,18 @@ export default function ArcaMarketPage() {
     try {
       const { data, error } = await supabase
         .from("arca_trade_requests")
-        .select("*")
+        .select(`
+          *,
+          post:arca_trade_posts (
+            id,
+            post_type,
+            title,
+            trade_mode,
+            split_unit,
+            arca_amount,
+            status
+          )
+        `)
         .eq("requester_id", sessionUserId)
         .order("created_at", { ascending: false });
 
@@ -494,7 +509,18 @@ export default function ArcaMarketPage() {
     try {
       const { data, error } = await supabase
         .from("arca_trade_requests")
-        .select("*")
+        .select(`
+          *,
+          post:arca_trade_posts (
+            id,
+            post_type,
+            title,
+            trade_mode,
+            split_unit,
+            arca_amount,
+            status
+          )
+        `)
         .eq("owner_id", sessionUserId)
         .order("created_at", { ascending: false });
 
@@ -748,10 +774,12 @@ export default function ArcaMarketPage() {
 
       setDetailPost(null);
       await fetchPosts();
+      await fetchMyRequests();
+      await fetchReceivedRequests();
     } finally {
       setRequestSubmitting(false);
     }
-  }, [fetchPosts, requestQuantity, sessionUserId]);
+  }, [fetchPosts, fetchMyRequests,fetchReceivedRequests, requestQuantity, sessionUserId]);
 
   const handleCancelRequest = useCallback(async (requestId: string) => {
     setRequestSubmitting(true);
@@ -820,32 +848,37 @@ export default function ArcaMarketPage() {
         return;
       }
 
-      const payload: Partial<ArcaTradePostRow> = {
-        status: nextStatus,
-        completed_at: nextStatus === "completed" ? new Date().toISOString() : null,
-      };
-
-      const { error } = await supabase
-        .from("arca_trade_posts")
-        .update(payload)
-        .eq("id", post.id);
-
-      if (error) {
-        console.error("거래 상태 변경 실패:", error);
-        toast.error("상태 변경에 실패했습니다.");
+      if (nextStatus !== "cancelled") {
+        toast.error("지원하지 않는 상태 변경입니다.");
         return;
       }
 
-      toast.success(
-        nextStatus === "completed"
-          ? "거래를 완료 처리했습니다."
-          : "거래글을 취소 처리했습니다.",
-      );
+      const { error } = await supabase.rpc("cancel_arca_trade_post", {
+        p_post_id: post.id,
+      });
+
+      if (error) {
+        console.error("거래글 취소 실패:", error);
+
+        const message = error.message || "";
+        if (message.includes("진행 중인 신청이 있는 글은 취소")) {
+          toast.error("진행 중인 신청이 있는 글은 취소할 수 없습니다.");
+        } else if (message.includes("진행 중인 글만 취소")) {
+          toast.error("진행 중인 글만 취소할 수 있습니다.");
+        } else {
+          toast.error("글 취소에 실패했습니다.");
+        }
+        return;
+      }
+
+      toast.success("거래글을 취소했습니다.");
 
       setDetailPost(null);
       await fetchPosts();
+      await fetchMyRequests();
+      await fetchReceivedRequests();
     },
-    [fetchPosts, sessionUserId],
+    [fetchMyRequests, fetchPosts, fetchReceivedRequests, sessionUserId],
   );
 
   const handleCopyWhisper = useCallback(async (post: ArcaTradePostRow) => {
@@ -1412,7 +1445,19 @@ export default function ArcaMarketPage() {
                 className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3"
               >
                 <div className="text-sm text-zinc-700">
-                  <div>수량: {formatNumber(req.request_quantity)} 아르카</div>
+                  <div className="font-medium text-zinc-900">
+                    {req.post?.title?.trim() || `${req.post?.post_type === "sell" ? "판매" : "구매"} 거래글`}
+                  </div>
+                  <div>
+                    원본 글 유형: {req.post?.post_type === "sell" ? "판매글" : "구매글"}
+                  </div>
+                  <div>
+                    거래 방식: {req.post?.trade_mode === "bulk"
+                      ? "일괄"
+                      : `분할 (${formatNumber(req.post?.split_unit ?? 0)}단위)`}
+                  </div>
+                  <div>총 등록 수량: {formatNumber(req.post?.arca_amount ?? 0)} 아르카</div>
+                  <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
                   <div>비율: {formatNumber(req.ratio)} : 1</div>
                   <div className="text-xs text-zinc-500">
                     상태: {getRequestStatusLabel(req)} / {getCompletionProgressLabel(req, sessionUserId)}
@@ -1431,10 +1476,14 @@ export default function ArcaMarketPage() {
 
                     <button
                       onClick={() => void handleCancelRequest(req.id)}
-                      disabled={requestSubmitting}
+                      disabled={
+                        requestSubmitting ||
+                        !!req.requester_completed_at ||
+                        !!req.owner_completed_at
+                      }
                       className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      취소
+                      {req.requester_completed_at || req.owner_completed_at ? "취소 불가" : "취소"}
                     </button>
                   </div>
                 )}
@@ -1459,7 +1508,19 @@ export default function ArcaMarketPage() {
                 className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3"
               >
                 <div className="text-sm text-zinc-700">
-                  <div>수량: {formatNumber(req.request_quantity)} 아르카</div>
+                  <div className="font-medium text-zinc-900">
+                    {req.post?.title?.trim() || `${req.post?.post_type === "sell" ? "판매" : "구매"} 거래글`}
+                  </div>
+                  <div>
+                    원본 글 유형: {req.post?.post_type === "sell" ? "판매글" : "구매글"}
+                  </div>
+                  <div>
+                    거래 방식: {req.post?.trade_mode === "bulk"
+                      ? "일괄"
+                      : `분할 (${formatNumber(req.post?.split_unit ?? 0)}단위)`}
+                  </div>
+                  <div>총 등록 수량: {formatNumber(req.post?.arca_amount ?? 0)} 아르카</div>
+                  <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
                   <div>비율: {formatNumber(req.ratio)} : 1</div>
                   <div className="text-xs text-zinc-500">
                     상태: {getRequestStatusLabel(req)} / {getCompletionProgressLabel(req, sessionUserId)}
@@ -1560,7 +1621,7 @@ export default function ArcaMarketPage() {
               </div>
 
               <div className="rounded-2xl border border-zinc-200 p-4">
-                <div className="text-sm font-semibold text-zinc-900">판매자 정보</div>
+                <div className="text-sm font-semibold text-zinc-900">등록자 정보</div>
                 <div className="mt-3 space-y-2 text-sm text-zinc-700">
                   <div>표시명: {detailPost.seller_display_name || "익명"}</div>
                   <div>마크 닉네임: {detailPost.seller_mc_nickname || "-"}</div>
