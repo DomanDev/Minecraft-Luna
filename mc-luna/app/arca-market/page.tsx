@@ -175,8 +175,8 @@ function getActionStatusText(
   request: ArcaTradeRequestEnrichedRow,
   sessionUserId: string | null,
 ): string {
-  if (request.status === "completed") return "거래가 최종 완료되었습니다.";
-  if (request.status === "cancelled") return "취소된 신청입니다.";
+  if (request.status === "completed") return "거래 완료";
+  if (request.status === "cancelled") return "취소된 신청";
 
   const isRequester = sessionUserId === request.requester_id;
   const isOwner = sessionUserId === request.owner_id;
@@ -1796,7 +1796,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleDeletePost(post)}
-                                  className="rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
+                                  className="rounded-xl bg-red-550 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
                                 >
                                   삭제
                                 </button>
@@ -1886,7 +1886,7 @@ export default function ArcaMarketPage() {
                                           <button
                                             type="button"
                                             onClick={() => void handleDeleteRequest(req)}
-                                            className="min-w-[96px] rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
+                                            className="min-w-[96px] rounded-xl bg-red-550 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
                                           >
                                             삭제
                                           </button>
@@ -2061,7 +2061,7 @@ export default function ArcaMarketPage() {
                                   type="button"
                                   onClick={() => void handleCancelRequest(req)}
                                   disabled={requestSubmitting}
-                                  className="min-w-[96px] rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="min-w-[96px] rounded-xl bg-red-550 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   취소
                                 </button>
@@ -2071,7 +2071,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleDeleteRequest(req)}
-                                  className="min-w-[96px] rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
+                                  className="min-w-[96px] rounded-xl bg-red-550 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
                                 >
                                   삭제
                                 </button>
@@ -2365,7 +2365,7 @@ export default function ArcaMarketPage() {
                   <button
                     type="button"
                     onClick={() => void handleDeletePost(detailPost)}
-                    className="rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
+                    className="rounded-xl bg-red-550 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
                   >
                     삭제
                   </button>
@@ -2515,7 +2515,7 @@ export default function ArcaMarketPage() {
                       type="button"
                       onClick={() => void handleCancelRequest(detailRequest)}
                       disabled={requestSubmitting}
-                      className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+                      className="rounded-xl bg-red-550 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
                     >
                       취소
                     </button>
@@ -2525,7 +2525,7 @@ export default function ArcaMarketPage() {
                   <button
                     type="button"
                     onClick={() => void handleDeleteRequest(detailRequest)}
-                    className="rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
+                    className="rounded-xl bg-red-550 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
                   >
                     삭제
                   </button>
