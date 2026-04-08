@@ -46,12 +46,15 @@ type MyOpenPostSummary = {
   hasOpenBuy: boolean;
 };
 
-type ArcaTradeRequestPostRef = Pick<
-  ArcaTradePostRow,
-  "id" | "post_type" | "title" | "trade_mode" | "split_unit" | "arca_amount" | "status"
->;
-
-type ArcaTradeRequestRow = {
+/**
+ * arca_trade_requests_enriched view 기준 타입
+ *
+ * 중요:
+ * - 기존 nested post 구조(req.post.xxx)가 아니라
+ *   평평한(flat) 컬럼 구조를 사용한다.
+ * - requester / owner 닉네임도 여기서 바로 내려온다.
+ */
+type ArcaTradeRequestEnrichedRow = {
   id: string;
   post_id: string;
   requester_id: string;
@@ -66,7 +69,22 @@ type ArcaTradeRequestRow = {
   completed_at: string | null;
   requester_completed_at: string | null;
   owner_completed_at: string | null;
-  post: ArcaTradeRequestPostRef | null;
+
+  requester_username: string | null;
+  requester_display_name: string | null;
+  owner_username: string | null;
+  owner_display_name: string | null;
+
+  post_ref_id: string | null;
+  post_type: "sell" | "buy" | null;
+  title: string | null;
+  trade_mode: "bulk" | "split" | null;
+  split_unit: number | null;
+  arca_amount: number | null;
+  post_status: "open" | "completed" | "cancelled" | null;
+  post_user_id: string | null;
+  seller_display_name: string | null;
+  seller_mc_nickname: string | null;
 };
 
 const MARKET_PAGE_SIZE = 15;
@@ -119,14 +137,14 @@ function getRemainingQuantity(post: ArcaTradePostRow): number {
   return Math.max(0, post.arca_amount - post.reserved_quantity - post.completed_quantity);
 }
 
-function getRequestStatusLabel(request: ArcaTradeRequestRow): string {
+function getRequestStatusLabel(request: ArcaTradeRequestEnrichedRow): string {
   if (request.status === "completed") return "완료";
   if (request.status === "cancelled") return "취소";
   return "진행중";
 }
 
 function getCompletionProgressLabel(
-  request: ArcaTradeRequestRow,
+  request: ArcaTradeRequestEnrichedRow,
   sessionUserId: string | null,
 ): string {
   const meDone =
@@ -154,7 +172,7 @@ function getCompletionProgressLabel(
 }
 
 function getActionStatusText(
-  request: ArcaTradeRequestRow,
+  request: ArcaTradeRequestEnrichedRow,
   sessionUserId: string | null,
 ): string {
   if (request.status === "completed") return "거래가 최종 완료되었습니다.";
@@ -182,7 +200,7 @@ function getActionStatusText(
 }
 
 function getActionStatusBadgeClass(
-  request: ArcaTradeRequestRow,
+  request: ArcaTradeRequestEnrichedRow,
   sessionUserId: string | null,
 ): string {
   if (request.status === "completed") return "bg-emerald-100 text-emerald-700";
@@ -207,7 +225,7 @@ function getActionStatusBadgeClass(
   return "bg-amber-100 text-amber-700";
 }
 
-function getStepStatusText(request: ArcaTradeRequestRow): string {
+function getStepStatusText(request: ArcaTradeRequestEnrichedRow): string {
   if (request.status === "completed") return "양측 완료";
   if (request.status === "cancelled") return "취소됨";
 
@@ -218,7 +236,7 @@ function getStepStatusText(request: ArcaTradeRequestRow): string {
   return "거래 조율 중";
 }
 
-function getStepStatusBadgeClass(request: ArcaTradeRequestRow): string {
+function getStepStatusBadgeClass(request: ArcaTradeRequestEnrichedRow): string {
   if (request.status === "completed") return "bg-emerald-100 text-emerald-700";
   if (request.status === "cancelled") return "bg-red-100 text-red-700";
 
@@ -287,7 +305,7 @@ function resetArcaTradeForm(
   setFormType("sell");
 }
 
-function getRequestSummaryCounts(requests: ArcaTradeRequestRow[]) {
+function getRequestSummaryCounts(requests: ArcaTradeRequestEnrichedRow[]) {
   return requests.reduce(
     (acc, req) => {
       if (req.status === "completed") acc.completed += 1;
@@ -299,8 +317,8 @@ function getRequestSummaryCounts(requests: ArcaTradeRequestRow[]) {
   );
 }
 
-function getDisplayNameFromProfile(profile: ProfileRow | null | undefined): string {
-  return profile?.display_name?.trim() || profile?.username?.trim() || "익명";
+function getSafeDisplayName(displayName: string | null, username: string | null): string {
+  return username?.trim() || displayName?.trim() || "익명";
 }
 
 export default function ArcaMarketPage() {
@@ -339,24 +357,15 @@ export default function ArcaMarketPage() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [detailPost, setDetailPost] = useState<ArcaTradePostRow | null>(null);
-  const [detailRequest, setDetailRequest] = useState<ArcaTradeRequestRow | null>(null);
+  const [detailRequest, setDetailRequest] = useState<ArcaTradeRequestEnrichedRow | null>(null);
 
   const [requestQuantity, setRequestQuantity] = useState("1");
   const [requestSubmitting, setRequestSubmitting] = useState(false);
 
-  const [myRequests, setMyRequests] = useState<ArcaTradeRequestRow[]>([]);
+  const [myRequests, setMyRequests] = useState<ArcaTradeRequestEnrichedRow[]>([]);
   const [myPosts, setMyPosts] = useState<ArcaTradePostRow[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
-  const [receivedRequests, setReceivedRequests] = useState<ArcaTradeRequestRow[]>([]);
-
-  /**
-   * 거래 요청/글에 연결되는 사용자 닉네임 표시용 캐시
-   * - requester_id
-   * - owner_id
-   * - post.user_id
-   * 를 profiles에서 한 번에 가져와서 맵으로 보관
-   */
-  const [profileMap, setProfileMap] = useState<Record<string, ProfileRow>>({});
+  const [receivedRequests, setReceivedRequests] = useState<ArcaTradeRequestEnrichedRow[]>([]);
 
   /**
    * 등록 폼 state
@@ -379,7 +388,7 @@ export default function ArcaMarketPage() {
   const totalPages = Math.max(1, Math.ceil(totalCount / MARKET_PAGE_SIZE));
 
   const displayName = useMemo(() => {
-    return profile?.display_name?.trim() || profile?.username?.trim() || "익명";
+    return profile?.username?.trim() || profile?.display_name?.trim() || "익명";
   }, [profile]);
 
   const minecraftNickname = useMemo(() => {
@@ -412,7 +421,7 @@ export default function ArcaMarketPage() {
   }, [completedPosts]);
 
   const receivedRequestsByPostId = useMemo(() => {
-    return receivedRequests.reduce<Record<string, ArcaTradeRequestRow[]>>((acc, req) => {
+    return receivedRequests.reduce<Record<string, ArcaTradeRequestEnrichedRow[]>>((acc, req) => {
       const key = req.post_id;
       if (!acc[key]) acc[key] = [];
       acc[key].push(req);
@@ -439,31 +448,6 @@ export default function ArcaMarketPage() {
   }, [myPosts, myPostsPage]);
 
   const myPostsTotalPages = Math.max(1, Math.ceil(myPosts.length / MY_SECTION_PAGE_SIZE));
-
-  /**
-   * 여러 요청/게시글에 등장하는 user id를 모아서 닉네임 맵 구성
-   */
-  const fetchProfilesForIds = useCallback(async (userIds: string[]) => {
-    const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
-    if (uniqueIds.length === 0) return;
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, username, display_name, plan_type")
-      .in("id", uniqueIds);
-
-    if (error) {
-      console.warn("닉네임 조회 실패:", error.message);
-      return;
-    }
-
-    const nextMap: Record<string, ProfileRow> = {};
-    for (const row of (data ?? []) as ProfileRow[]) {
-      nextMap[row.id] = row;
-    }
-
-    setProfileMap((prev) => ({ ...prev, ...nextMap }));
-  }, []);
 
   const fetchSessionAndProfile = useCallback(async () => {
     if (guardLoading || !allowed) return;
@@ -586,9 +570,9 @@ export default function ArcaMarketPage() {
     if (!sessionUserId) return;
 
     /**
-     * 요구사항 변경:
-     * - 완료된 거래도 바로 숨기지 않고 유지
-     * - 최신순으로 전체 가져오기
+     * 요구사항:
+     * - 완료된 거래도 유지
+     * - 최신순 전체 가져오기
      */
     const { data, error } = await supabase
       .from("arca_trade_posts")
@@ -601,11 +585,8 @@ export default function ArcaMarketPage() {
       return;
     }
 
-    const rows = (data ?? []) as ArcaTradePostRow[];
-    setMyPosts(rows);
-
-    await fetchProfilesForIds(rows.map((row) => row.user_id));
-  }, [fetchProfilesForIds, sessionUserId]);
+    setMyPosts((data ?? []) as ArcaTradePostRow[]);
+  }, [sessionUserId]);
 
   const fetchMyRequests = useCallback(async () => {
     if (!sessionUserId) return;
@@ -614,19 +595,8 @@ export default function ArcaMarketPage() {
 
     try {
       const { data, error } = await supabase
-        .from("arca_trade_requests")
-        .select(`
-          *,
-          post:arca_trade_posts (
-            id,
-            post_type,
-            title,
-            trade_mode,
-            split_unit,
-            arca_amount,
-            status
-          )
-        `)
+        .from("arca_trade_requests_enriched")
+        .select("*")
         .eq("requester_id", sessionUserId)
         .order("created_at", { ascending: false });
 
@@ -635,32 +605,18 @@ export default function ArcaMarketPage() {
         return;
       }
 
-      const rows = (data ?? []) as ArcaTradeRequestRow[];
-      setMyRequests(rows);
-
-      await fetchProfilesForIds(rows.flatMap((row) => [row.requester_id, row.owner_id]));
+      setMyRequests((data ?? []) as ArcaTradeRequestEnrichedRow[]);
     } finally {
       setLoadingRequests(false);
     }
-  }, [fetchProfilesForIds, sessionUserId]);
+  }, [sessionUserId]);
 
   const fetchReceivedRequests = useCallback(async () => {
     if (!sessionUserId) return;
 
     const { data, error } = await supabase
-      .from("arca_trade_requests")
-      .select(`
-        *,
-        post:arca_trade_posts (
-          id,
-          post_type,
-          title,
-          trade_mode,
-          split_unit,
-          arca_amount,
-          status
-        )
-      `)
+      .from("arca_trade_requests_enriched")
+      .select("*")
       .eq("owner_id", sessionUserId)
       .order("created_at", { ascending: false });
 
@@ -669,11 +625,8 @@ export default function ArcaMarketPage() {
       return;
     }
 
-    const rows = (data ?? []) as ArcaTradeRequestRow[];
-    setReceivedRequests(rows);
-
-    await fetchProfilesForIds(rows.flatMap((row) => [row.requester_id, row.owner_id]));
-  }, [fetchProfilesForIds, sessionUserId]);
+    setReceivedRequests((data ?? []) as ArcaTradeRequestEnrichedRow[]);
+  }, [sessionUserId]);
 
   const fetchMyOpenPostSummary = useCallback(async (): Promise<MyOpenPostSummary> => {
     if (!sessionUserId) {
@@ -943,7 +896,7 @@ export default function ArcaMarketPage() {
   );
 
   const handleCancelRequest = useCallback(
-    async (request: ArcaTradeRequestRow) => {
+    async (request: ArcaTradeRequestEnrichedRow) => {
       setRequestSubmitting(true);
 
       try {
@@ -973,7 +926,7 @@ export default function ArcaMarketPage() {
   );
 
   const handleCompleteRequest = useCallback(
-    async (request: ArcaTradeRequestRow) => {
+    async (request: ArcaTradeRequestEnrichedRow) => {
       setRequestSubmitting(true);
 
       try {
@@ -1062,14 +1015,11 @@ export default function ArcaMarketPage() {
 
   /**
    * 요청 삭제
-   *
-   * 주의:
-   * - 이 코드는 직접 delete를 시도한다.
-   * - DB/RLS에서 requester_id 본인 삭제 허용이 있어야 정상 동작한다.
-   * - 완료/취소된 내역 정리용 버튼이므로 진행 중 신청은 삭제하지 않도록 막아둠.
+   * - 완료/취소된 내역만 정리 가능
+   * - 실제 delete는 RLS 정책 필요
    */
   const handleDeleteRequest = useCallback(
-    async (request: ArcaTradeRequestRow) => {
+    async (request: ArcaTradeRequestEnrichedRow) => {
       if (!sessionUserId) {
         toast.error("로그인 정보가 없습니다.");
         return;
@@ -1088,10 +1038,7 @@ export default function ArcaMarketPage() {
       const confirmed = window.confirm("이 신청 내역을 목록에서 삭제할까요?");
       if (!confirmed) return;
 
-      const { error } = await supabase
-        .from("arca_trade_requests")
-        .delete()
-        .eq("id", request.id);
+      const { error } = await supabase.from("arca_trade_requests").delete().eq("id", request.id);
 
       if (error) {
         console.error("신청 내역 삭제 실패:", error);
@@ -1115,13 +1062,8 @@ export default function ArcaMarketPage() {
 
   /**
    * 게시글 삭제
-   *
-   * 정책:
-   * - 진행 중인 글은 삭제 불가
-   * - 취소/완료된 글만 정리용 삭제 허용
-   *
-   * 이유:
-   * - 거래 중인 글을 삭제하면 이력 추적과 신청 데이터 정합성이 깨질 수 있음
+   * - 진행 중 글은 삭제 불가
+   * - 취소/완료 글만 정리용 삭제 허용
    */
   const handleDeletePost = useCallback(
     async (post: ArcaTradePostRow) => {
@@ -1143,10 +1085,7 @@ export default function ArcaMarketPage() {
       const confirmed = window.confirm("이 거래글을 내 목록에서 삭제할까요?");
       if (!confirmed) return;
 
-      const { error } = await supabase
-        .from("arca_trade_posts")
-        .delete()
-        .eq("id", post.id);
+      const { error } = await supabase.from("arca_trade_posts").delete().eq("id", post.id);
 
       if (error) {
         console.error("거래글 삭제 실패:", error);
@@ -1189,40 +1128,25 @@ export default function ArcaMarketPage() {
     }
   }, []);
 
-  const getNicknameByUserId = useCallback(
-    (userId: string | null | undefined): string => {
-      if (!userId) return "익명";
-      return getDisplayNameFromProfile(profileMap[userId]);
-    },
-    [profileMap],
-  );
+  const getRequesterName = useCallback((req: ArcaTradeRequestEnrichedRow): string => {
+    return getSafeDisplayName(req.requester_username, req.requester_display_name);
+  }, []);
+
+  const getOwnerName = useCallback((req: ArcaTradeRequestEnrichedRow): string => {
+    return getSafeDisplayName(req.owner_username, req.owner_display_name);
+  }, []);
 
   const getCounterpartyName = useCallback(
-    (request: ArcaTradeRequestRow): string => {
-      if (!sessionUserId) return "-";
-      return sessionUserId === request.requester_id
-        ? getNicknameByUserId(request.owner_id)
-        : getNicknameByUserId(request.requester_id);
+    (req: ArcaTradeRequestEnrichedRow): string => {
+      const requesterName = getSafeDisplayName(req.requester_username, req.requester_display_name);
+      const ownerName = getSafeDisplayName(req.owner_username, req.owner_display_name);
+      return sessionUserId === req.requester_id ? ownerName : requesterName;
     },
-    [getNicknameByUserId, sessionUserId],
-  );
-
-  const getRequesterName = useCallback(
-    (request: ArcaTradeRequestRow): string => {
-      return getNicknameByUserId(request.requester_id);
-    },
-    [getNicknameByUserId],
-  );
-
-  const getOwnerName = useCallback(
-    (request: ArcaTradeRequestRow): string => {
-      return getNicknameByUserId(request.owner_id);
-    },
-    [getNicknameByUserId],
+    [sessionUserId],
   );
 
   const getPagedRequestsForPost = useCallback(
-    (postId: string, requests: ArcaTradeRequestRow[]) => {
+    (postId: string, requests: ArcaTradeRequestEnrichedRow[]) => {
       const currentPage = postRequestPages[postId] ?? 1;
       const totalPages = Math.max(1, Math.ceil(requests.length / REQUESTS_PER_POST_PAGE));
       const safePage = Math.min(currentPage, totalPages);
@@ -1579,7 +1503,7 @@ export default function ArcaMarketPage() {
                               ? "일괄"
                               : `분할 (${formatNumber(post.split_unit ?? 0)}단위)`}
                           </div>
-                          <div>등록자: {post.seller_display_name || "익명"}</div>
+                          <div>등록자: {post.seller_mc_nickname || post.seller_display_name || "익명"}</div>
                         </div>
                       </button>
                     ))}
@@ -1661,7 +1585,7 @@ export default function ArcaMarketPage() {
                             <td className="px-4 py-3">{formatNumber(post.arca_amount)}</td>
                             <td className="px-4 py-3">{formatNumber(getRemainingQuantity(post))}</td>
                             <td className="px-4 py-3">{formatNumber(post.cell_amount)}셀</td>
-                            <td className="px-4 py-3">{post.seller_display_name || "익명"}</td>
+                            <td className="px-4 py-3">{post.seller_mc_nickname || post.seller_display_name || "익명"}</td>
                             <td className="px-4 py-3 text-zinc-500">{formatDate(post.created_at)}</td>
                             <td className="px-4 py-3">
                               <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
@@ -1855,7 +1779,7 @@ export default function ArcaMarketPage() {
                               <button
                                 type="button"
                                 onClick={() => setDetailPost(post)}
-                                className="rounded-lg bg-zinc-800 px-3 py-1 text-xs text-white"
+                                className="rounded-xl bg-zinc-800 px-4 py-2 text-sm font-semibold shadow-sm text-white"
                               >
                                 글 상세보기
                               </button>
@@ -1864,7 +1788,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleCancelPost(post)}
-                                  className="rounded-lg border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                                  className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
                                 >
                                   글 취소
                                 </button>
@@ -1872,7 +1796,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleDeletePost(post)}
-                                  className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600"
+                                  className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
                                 >
                                   삭제
                                 </button>
@@ -1923,9 +1847,7 @@ export default function ArcaMarketPage() {
                                           </span>
                                         </div>
 
-                                        <div className="mt-2">
-                                          신청자 닉네임: {getRequesterName(req)}
-                                        </div>
+                                        <div className="mt-2">신청자 닉네임: {getRequesterName(req)}</div>
                                         <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
                                         <div>비율: {formatNumber(req.ratio)} : 1</div>
                                         <div className="text-xs text-zinc-500">
@@ -1938,7 +1860,7 @@ export default function ArcaMarketPage() {
                                         <button
                                           type="button"
                                           onClick={() => setDetailRequest(req)}
-                                          className="rounded-lg border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                                          className="min-w-[96px] rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 shadow-sm hover:bg-zinc-50"
                                         >
                                           상세보기
                                         </button>
@@ -1948,7 +1870,7 @@ export default function ArcaMarketPage() {
                                             type="button"
                                             onClick={() => void handleCompleteRequest(req)}
                                             disabled={requestSubmitting}
-                                            className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                            className="min-w-[96px] rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-sky-700 ..."
                                           >
                                             거래 완료
                                           </button>
@@ -1964,7 +1886,7 @@ export default function ArcaMarketPage() {
                                           <button
                                             type="button"
                                             onClick={() => void handleDeleteRequest(req)}
-                                            className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600"
+                                            className="min-w-[96px] rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-600"
                                           >
                                             삭제
                                           </button>
@@ -2074,8 +1996,7 @@ export default function ArcaMarketPage() {
                           <div className="text-sm text-zinc-700">
                             <div className="flex flex-wrap items-center gap-2">
                               <div className="font-medium text-zinc-900">
-                                {req.post?.title?.trim() ||
-                                  `${req.post?.post_type === "sell" ? "판매" : "구매"} 거래글`}
+                                {req.title?.trim() || `${req.post_type === "sell" ? "판매" : "구매"} 거래글`}
                               </div>
 
                               <span
@@ -2098,16 +2019,14 @@ export default function ArcaMarketPage() {
                             </div>
 
                             <div className="mt-2">상대 닉네임: {getCounterpartyName(req)}</div>
-                            <div>
-                              원본 글 유형: {req.post?.post_type === "sell" ? "판매글" : "구매글"}
-                            </div>
+                            <div>원본 글 유형: {req.post_type === "sell" ? "판매글" : "구매글"}</div>
                             <div>
                               거래 방식:{" "}
-                              {req.post?.trade_mode === "bulk"
+                              {req.trade_mode === "bulk"
                                 ? "일괄"
-                                : `분할 (${formatNumber(req.post?.split_unit ?? 0)}단위)`}
+                                : `분할 (${formatNumber(req.split_unit ?? 0)}단위)`}
                             </div>
-                            <div>총 등록 수량: {formatNumber(req.post?.arca_amount ?? 0)} 아르카</div>
+                            <div>총 등록 수량: {formatNumber(req.arca_amount ?? 0)} 아르카</div>
                             <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
                             <div>비율: {formatNumber(req.ratio)} : 1</div>
                             <div className="text-xs text-zinc-500">
@@ -2464,7 +2383,7 @@ export default function ArcaMarketPage() {
               <div>
                 <div className="text-xs font-semibold text-zinc-500">거래 신청 상세</div>
                 <h3 className="mt-2 text-xl font-bold text-zinc-900">
-                  {detailRequest.post?.title?.trim() || "신청 상세"}
+                  {detailRequest.title?.trim() || "신청 상세"}
                 </h3>
               </div>
 
@@ -2531,38 +2450,23 @@ export default function ArcaMarketPage() {
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">원본 글 유형</div>
                   <div className="mt-2 text-base font-semibold text-zinc-900">
-                    {detailRequest.post?.post_type === "sell" ? "판매글" : "구매글"}
+                    {detailRequest.post_type === "sell" ? "판매글" : "구매글"}
                   </div>
                 </div>
 
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">거래 방식</div>
                   <div className="mt-2 text-base font-semibold text-zinc-900">
-                    {detailRequest.post?.trade_mode === "bulk"
-                      ? "일괄"
-                      : `분할 (${formatNumber(detailRequest.post?.split_unit ?? 0)}단위)`}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
-                  <div className="text-xs text-zinc-500">판매자 / 거래자 닉네임</div>
-                  <div className="mt-2 space-y-1 text-sm font-medium text-zinc-900">
-                    <div>판매자(글 작성자): {getOwnerName(detailRequest)}</div>
-                    <div>거래자(신청자): {getRequesterName(detailRequest)}</div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
-                  <div className="text-xs text-zinc-500">현재 내 상대 닉네임</div>
-                  <div className="mt-2 text-base font-semibold text-zinc-900">
-                    {getCounterpartyName(detailRequest)}
+                    {detailRequest.trade_mode === "bulk"
+                     ? "일괄"
+                     : `분할 (${formatNumber(detailRequest.split_unit ?? 0)}단위)`}
                   </div>
                 </div>
 
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">총 등록 수량</div>
                   <div className="mt-2 text-base font-semibold text-zinc-900">
-                    {formatNumber(detailRequest.post?.arca_amount ?? 0)} 아르카
+                    {formatNumber(detailRequest.arca_amount ?? 0)} 아르카
                   </div>
                 </div>
 
@@ -2579,45 +2483,29 @@ export default function ArcaMarketPage() {
                     {formatNumber(detailRequest.ratio)} : 1
                   </div>
                 </div>
+              </div>
 
-                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
-                  <div className="text-xs text-zinc-500">상태</div>
-                  <div className="mt-2 text-base font-semibold text-zinc-900">
-                    {getRequestStatusLabel(detailRequest)} /{" "}
-                    {getCompletionProgressLabel(detailRequest, sessionUserId)}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-zinc-50 px-4 py-4 md:col-span-2">
-                  <div className="text-xs text-zinc-500">신청 등록일</div>
-                  <div className="mt-2 text-base font-semibold text-zinc-900">
-                    {formatDate(detailRequest.created_at)}
-                  </div>
+              <div className="rounded-2xl border border-zinc-200 p-4">
+                <div className="text-sm font-semibold text-zinc-900">거래 당사자</div>
+                <div className="mt-3 space-y-2 text-sm text-zinc-700">
+                  <div>신청자: {getRequesterName(detailRequest)}</div>
+                  <div>등록자: {getOwnerName(detailRequest)}</div>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {detailRequest.status === "pending" && sessionUserId === detailRequest.owner_id && !detailRequest.owner_completed_at && (
-                  <button
-                    type="button"
-                    onClick={() => void handleCompleteRequest(detailRequest)}
-                    disabled={requestSubmitting}
-                    className="rounded-lg bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    거래 완료
-                  </button>
-                )}
-
-                {detailRequest.status === "pending" && sessionUserId === detailRequest.requester_id && !detailRequest.requester_completed_at && (
-                  <button
-                    type="button"
-                    onClick={() => void handleCompleteRequest(detailRequest)}
-                    disabled={requestSubmitting}
-                    className="rounded-lg bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    거래 완료
-                  </button>
-                )}
+                {detailRequest.status === "pending" &&
+                  sessionUserId === detailRequest.requester_id &&
+                  !detailRequest.requester_completed_at && (
+                    <button
+                      type="button"
+                      onClick={() => void handleCompleteRequest(detailRequest)}
+                      disabled={requestSubmitting}
+                      className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
+                    >
+                      거래 완료
+                    </button>
+                  )}
 
                 {detailRequest.status === "pending" &&
                   sessionUserId === detailRequest.requester_id &&
@@ -2627,7 +2515,7 @@ export default function ArcaMarketPage() {
                       type="button"
                       onClick={() => void handleCancelRequest(detailRequest)}
                       disabled={requestSubmitting}
-                      className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
                     >
                       취소
                     </button>
@@ -2637,7 +2525,7 @@ export default function ArcaMarketPage() {
                   <button
                     type="button"
                     onClick={() => void handleDeleteRequest(detailRequest)}
-                    className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white hover:bg-red-600"
+                    className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600"
                   >
                     삭제
                   </button>
