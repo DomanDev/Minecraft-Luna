@@ -107,6 +107,9 @@ const TAB_LABEL: Record<TradeTab, string> = {
   buy: "구매",
 };
 
+const dangerBtn =
+  "rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100";
+
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "recent", label: "최근등록순" },
   { value: "price_low", label: "낮은가격순" },
@@ -1788,8 +1791,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleCancelPost(post)}
-                                   className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
-                                >
+                                  className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"                                >
                                   글 취소
                                 </button>
                               ) : (
@@ -1886,7 +1888,7 @@ export default function ArcaMarketPage() {
                                           <button
                                             type="button"
                                             onClick={() => void handleDeleteRequest(req)}
-                                            className="min-w-[96px] rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-600"
+                                            className="min-w-[96px] rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
                                           >
                                             삭제
                                           </button>
@@ -2062,7 +2064,7 @@ export default function ArcaMarketPage() {
                                   onClick={() => void handleCancelRequest(req)}
                                   disabled={requestSubmitting}
                               
-                                   className="min-w-[96px] rounded-xl bg-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
+                                  className="min-w-[96px] rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100 disabled:opacity-50"
                                 >
                                   취소
                                 </button>
@@ -2072,7 +2074,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleDeleteRequest(req)}
-                                  className="min-w-[96px] rounded-xl bg-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
+                                  className="min-w-[96px] rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
                                 >
                                   삭제
                                 </button>
@@ -2158,7 +2160,7 @@ export default function ArcaMarketPage() {
                     className={classNames(
                       "rounded-full px-2 py-1 text-xs font-semibold",
                       detailPost.post_type === "sell"
-                        ? "bg-rose-100 text-rose-700"
+                        ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                         : "bg-sky-100 text-sky-700",
                     )}
                   >
@@ -2351,6 +2353,7 @@ export default function ArcaMarketPage() {
                   </div>
                 )}
 
+                {/* detailPost 내부 버튼 */}
                 {detailPost.user_id === sessionUserId && detailPost.status === "open" && (
                   <button
                     type="button"
@@ -2365,7 +2368,7 @@ export default function ArcaMarketPage() {
                   <button
                     type="button"
                     onClick={() => void handleDeletePost(detailPost)}
-                    className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-600"
+                    className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
                   >
                     삭제
                   </button>
@@ -2507,6 +2510,7 @@ export default function ArcaMarketPage() {
                     </button>
                   )}
 
+                {/* detailRequest 내부 버튼 */}
                 {detailRequest.status === "pending" &&
                   sessionUserId === detailRequest.requester_id &&
                   !detailRequest.requester_completed_at &&
@@ -2515,17 +2519,17 @@ export default function ArcaMarketPage() {
                       type="button"
                       onClick={() => void handleCancelRequest(detailRequest)}
                       disabled={requestSubmitting}
-                      className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-600 disabled:opacity-50"
+                      className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100 disabled:opacity-50"
                     >
                       취소
                     </button>
-                  )}
+                )}
 
                 {detailRequest.status !== "pending" && (
                   <button
                     type="button"
                     onClick={() => void handleDeleteRequest(detailRequest)}
-                    className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-600"
+                    className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
                   >
                     삭제
                   </button>
