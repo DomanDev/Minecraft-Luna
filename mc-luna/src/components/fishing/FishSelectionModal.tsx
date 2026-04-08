@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
   APP_MIN_FISH_SELECTION,
@@ -18,10 +18,17 @@ type FishSelectionModalProps = {
   fishKeys: string[];
   selectedKeys: string[];
   fishPrices: Record<string, number>;
-  buildFishPriceEditKey: (itemKey: string, grade: "normal" | "advanced" | "rare") => string;
+  buildFishPriceEditKey: (
+    itemKey: string,
+    grade: "normal" | "advanced" | "rare",
+  ) => string;
   onToggle: (fishKey: string) => void;
   onResetSelection: () => void;
-  onPriceChange: (fishKey: string, grade: "normal" | "advanced" | "rare", value: number) => void;
+  onPriceChange: (
+    fishKey: string,
+    grade: "normal" | "advanced" | "rare",
+    value: number,
+  ) => void;
   onSavePrices?: () => void;
   isProUser: boolean;
   savingFishPrices?: boolean;
@@ -51,6 +58,21 @@ export default function FishSelectionModal({
 }: FishSelectionModalProps) {
   const [activeTab, setActiveTab] = useState<FishModalTab>("select");
 
+  /**
+   * 모달을 다시 열 때는 항상 "물고기 선택" 탭부터 시작하도록 리셋한다.
+   * 사용자가 이전에 시세 탭에서 닫았더라도, 다음 진입 시엔 선택부터 보는 흐름이 자연스럽다.
+   */
+  useEffect(() => {
+    if (open) {
+      setActiveTab("select");
+    }
+  }, [open]);
+
+  /**
+   * 현재 모달에서 "편집 중인 선택값(selectedKeys)"만 추려낸다.
+   * 즉, 적용 버튼을 누르기 전이라도 선택 탭에서 체크/해제한 결과가
+   * 시세 탭에 즉시 반영된다.
+   */
   const selectedFishKeys = useMemo(() => {
     return fishKeys.filter((fishKey) => selectedKeys.includes(fishKey));
   }, [fishKeys, selectedKeys]);
@@ -69,14 +91,15 @@ export default function FishSelectionModal({
             <div>
               <h2 className="text-xl font-bold text-zinc-900">물고기 설정</h2>
               <p className="mt-1 text-sm text-zinc-500">
-                현재 바이옴: {biomeLabel} / 최소 {APP_MIN_FISH_SELECTION}마리 이상 선택 필요
+                현재 바이옴: {biomeLabel} / 최소 {APP_MIN_FISH_SELECTION}마리 이상
+                선택 필요
               </p>
             </div>
 
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
+              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-700 transition hover:bg-zinc-100"
             >
               닫기
             </button>
@@ -118,8 +141,11 @@ export default function FishSelectionModal({
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
                 <p className="text-sm text-zinc-600">
-                  선택됨: <span className="font-semibold text-zinc-900">{selectedKeys.length}</span> /{" "}
-                  {fishKeys.length}
+                  선택됨:{" "}
+                  <span className="font-semibold text-zinc-900">
+                    {selectedKeys.length}
+                  </span>{" "}
+                  / {fishKeys.length}
                 </p>
 
                 <button
@@ -178,7 +204,8 @@ export default function FishSelectionModal({
           ) : (
             <div className="space-y-4">
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-                현재 선택된 물고기만 시세 입력이 가능합니다. 평균값은 메인 화면의 평균 시세 칸에 자동 반영됩니다.
+                현재 선택된 물고기만 시세 입력이 가능합니다. 평균값은 메인 화면의
+                평균 시세 칸에 자동 반영됩니다.
               </div>
 
               {selectedFishKeys.length === 0 ? (
@@ -206,7 +233,9 @@ export default function FishSelectionModal({
                         </div>
 
                         <div>
-                          <div className="font-semibold text-zinc-900">{FISH_NAME_MAP[fishKey]}</div>
+                          <div className="font-semibold text-zinc-900">
+                            {FISH_NAME_MAP[fishKey]}
+                          </div>
                           <div className="text-xs text-zinc-500">{biomeLabel}</div>
                         </div>
                       </div>
@@ -214,25 +243,43 @@ export default function FishSelectionModal({
                       <div className="grid gap-4 sm:grid-cols-3">
                         <Field label="일반">
                           <NumberInput
-                            value={fishPrices[buildFishPriceEditKey(fishKey, "normal")] ?? 0}
+                            value={
+                              fishPrices[
+                                buildFishPriceEditKey(fishKey, "normal")
+                              ] ?? 0
+                            }
                             min={0}
-                            onChange={(value) => onPriceChange(fishKey, "normal", value)}
+                            onChange={(value) =>
+                              onPriceChange(fishKey, "normal", value)
+                            }
                           />
                         </Field>
 
                         <Field label="고급">
                           <NumberInput
-                            value={fishPrices[buildFishPriceEditKey(fishKey, "advanced")] ?? 0}
+                            value={
+                              fishPrices[
+                                buildFishPriceEditKey(fishKey, "advanced")
+                              ] ?? 0
+                            }
                             min={0}
-                            onChange={(value) => onPriceChange(fishKey, "advanced", value)}
+                            onChange={(value) =>
+                              onPriceChange(fishKey, "advanced", value)
+                            }
                           />
                         </Field>
 
                         <Field label="희귀">
                           <NumberInput
-                            value={fishPrices[buildFishPriceEditKey(fishKey, "rare")] ?? 0}
+                            value={
+                              fishPrices[
+                                buildFishPriceEditKey(fishKey, "rare")
+                              ] ?? 0
+                            }
                             min={0}
-                            onChange={(value) => onPriceChange(fishKey, "rare", value)}
+                            onChange={(value) =>
+                              onPriceChange(fishKey, "rare", value)
+                            }
                           />
                         </Field>
                       </div>
@@ -258,7 +305,9 @@ export default function FishSelectionModal({
                   {savingFishPrices ? "시세 저장 중..." : "물고기 시세 저장"}
                 </button>
               ) : (
-                <span className="text-xs text-zinc-500">물고기 시세 저장은 Pro 전용</span>
+                <span className="text-xs text-zinc-500">
+                  물고기 시세 저장은 Pro 전용
+                </span>
               )}
             </div>
 
@@ -266,7 +315,7 @@ export default function FishSelectionModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-xl border border-zinc-300 px-4 py-2 font-medium text-zinc-700 hover:bg-zinc-100"
+                className="rounded-xl border border-zinc-300 px-4 py-2 font-medium text-zinc-700 transition hover:bg-zinc-100"
               >
                 취소
               </button>
@@ -274,7 +323,7 @@ export default function FishSelectionModal({
               <button
                 type="button"
                 onClick={onApply}
-                className="rounded-xl bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-500"
+                className="rounded-xl bg-blue-600 px-4 py-2 font-medium text-white transition hover:bg-blue-500"
               >
                 적용
               </button>
