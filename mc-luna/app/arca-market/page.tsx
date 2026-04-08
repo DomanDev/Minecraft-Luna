@@ -36,11 +36,28 @@ type ArcaTradePostRow = {
   seller_mc_nickname: string | null;
   trade_mode: "bulk" | "split";
   split_unit: number | null;
+  reserved_quantity: number;
+  completed_quantity: number;
 };
 
 type MyOpenPostSummary = {
   hasOpenSell: boolean;
   hasOpenBuy: boolean;
+};
+
+type ArcaTradeRequestRow = {
+  id: string;
+  post_id: string;
+  requester_id: string;
+  owner_id: string;
+  request_type: "buy_request" | "sell_request";
+  request_quantity: number;
+  ratio: number;
+  total_cell_amount: number;
+  status: "pending" | "cancelled" | "completed";
+  created_at: string;
+  cancelled_at: string | null;
+  completed_at: string | null;
 };
 
 const PAGE_SIZE = 15;
@@ -75,6 +92,46 @@ function formatDate(value: string): string {
 
 function classNames(...values: Array<string | false | null | undefined>): string {
   return values.filter(Boolean).join(" ");
+}
+
+function getRemainingQuantity(post: ArcaTradePostRow): number {
+  return Math.max(0, post.arca_amount - post.reserved_quantity - post.completed_quantity);
+}
+
+function getArcaCreateRequestErrorMessage(message: string): string {
+  if (message.includes("로그인이 필요합니다")) {
+    return "로그인 후 다시 시도해 주세요.";
+  }
+
+  if (message.includes("신청 수량은 1 이상")) {
+    return "신청 수량을 올바르게 입력해 주세요.";
+  }
+
+  if (message.includes("거래글을 찾을 수 없습니다")) {
+    return "거래글 정보를 다시 불러온 뒤 시도해 주세요.";
+  }
+
+  if (message.includes("진행 중인 거래글에만 신청")) {
+    return "현재 진행 중인 거래글에만 신청할 수 있습니다.";
+  }
+
+  if (message.includes("본인 글에는 신청할 수 없습니다")) {
+    return "본인 글에는 신청할 수 없습니다.";
+  }
+
+  if (message.includes("남은 수량보다 많이 신청")) {
+    return "남은 수량보다 많이 신청할 수 없습니다.";
+  }
+
+  if (message.includes("일괄 거래는 전체 수량만 신청")) {
+    return "일괄 거래는 전체 수량만 신청할 수 있습니다.";
+  }
+
+  if (message.includes("신청 수량은 거래 단위의 배수")) {
+    return "신청 수량은 거래 단위의 배수여야 합니다.";
+  }
+
+  return "거래 신청에 실패했습니다.";
 }
 
 function getArcaCreatePostErrorMessage(message: string): string {
@@ -163,6 +220,9 @@ export default function ArcaMarketPage() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [detailPost, setDetailPost] = useState<ArcaTradePostRow | null>(null);
+
+  const [requestQuantity, setRequestQuantity] = useState("1");
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
 
   /**
    * 등록 폼 state
@@ -399,6 +459,17 @@ export default function ArcaMarketPage() {
     setPage(1);
   }, [activeTab, sortKey]);
 
+  useEffect(() => {
+    if (!detailPost) return;
+
+    if (detailPost.trade_mode === "bulk") {
+      setRequestQuantity(String(detailPost.arca_amount));
+      return;
+    }
+
+    setRequestQuantity(String(detailPost.split_unit ?? 1));
+  }, [detailPost]);
+
   const handleCreatePost = useCallback(async () => {
     if (!sessionUserId) {
       toast.error("로그인 정보가 없습니다.");
@@ -521,6 +592,75 @@ export default function ArcaMarketPage() {
     fetchMyOpenPostSummary,
   ]);
 
+  const handleCreateTradeRequest = useCallback(async (post: ArcaTradePostRow) => {
+    if (!sessionUserId) {
+      toast.error("로그인 정보가 없습니다.");
+      return;
+    }
+
+    if (post.user_id === sessionUserId) {
+      toast.error("본인 글에는 신청할 수 없습니다.");
+      return;
+    }
+
+    const quantity =
+      post.trade_mode === "bulk"
+        ? post.arca_amount
+        : Number(requestQuantity);
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast.error("신청 수량을 올바르게 입력해 주세요.");
+      return;
+    }
+
+    const remainingQuantity = getRemainingQuantity(post);
+
+    if (quantity > remainingQuantity) {
+      toast.error("남은 수량보다 많이 신청할 수 없습니다.");
+      return;
+    }
+
+    if (post.trade_mode === "split") {
+      const unit = post.split_unit ?? 0;
+
+      if (unit <= 0) {
+        toast.error("분할 거래 단위 정보가 올바르지 않습니다.");
+        return;
+      }
+
+      if (quantity % unit !== 0) {
+        toast.error("신청 수량은 거래 단위의 배수여야 합니다.");
+        return;
+      }
+    }
+
+    setRequestSubmitting(true);
+
+    try {
+      const { error } = await supabase.rpc("create_arca_trade_request", {
+        p_post_id: post.id,
+        p_request_quantity: quantity,
+      });
+
+      if (error) {
+        console.error("거래 신청 실패:", error);
+        toast.error(getArcaCreateRequestErrorMessage(error.message || ""));
+        return;
+      }
+
+      toast.success(
+        post.post_type === "sell"
+          ? "구매 신청을 보냈습니다."
+          : "판매 신청을 보냈습니다.",
+      );
+
+      setDetailPost(null);
+      await fetchPosts();
+    } finally {
+      setRequestSubmitting(false);
+    }
+  }, [fetchPosts, requestQuantity, sessionUserId]);
+
   const handleUpdateStatus = useCallback(
     async (post: ArcaTradePostRow, nextStatus: TradeStatus) => {
       if (!sessionUserId) {
@@ -638,7 +778,8 @@ export default function ArcaMarketPage() {
         <aside className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-zinc-900">거래글 등록</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            판매/구매 글을 올리고, 필요하면 Pro 광고 상품으로 상단 노출할 수 있습니다.
+            판매/구매 글을 등록하고, 
+            Pro 광고 상품으로 상단 노출할 수 있습니다.
           </p>
 
           <div className="mt-5 space-y-4">
@@ -738,7 +879,7 @@ export default function ArcaMarketPage() {
                   placeholder="예: 10"
                 />
                 <p className="mt-2 text-xs text-zinc-500">
-                  예: 총 1000 아르카 / 단위 10이면 10, 20, 30 ... 단위로 거래 가능
+                  예: 단위 10이면 10, 20, 30 단위로 거래 가능
                 </p>
               </div>
             )}
@@ -764,7 +905,7 @@ export default function ArcaMarketPage() {
                 onChange={(e) => setFormNote(e.target.value)}
                 rows={4}
                 className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none ring-0 focus:border-emerald-500"
-                placeholder="거래 가능 시간, 우선 조건, 참고사항 등을 적어주세요."
+                placeholder="거래 가능 시간, 참고사항 등을 적어주세요."
               />
             </div>
 
@@ -945,6 +1086,7 @@ export default function ArcaMarketPage() {
                     <th className="px-4 py-3 text-left font-medium">거래방식</th>
                     <th className="px-4 py-3 text-left font-medium">비율</th>
                     <th className="px-4 py-3 text-left font-medium">수량</th>
+                    <th className="px-4 py-3 text-left font-medium">남은 수량</th>
                     <th className="px-4 py-3 text-left font-medium">총 셀</th>
                     <th className="px-4 py-3 text-left font-medium">작성자</th>
                     <th className="px-4 py-3 text-left font-medium">등록일</th>
@@ -954,13 +1096,13 @@ export default function ArcaMarketPage() {
                 <tbody>
                   {loadingPosts ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-10 text-center text-zinc-500">
+                      <td colSpan={9} className="px-4 py-10 text-center text-zinc-500">
                         목록을 불러오는 중...
                       </td>
                     </tr>
                   ) : listPosts.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-10 text-center text-zinc-500">
+                      <td colSpan={9} className="px-4 py-10 text-center text-zinc-500">
                         등록된 글이 없습니다.
                       </td>
                     </tr>
@@ -1001,6 +1143,7 @@ export default function ArcaMarketPage() {
                           {formatNumber(post.ratio)} : 1
                         </td>
                         <td className="px-4 py-3">{formatNumber(post.arca_amount)}</td>
+                        <td className="px-4 py-3">{formatNumber(getRemainingQuantity(post))}</td>
                         <td className="px-4 py-3">{formatNumber(post.cell_amount)}셀</td>
                         <td className="px-4 py-3">{post.seller_display_name || "익명"}</td>
                         <td className="px-4 py-3 text-zinc-500">
@@ -1159,6 +1302,12 @@ export default function ArcaMarketPage() {
                   </div>
                 </div>
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">남은 수량</div>
+                  <div className="mt-2 text-xl font-bold text-zinc-900">
+                    {formatNumber(getRemainingQuantity(detailPost))} 아르카
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">총 셀</div>
                   <div className="mt-2 text-xl font-bold text-zinc-900">
                     {formatNumber(detailPost.cell_amount)}셀
@@ -1235,6 +1384,44 @@ export default function ArcaMarketPage() {
                   </button>
                 )}
 
+                {detailPost.user_id !== sessionUserId && detailPost.status === "open" && (
+                  <div className="flex flex-wrap items-end gap-2">
+                    {detailPost.trade_mode === "split" && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-zinc-600">
+                          신청 수량
+                        </label>
+                        <input
+                          value={requestQuantity}
+                          onChange={(e) => setRequestQuantity(e.target.value)}
+                          inputMode="numeric"
+                          className="w-36 rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none ring-0 focus:border-emerald-500"
+                          placeholder="예: 10"
+                        />
+                      </div>
+                    )}
+
+                    {detailPost.trade_mode === "bulk" && (
+                      <div className="rounded-xl bg-zinc-100 px-3 py-2 text-sm text-zinc-700">
+                        일괄 거래: 전체 수량 {formatNumber(detailPost.arca_amount)} 아르카 신청
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => void handleCreateTradeRequest(detailPost)}
+                      disabled={requestSubmitting}
+                      className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {requestSubmitting
+                        ? "신청 중..."
+                        : detailPost.post_type === "sell"
+                          ? "구매 신청"
+                          : "판매 신청"}
+                    </button>
+                  </div>
+                )}
+                
                 {detailPost.user_id === sessionUserId && detailPost.status === "open" && (
                   <>
                     <button
