@@ -58,6 +58,8 @@ type ArcaTradeRequestRow = {
   created_at: string;
   cancelled_at: string | null;
   completed_at: string | null;
+  requester_completed_at: string | null;
+  owner_completed_at: string | null;
 };
 
 const PAGE_SIZE = 15;
@@ -97,6 +99,40 @@ function classNames(...values: Array<string | false | null | undefined>): string
 function getRemainingQuantity(post: ArcaTradePostRow): number {
   return Math.max(0, post.arca_amount - post.reserved_quantity - post.completed_quantity);
 }
+
+function getRequestStatusLabel(request: ArcaTradeRequestRow): string {
+  if (request.status === "completed") return "완료";
+  if (request.status === "cancelled") return "취소";
+  return "진행중";
+}
+
+function getCompletionProgressLabel(
+    request: ArcaTradeRequestRow,
+    sessionUserId: string | null,
+  ): string {
+    const meDone =
+      sessionUserId === request.requester_id
+        ? request.requester_completed_at
+        : sessionUserId === request.owner_id
+          ? request.owner_completed_at
+          : null;
+
+    const otherDone =
+      sessionUserId === request.requester_id
+        ? request.owner_completed_at
+        : sessionUserId === request.owner_id
+          ? request.requester_completed_at
+          : null;
+
+    if (request.status === "completed") return "양측 완료";
+    if (request.status === "cancelled") return "취소됨";
+
+    if (meDone && otherDone) return "양측 완료";
+    if (meDone) return "내 완료 확인";
+    if (otherDone) return "상대 완료 확인";
+
+    return "대기 중";
+  }
 
 function getArcaCreateRequestErrorMessage(message: string): string {
   if (message.includes("로그인이 필요합니다")) {
@@ -226,6 +262,7 @@ export default function ArcaMarketPage() {
 
   const [myRequests, setMyRequests] = useState<ArcaTradeRequestRow[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);  
+  const [receivedRequests, setReceivedRequests] = useState<ArcaTradeRequestRow[]>([]);
 
   /**
    * 등록 폼 state
@@ -451,6 +488,27 @@ export default function ArcaMarketPage() {
     }
   }, [sessionUserId]);
 
+  const fetchReceivedRequests = useCallback(async () => {
+    if (!sessionUserId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("arca_trade_requests")
+        .select("*")
+        .eq("owner_id", sessionUserId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("받은 신청 목록 조회 실패:", error);
+        return;
+      }
+
+      setReceivedRequests(data ?? []);
+    } catch (error) {
+      console.error("받은 신청 목록 조회 중 예외:", error);
+    }
+  }, [sessionUserId]);
+
   const fetchMyOpenPostSummary = useCallback(async (): Promise<MyOpenPostSummary> => {
     if (!sessionUserId) {
       return { hasOpenSell: false, hasOpenBuy: false };
@@ -484,6 +542,10 @@ export default function ArcaMarketPage() {
   useEffect(() => {
     fetchMyRequests();
   }, [fetchMyRequests]);
+
+  useEffect(() => {
+    fetchReceivedRequests();
+  }, [fetchReceivedRequests]);
 
   useEffect(() => {
     setPage(1);
@@ -713,6 +775,38 @@ export default function ArcaMarketPage() {
       setRequestSubmitting(false);
     }
   }, [fetchMyRequests, fetchPosts]);
+
+  const handleCompleteRequest = useCallback(async (requestId: string) => {
+    setRequestSubmitting(true);
+
+    try {
+      const { error } = await supabase.rpc("complete_arca_trade_request", {
+        p_request_id: requestId,
+      });
+
+      if (error) {
+        console.error("거래 완료 처리 실패:", error);
+        const message = error.message || "";
+
+        if (message.includes("진행 중인 신청만 완료")) {
+          toast.error("진행 중인 신청만 완료 처리할 수 있습니다.");
+        } else if (message.includes("거래 당사자만 완료")) {
+          toast.error("거래 당사자만 완료 처리할 수 있습니다.");
+        } else {
+          toast.error("거래 완료 처리에 실패했습니다.");
+        }
+        return;
+      }
+
+      toast.success("완료 확인이 반영되었습니다.");
+
+      await fetchMyRequests();
+      await fetchReceivedRequests();
+      await fetchPosts();
+    } finally {
+      setRequestSubmitting(false);
+    }
+  }, [fetchMyRequests, fetchReceivedRequests, fetchPosts]);
 
   const handleUpdateStatus = useCallback(
     async (post: ArcaTradePostRow, nextStatus: TradeStatus) => {
@@ -1318,21 +1412,31 @@ export default function ArcaMarketPage() {
                 className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3"
               >
                 <div className="text-sm text-zinc-700">
-                  <div>
-                    수량: {formatNumber(req.request_quantity)} 아르카
-                  </div>
+                  <div>수량: {formatNumber(req.request_quantity)} 아르카</div>
+                  <div>비율: {formatNumber(req.ratio)} : 1</div>
                   <div className="text-xs text-zinc-500">
-                    상태: {req.status}
+                    상태: {getRequestStatusLabel(req)} / {getCompletionProgressLabel(req, sessionUserId)}
                   </div>
                 </div>
 
                 {req.status === "pending" && (
-                  <button
-                    onClick={() => void handleCancelRequest(req.id)}
-                    className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600"
-                  >
-                    취소
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => void handleCompleteRequest(req.id)}
+                      disabled={requestSubmitting || !!req.requester_completed_at}
+                      className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {req.requester_completed_at ? "완료 확인됨" : "거래 완료"}
+                    </button>
+
+                    <button
+                      onClick={() => void handleCancelRequest(req.id)}
+                      disabled={requestSubmitting}
+                      className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      취소
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
@@ -1340,6 +1444,42 @@ export default function ArcaMarketPage() {
         )}
       </section>
 
+      <section className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6">
+        <div className="mb-4 text-lg font-semibold text-zinc-900">받은 거래 신청</div>
+
+        {loadingRequests ? (
+          <div className="text-sm text-zinc-500">불러오는 중...</div>
+        ) : receivedRequests.length === 0 ? (
+          <div className="text-sm text-zinc-500">받은 신청이 없습니다.</div>
+        ) : (
+          <div className="space-y-3">
+            {receivedRequests.map((req) => (
+              <div
+                key={req.id}
+                className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3"
+              >
+                <div className="text-sm text-zinc-700">
+                  <div>수량: {formatNumber(req.request_quantity)} 아르카</div>
+                  <div>비율: {formatNumber(req.ratio)} : 1</div>
+                  <div className="text-xs text-zinc-500">
+                    상태: {getRequestStatusLabel(req)} / {getCompletionProgressLabel(req, sessionUserId)}
+                  </div>
+                </div>
+
+                {req.status === "pending" && (
+                  <button
+                    onClick={() => void handleCompleteRequest(req.id)}
+                    disabled={requestSubmitting || !!req.owner_completed_at}
+                    className="rounded-lg bg-emerald-600 px-3 py-1 text-xs text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {req.owner_completed_at ? "완료 확인됨" : "거래 완료"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
       {detailPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
@@ -1513,13 +1653,6 @@ export default function ArcaMarketPage() {
 
                 {detailPost.user_id === sessionUserId && detailPost.status === "open" && (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => void handleUpdateStatus(detailPost, "completed")}
-                      className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500"
-                    >
-                      거래 완료 처리
-                    </button>
                     <button
                       type="button"
                       onClick={() => void handleUpdateStatus(detailPost, "cancelled")}
