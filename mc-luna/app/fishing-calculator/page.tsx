@@ -686,6 +686,21 @@ export default function FishingCalculatorPage() {
     setFishModalOpen(true);
   };
 
+  const handleResetEditingFish = () => {
+    setEditingFishKeys(getDefaultFishKeysForBiome(selectedBiome));
+  };
+
+  const handleFishPriceChange = (
+    fishKey: string,
+    grade: "normal" | "advanced" | "rare",
+    value: number,
+  ) => {
+    setFishPrices((prev) => ({
+      ...prev,
+      [buildFishPriceEditKey(fishKey, grade)]: value,
+    }));
+  };
+
   const handleToggleEditingFish = (fishKey: string) => {
     setEditingFishKeys((prev) => {
       if (prev.includes(fishKey)) {
@@ -1227,104 +1242,6 @@ export default function FishingCalculatorPage() {
                   </label>
                 </div>
               </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-zinc-900">물고기 시세</h3>
-
-                  <div className="flex items-center gap-2">
-                    {isProUser ? (
-                      <ActionButton onClick={handleSaveFishPrices} disabled={savingFishPrices}>
-                        {savingFishPrices ? "저장 중..." : "물고기 시세 저장"}
-                      </ActionButton>
-                    ) : (
-                      <span className="text-xs text-zinc-500">시세 저장은 Pro 전용</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-                  현재 바이옴({FISHING_BIOME_OPTIONS.find((item) => item.value === selectedBiome)?.label})에서
-                  설정된 물고기만 표시됩니다. 각 등급 시세 평균은 아래 평균 시세 칸에 자동 반영됩니다.
-                </div>
-
-                {priceLoading ? (
-                  <div className="rounded-xl border border-zinc-200 bg-white px-4 py-6 text-sm text-zinc-500">
-                    물고기 시세를 불러오는 중입니다.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedFishItems.map((item) => (
-                      <div
-                        key={item.key}
-                        className="rounded-xl border border-zinc-200 bg-white p-4"
-                      >
-                        <div className="mb-3 flex items-center gap-3">
-                          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg bg-zinc-100">
-                            {FISH_ICON_MAP[item.key] ? (
-                              <Image
-                                src={FISH_ICON_MAP[item.key]}
-                                alt={item.name}
-                                width={40}
-                                height={40}
-                                className="object-contain"
-                              />
-                            ) : null}
-                          </div>
-
-                          <div>
-                            <div className="font-semibold text-zinc-900">{item.name}</div>
-                            <div className="text-xs text-zinc-500">
-                              {FISHING_BIOME_OPTIONS.find((option) => option.value === selectedBiome)?.label}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-4 sm:grid-cols-3">
-                          <Field label="일반">
-                            <NumberInput
-                              value={fishPrices[buildFishPriceEditKey(item.key, "normal")] ?? 0}
-                              min={0}
-                              onChange={(value) => {
-                                setFishPrices((prev) => ({
-                                  ...prev,
-                                  [buildFishPriceEditKey(item.key, "normal")]: value,
-                                }));
-                              }}
-                            />
-                          </Field>
-
-                          <Field label="고급">
-                            <NumberInput
-                              value={fishPrices[buildFishPriceEditKey(item.key, "advanced")] ?? 0}
-                              min={0}
-                              onChange={(value) => {
-                                setFishPrices((prev) => ({
-                                  ...prev,
-                                  [buildFishPriceEditKey(item.key, "advanced")]: value,
-                                }));
-                              }}
-                            />
-                          </Field>
-
-                          <Field label="희귀">
-                            <NumberInput
-                              value={fishPrices[buildFishPriceEditKey(item.key, "rare")] ?? 0}
-                              min={0}
-                              onChange={(value) => {
-                                setFishPrices((prev) => ({
-                                  ...prev,
-                                  [buildFishPriceEditKey(item.key, "rare")]: value,
-                                }));
-                              }}
-                            />
-                          </Field>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold text-zinc-900">평균 시세</h3>
                 <div className="grid gap-4 sm:grid-cols-3">
@@ -1382,7 +1299,14 @@ export default function FishingCalculatorPage() {
               biome={selectedBiome}
               fishKeys={currentBiomeFishKeys}
               selectedKeys={editingFishKeys}
+              fishPrices={fishPrices}
+              buildFishPriceEditKey={buildFishPriceEditKey}
               onToggle={handleToggleEditingFish}
+              onResetSelection={handleResetEditingFish}
+              onPriceChange={handleFishPriceChange}
+              onSavePrices={handleSaveFishPrices}
+              isProUser={isProUser}
+              savingFishPrices={savingFishPrices}
               onApply={handleApplyFishSelection}
               onClose={() => setFishModalOpen(false)}
               disabled={!canOpenFishSelection}
