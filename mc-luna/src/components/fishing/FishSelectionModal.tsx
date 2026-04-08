@@ -30,8 +30,10 @@ type FishSelectionModalProps = {
     value: number,
   ) => void;
   onSavePrices?: () => void;
+  onSaveSelections?: () => void;
   isProUser: boolean;
   savingFishPrices?: boolean;
+  savingFishSelections?: boolean;
   onApply: () => void;
   onClose: () => void;
   disabled?: boolean;
@@ -50,29 +52,22 @@ export default function FishSelectionModal({
   onResetSelection,
   onPriceChange,
   onSavePrices,
+  onSaveSelections,
   isProUser,
   savingFishPrices = false,
+  savingFishSelections = false,
   onApply,
   onClose,
   disabled = false,
 }: FishSelectionModalProps) {
   const [activeTab, setActiveTab] = useState<FishModalTab>("select");
 
-  /**
-   * 모달을 다시 열 때는 항상 "물고기 선택" 탭부터 시작하도록 리셋한다.
-   * 사용자가 이전에 시세 탭에서 닫았더라도, 다음 진입 시엔 선택부터 보는 흐름이 자연스럽다.
-   */
   useEffect(() => {
     if (open) {
       setActiveTab("select");
     }
   }, [open]);
 
-  /**
-   * 현재 모달에서 "편집 중인 선택값(selectedKeys)"만 추려낸다.
-   * 즉, 적용 버튼을 누르기 전이라도 선택 탭에서 체크/해제한 결과가
-   * 시세 탭에 즉시 반영된다.
-   */
   const selectedFishKeys = useMemo(() => {
     return fishKeys.filter((fishKey) => selectedKeys.includes(fishKey));
   }, [fishKeys, selectedKeys]);
@@ -85,7 +80,6 @@ export default function FishSelectionModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4 py-6">
       <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* 헤더 */}
         <div className="border-b border-zinc-200 px-6 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -105,7 +99,6 @@ export default function FishSelectionModal({
             </button>
           </div>
 
-          {/* 탭 */}
           <div className="mt-4 flex gap-2">
             <button
               type="button"
@@ -135,7 +128,6 @@ export default function FishSelectionModal({
           </div>
         </div>
 
-        {/* 본문 */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {activeTab === "select" ? (
             <div className="space-y-4">
@@ -291,22 +283,34 @@ export default function FishSelectionModal({
           )}
         </div>
 
-        {/* 하단 버튼 */}
         <div className="border-t border-zinc-200 px-6 py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
+            <div className="flex flex-wrap items-center gap-2">
               {isProUser ? (
-                <button
-                  type="button"
-                  onClick={onSavePrices}
-                  disabled={savingFishPrices}
-                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-zinc-400"
-                >
-                  {savingFishPrices ? "시세 저장 중..." : "물고기 시세 저장"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={onSavePrices}
+                    disabled={savingFishPrices}
+                    className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                  >
+                    {savingFishPrices ? "시세 저장 중..." : "물고기 시세 저장"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onSaveSelections}
+                    disabled={savingFishSelections}
+                    className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-zinc-400"
+                  >
+                    {savingFishSelections
+                      ? "설정 저장 중..."
+                      : "물고기 설정 저장"}
+                  </button>
+                </>
               ) : (
                 <span className="text-xs text-zinc-500">
-                  물고기 시세 저장은 Pro 전용
+                  물고기 시세/설정 저장은 Pro 전용
                 </span>
               )}
             </div>

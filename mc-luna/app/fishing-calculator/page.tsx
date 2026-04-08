@@ -28,7 +28,6 @@ import {
 } from "@/src/lib/format";
 import StatNumberInput from "@/src/components/calculator/StatNumberInput";
 // 물고기 설정을 위한 Import
-import Image from "next/image";
 import { toast } from "sonner";
 import { useAuth } from "@/src/hooks/useAuth";
 import FishSelectionModal from "@/src/components/fishing/FishSelectionModal";
@@ -36,8 +35,6 @@ import {
   APP_MIN_FISH_SELECTION,
   BIOME_FISH_KEY_MAP,
   FISHING_BIOME_OPTIONS,
-  FISH_ICON_MAP,
-  FISH_NAME_MAP,
   canUseFishSelectionForBiome,
   createInitialFishSelectionByBiome,
   getDefaultFishKeysForBiome,
@@ -160,6 +157,58 @@ function createInitialFishPriceMap() {
 function average(values: number[]) {
   if (values.length === 0) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function normalizeFishingBiome(value: unknown): FishingBiomeKey {
+  const fallback: FishingBiomeKey = "ocean";
+
+  if (typeof value !== "string") return fallback;
+
+  const matched = FISHING_BIOME_OPTIONS.find((item) => item.value === value);
+  return matched?.value ?? fallback;
+}
+
+function normalizeSelectedFishByBiome(
+  raw: unknown,
+): Record<FishingBiomeKey, string[]> {
+  const fallback = createInitialFishSelectionByBiome();
+
+  if (!raw || typeof raw !== "object") {
+    return fallback;
+  }
+
+  const source = raw as Record<string, unknown>;
+  const next = { ...fallback };
+
+  FISHING_BIOME_OPTIONS.forEach(({ value }) => {
+    const allowedFishKeys = new Set(BIOME_FISH_KEY_MAP[value] ?? []);
+    const rawFishKeys = Array.isArray(source[value]) ? source[value] : [];
+
+    const filtered = Array.from(
+      new Set(
+        rawFishKeys.filter(
+          (item): item is string =>
+            typeof item === "string" && allowedFishKeys.has(item),
+        ),
+      ),
+    );
+
+    /**
+     * 앱 정책상 선택 가능한 바이옴은 최소 5마리 이상이어야 한다.
+     * 저장값이 깨졌거나 조건 미달이면 기본값으로 복구한다.
+     * 선택 불가 바이옴(기본 물고기 수 < 5)은 기본값 그대로 둔다.
+     */
+    if (canUseFishSelectionForBiome(value)) {
+      next[value] =
+        filtered.length >= APP_MIN_FISH_SELECTION
+          ? filtered
+          : fallback[value];
+    } else {
+      next[value] = fallback[value];
+    }
+  });
+
+  return next;
 }
 
 const INITIAL_FORM = {
@@ -314,8 +363,9 @@ export default function FishingCalculatorPage() {
 
   const [priceLoading, setPriceLoading] = useState(false);
   const [savingFishPrices, setSavingFishPrices] = useState(false);
+  const [savingFishSelections, setSavingFishSelections] = useState(false);
 
-  const [result, setResult] = useState(() =>
+  const [result, setResult] = useState(() =>                      
     calculateFishing(createInitialCalculationInput()),
   );
   const [isDirty, setIsDirty] = useState(false);
@@ -621,6 +671,45 @@ export default function FishingCalculatorPage() {
     void loadFishingPrices();
   }, [loadFishingPrices]);
 
+  const loadFishingSelections = useCallback(async () => {
+    if (guardLoading) return;
+    if (!allowed) return;
+    if (authLoading) return;
+    if (!user) return;
+    if (!isProUser) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("user_fishing_settings")
+        .select("selected_fish_by_biome, last_selected_biome")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("fishing 설정 로딩 중 예외:", error);
+        toast.error("물고기 설정을 불러오는 중 오류가 발생했습니다.");
+        return;
+      }
+
+      if (!data) return;
+
+      const normalizedSelections = normalizeSelectedFishByBiome(
+        data.selected_fish_by_biome,
+      );
+      const normalizedBiome = normalizeFishingBiome(data.last_selected_biome);
+
+      setSelectedFishByBiome(normalizedSelections);
+      setSelectedBiome(normalizedBiome);
+    } catch (error) {
+      console.error("fishing 설정 로딩 중 예외:", error);
+      toast.error("물고기 설정을 불러오는 중 오류가 발생했습니다.");
+    }
+  }, [allowed, authLoading, guardLoading, user, isProUser]);
+
+  useEffect(() => {
+    void loadFishingSelections();
+  }, [loadFishingSelections]);
+
   // 물고기 시세 저장 함수
   const handleSaveFishPrices = async () => {
     if (!user) {
@@ -670,6 +759,68 @@ export default function FishingCalculatorPage() {
       toast.error("물고기 시세 저장 중 오류가 발생했습니다.");
     } finally {
       setSavingFishPrices(false);
+    }
+  };
+
+  const handleSaveFishSelections = async () => {
+  if (!user) {
+    toast.error("사용자 정보를 확인할 수 없습니다.");
+    return;
+  }
+
+  if (!isProUser) {
+    toast.error("물고기 설정 저장은 Pro 사용자만 가능합니다.");
+    return;
+  }
+
+  /**
+   * 현재 모달에서 편집 중인 선택값도 저장 대상에 포함한다.
+   * 즉, 적용 버튼을 누르지 않았더라도 저장 버튼만 눌러 저장 가능하게 한다.
+   */
+  const nextSelectedFishByBiome = {
+      ...selectedFishByBiome,
+    };
+
+    if (canOpenFishSelection) {
+      if (editingFishKeys.length < APP_MIN_FISH_SELECTION) {
+        toast.error(`최소 ${APP_MIN_FISH_SELECTION}마리 이상 선택해야 합니다.`);
+        return;
+      }
+
+      nextSelectedFishByBiome[selectedBiome] = [...editingFishKeys];
+    }
+
+    try {
+      setSavingFishSelections(true);
+
+      const payload = {
+        user_id: user.id,
+        selected_fish_by_biome: nextSelectedFishByBiome,
+        last_selected_biome: selectedBiome,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from("user_fishing_settings")
+        .upsert(payload, { onConflict: "user_id" });
+
+      if (error) {
+        console.error("fishing 설정 저장 중 예외:", error);
+        toast.error("물고기 설정 저장 중 오류가 발생했습니다.");
+        return;
+      }
+
+      /**
+       * 저장 성공 시 화면 상태도 즉시 동기화한다.
+       */
+      setSelectedFishByBiome(nextSelectedFishByBiome);
+      setEditingFishKeys([...nextSelectedFishByBiome[selectedBiome]]);
+      toast.success("물고기 설정이 저장되었습니다.");
+    } catch (error) {
+      console.error("fishing 설정 저장 중 예외:", error);
+      toast.error("물고기 설정 저장 중 오류가 발생했습니다.");
+    } finally {
+      setSavingFishSelections(false);
     }
   };
 
@@ -813,6 +964,7 @@ export default function FishingCalculatorPage() {
     setSelectedFishByBiome(createInitialFishSelectionByBiome());
     setEditingFishKeys(getDefaultFishKeysForBiome("ocean"));
     setFishPrices(createInitialFishPriceMap());
+    setSavingFishSelections(false);
 
     setResult(calculateFishing(createInitialCalculationInput()));
     setIsDirty(false);
@@ -1305,8 +1457,10 @@ export default function FishingCalculatorPage() {
               onResetSelection={handleResetEditingFish}
               onPriceChange={handleFishPriceChange}
               onSavePrices={handleSaveFishPrices}
+              onSaveSelections={handleSaveFishSelections}
               isProUser={isProUser}
               savingFishPrices={savingFishPrices}
+              savingFishSelections={savingFishSelections}
               onApply={handleApplyFishSelection}
               onClose={() => setFishModalOpen(false)}
               disabled={!canOpenFishSelection}
