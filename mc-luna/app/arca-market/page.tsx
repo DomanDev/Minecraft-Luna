@@ -247,8 +247,10 @@ export default function ArcaMarketPage() {
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  
+  type ArcaViewTab = "sell" | "buy" | "my_posts" | "my_requests" | "received_requests";
+  const [viewTab, setViewTab] = useState<ArcaViewTab>("sell");
 
-  const [activeTab, setActiveTab] = useState<TradeTab>("sell");
   const [sortKey, setSortKey] = useState<SortKey>("recent");
   const [page, setPage] = useState(1);
 
@@ -265,6 +267,7 @@ export default function ArcaMarketPage() {
   const [requestSubmitting, setRequestSubmitting] = useState(false);
 
   const [myRequests, setMyRequests] = useState<ArcaTradeRequestRow[]>([]);
+  const [myPosts, setMyPosts] = useState<ArcaTradePostRow[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);  
   const [receivedRequests, setReceivedRequests] = useState<ArcaTradeRequestRow[]>([]);
 
@@ -279,7 +282,6 @@ export default function ArcaMarketPage() {
    * - 연락 방식
    * - 광고 상품 여부 (Pro 전용)
    */
-  const [formType, setFormType] = useState<TradeTab>("sell");
   const [formRatio, setFormRatio] = useState("300");
   const [formArcaAmount, setFormArcaAmount] = useState("1000");
   const [formTitle, setFormTitle] = useState("");
@@ -333,6 +335,15 @@ export default function ArcaMarketPage() {
     };
   }, [completedPosts]);
 
+  const receivedRequestsByPostId = useMemo(() => {
+    return receivedRequests.reduce<Record<string, ArcaTradeRequestRow[]>>((acc, req) => {
+      const key = req.post_id;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(req);
+      return acc;
+    }, {});
+  }, [receivedRequests]);
+
   const fetchSessionAndProfile = useCallback(async () => {
     if (guardLoading || !allowed) return;
 
@@ -379,9 +390,10 @@ export default function ArcaMarketPage() {
 
   const fetchPosts = useCallback(async () => {
     if (guardLoading || !allowed) return;
+    if (viewTab !== "sell" && viewTab !== "buy") return;
 
     setLoadingPosts(true);
-
+    
     try {
       /**
        * 1) 광고 상품
@@ -393,7 +405,7 @@ export default function ArcaMarketPage() {
       const { data: featuredData, error: featuredError } = await supabase
         .from("arca_trade_posts")
         .select("*")
-        .eq("post_type", activeTab)
+        .eq("post_type", viewTab === "sell" ? "sell" : "buy")
         .eq("status", "open")
         .eq("is_featured", true)
         .order("created_at", { ascending: false })
@@ -429,7 +441,7 @@ export default function ArcaMarketPage() {
       const listQuery = supabase
         .from("arca_trade_posts")
         .select("*", { count: "exact" })
-        .eq("post_type", activeTab)
+        .eq("post_type", viewTab === "sell" ? "sell" : "buy")
         .eq("status", "open")
         .order(orderColumn, { ascending })
         .order("created_at", { ascending: false })
@@ -467,7 +479,28 @@ export default function ArcaMarketPage() {
     } finally {
       setLoadingPosts(false);
     }
-  }, [activeTab, allowed, guardLoading, page, sortKey]);
+  }, [viewTab, allowed, guardLoading, page, sortKey]);
+
+  const fetchMyPosts = useCallback(async () => {
+    if (!sessionUserId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("arca_trade_posts")
+        .select("*")
+        .eq("user_id", sessionUserId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("내 거래글 조회 실패:", error);
+        return;
+      }
+
+      setMyPosts(data ?? []);
+    } catch (err) {
+      console.error("내 거래글 조회 예외:", err);
+    }
+  }, [sessionUserId]);
 
   const fetchMyRequests = useCallback(async () => {
     if (!sessionUserId) return;
@@ -562,12 +595,18 @@ export default function ArcaMarketPage() {
   }, [fetchSessionAndProfile]);
 
   useEffect(() => {
-    void fetchPosts();
-  }, [fetchPosts]);
+    if (viewTab === "sell" || viewTab === "buy") {
+      fetchPosts();
+    }
+  }, [viewTab, fetchPosts]);
 
   useEffect(() => {
     fetchMyRequests();
   }, [fetchMyRequests]);
+
+  useEffect(() => {
+    fetchMyPosts();
+  }, [fetchMyPosts]);
 
   useEffect(() => {
     fetchReceivedRequests();
@@ -575,7 +614,7 @@ export default function ArcaMarketPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, sortKey]);
+  }, [viewTab, sortKey]);
 
   useEffect(() => {
     if (!detailPost) return;
@@ -596,12 +635,12 @@ export default function ArcaMarketPage() {
 
     const openSummary = await fetchMyOpenPostSummary();
 
-    if (formType === "sell" && openSummary.hasOpenSell) {
+   if (viewTab === "sell" && openSummary.hasOpenSell) {
       toast.error("현재 열린 판매글이 이미 있습니다. 판매글은 1개만 등록할 수 있습니다.");
       return;
     }
 
-    if (formType === "buy" && openSummary.hasOpenBuy) {
+    if (viewTab === "buy" && openSummary.hasOpenBuy) {
       toast.error("현재 열린 구매글이 이미 있습니다. 구매글은 1개만 등록할 수 있습니다.");
       return;
     }
@@ -647,7 +686,7 @@ export default function ArcaMarketPage() {
 
     try {
       const { data, error } = await supabase.rpc("create_arca_trade_post", {
-        p_post_type: formType,
+        p_post_type: viewTab === "sell" ? "sell" : "buy",
         p_ratio: ratio,
         p_arca_amount: arcaAmount,
         p_title: formTitle.trim() || null,
@@ -684,7 +723,6 @@ export default function ArcaMarketPage() {
         setFormSplitUnit,
       );
 
-      setActiveTab(formType);
       setPage(1);
 
       await fetchPosts();
@@ -701,13 +739,13 @@ export default function ArcaMarketPage() {
     formNote,
     formRatio,
     formTitle,
-    formType,
     isProUser,
     minecraftNickname,
     sessionUserId,
     formSplitUnit,
     formTradeMode,
     fetchMyOpenPostSummary,
+    viewTab,
   ]);
 
   const handleCreateTradeRequest = useCallback(async (post: ArcaTradePostRow) => {
@@ -954,6 +992,7 @@ export default function ArcaMarketPage() {
         </div>
       </section>
 
+      {(viewTab === "sell" || viewTab === "buy") && (
       <section className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-zinc-900">거래글 등록</h2>
@@ -963,27 +1002,6 @@ export default function ArcaMarketPage() {
           </p>
 
           <div className="mt-5 space-y-4">
-            <div>
-              <div className="mb-2 text-sm font-medium text-zinc-700">거래 종류</div>
-              <div className="grid grid-cols-2 gap-2">
-                {(["sell", "buy"] as TradeTab[]).map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setFormType(type)}
-                    className={classNames(
-                      "rounded-xl border px-4 py-2 text-sm font-medium transition",
-                      formType === type
-                        ? "border-emerald-600 bg-emerald-600 text-white"
-                        : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
-                    )}
-                  >
-                    {TAB_LABEL[type]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div>
               <label className="mb-2 block text-sm font-medium text-zinc-700">
                 비율 (셀 : 아르카)
@@ -1163,20 +1181,25 @@ export default function ArcaMarketPage() {
         <section className="space-y-4">
           <div className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap gap-2">
-                {(["sell", "buy"] as TradeTab[]).map((tab) => (
+              <div className="mb-6 flex flex-wrap gap-2">
+                {[
+                  { key: "sell", label: "팝니다" },
+                  { key: "buy", label: "삽니다" },
+                  { key: "my_posts", label: "내가 등록한 거래" },
+                  { key: "my_requests", label: "내 거래 신청" },
+                  { key: "received_requests", label: "받은 거래 신청" },
+                ].map((tab) => (
                   <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
+                    key={tab.key}
+                    onClick={() => setViewTab(tab.key as ArcaViewTab)}
                     className={classNames(
                       "rounded-xl px-4 py-2 text-sm font-semibold transition",
-                      activeTab === tab
-                        ? "bg-zinc-900 text-white"
-                        : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
+                      viewTab === tab.key
+                        ? "bg-emerald-600 text-white"
+                        : "bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50"
                     )}
                   >
-                    {TAB_LABEL[tab]} 탭
+                    {tab.label}
                   </button>
                 ))}
               </div>
@@ -1254,7 +1277,7 @@ export default function ArcaMarketPage() {
           <div className="rounded-3xl border border-zinc-200 bg-white shadow-sm">
             <div className="border-b border-zinc-200 px-4 py-3">
               <h3 className="text-base font-semibold text-zinc-900">
-                {activeTab === "sell" ? "판매 상품 목록" : "구매 상품 목록"}
+                {viewTab === "sell" ? "판매 상품 목록" : "구매 상품 목록"}
               </h3>
             </div>
 
@@ -1430,6 +1453,96 @@ export default function ArcaMarketPage() {
           </div>
         </section>
       </section>
+      )}
+      {viewTab === "my_posts" && (
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+          <div className="mb-4 text-lg font-semibold">내가 등록한 거래</div>
+
+          {myPosts.length === 0 ? (
+            <div className="text-sm text-zinc-500">등록한 거래글이 없습니다.</div>
+          ) : (
+            <div className="space-y-4">
+              {myPosts.map((post) => {
+                const postRequests = receivedRequestsByPostId[post.id] ?? [];
+
+                return (
+                  <div
+                    key={post.id}
+                    className="rounded-xl border border-zinc-200 px-4 py-4"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="text-sm">
+                        <div className="font-medium text-zinc-900">
+                          {post.title || `${post.post_type === "sell" ? "판매" : "구매"} 거래`}
+                        </div>
+                        <div>수량: {formatNumber(post.arca_amount)} 아르카</div>
+                        <div>남은 수량: {formatNumber(getRemainingQuantity(post))} 아르카</div>
+                        <div>
+                          거래 방식: {post.trade_mode === "bulk"
+                            ? "일괄"
+                            : `분할 (${formatNumber(post.split_unit ?? 0)}단위)`}
+                        </div>
+                        <div>상태: {post.status}</div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        {post.status === "open" && (
+                          <button
+                            onClick={() => setDetailPost(post)}
+                            className="rounded-lg bg-zinc-800 px-3 py-1 text-xs text-white"
+                          >
+                            상세보기
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-xl bg-zinc-50 p-3">
+                      <div className="mb-2 text-sm font-semibold text-zinc-900">
+                        신청 목록 ({postRequests.length})
+                      </div>
+
+                      {postRequests.length === 0 ? (
+                        <div className="text-sm text-zinc-500">아직 들어온 신청이 없습니다.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {postRequests.map((req) => (
+                            <div
+                              key={req.id}
+                              className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-3 py-3"
+                            >
+                              <div className="text-sm text-zinc-700">
+                                <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
+                                <div>비율: {formatNumber(req.ratio)} : 1</div>
+                                <div className="text-xs text-zinc-500">
+                                  상태: {getRequestStatusLabel(req)} / {getCompletionProgressLabel(req, sessionUserId)}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {req.status === "pending" && (
+                                  <button
+                                    onClick={() => void handleCompleteRequest(req.id)}
+                                    disabled={requestSubmitting || !!req.owner_completed_at}
+                                    className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {req.owner_completed_at ? "완료 확인됨" : "거래 완료"}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+        )}
+    {viewTab === "my_requests" && (
       <section className="mt-10 rounded-2xl border border-zinc-200 bg-white p-6">
         <div className="mb-4 text-lg font-semibold text-zinc-900">내 거래 신청</div>
 
@@ -1492,6 +1605,8 @@ export default function ArcaMarketPage() {
           </div>
         )}
       </section>
+    )}
+    {viewTab === "received_requests" && ( 
 
       <section className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6">
         <div className="mb-4 text-lg font-semibold text-zinc-900">받은 거래 신청</div>
@@ -1541,6 +1656,7 @@ export default function ArcaMarketPage() {
           </div>
         )}
       </section>
+    )}
       {detailPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
