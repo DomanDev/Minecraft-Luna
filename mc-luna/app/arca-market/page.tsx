@@ -248,7 +248,7 @@ export default function ArcaMarketPage() {
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   
-  type ArcaViewTab = "sell" | "buy" | "my_posts" | "my_requests" | "received_requests";
+  type ArcaViewTab = "sell" | "buy" | "my_posts" | "my_requests";
   const [viewTab, setViewTab] = useState<ArcaViewTab>("sell");
 
   const [sortKey, setSortKey] = useState<SortKey>("recent");
@@ -262,6 +262,8 @@ export default function ArcaMarketPage() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [detailPost, setDetailPost] = useState<ArcaTradePostRow | null>(null);
+
+  const [detailRequest, setDetailRequest] = useState<ArcaTradeRequestRow | null>(null);
 
   const [requestQuantity, setRequestQuantity] = useState("1");
   const [requestSubmitting, setRequestSubmitting] = useState(false);
@@ -294,6 +296,8 @@ export default function ArcaMarketPage() {
   
   const [formTradeMode, setFormTradeMode] = useState<"bulk" | "split">("bulk");
   const [formSplitUnit, setFormSplitUnit] = useState("10");
+
+  const [formType, setFormType] = useState<TradeTab>("sell");
 
   const isProUser = profile?.plan_type === "pro";
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
@@ -489,6 +493,7 @@ export default function ArcaMarketPage() {
         .from("arca_trade_posts")
         .select("*")
         .eq("user_id", sessionUserId)
+        .eq("status", "open")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -635,12 +640,12 @@ export default function ArcaMarketPage() {
 
     const openSummary = await fetchMyOpenPostSummary();
 
-   if (viewTab === "sell" && openSummary.hasOpenSell) {
+   if (formType === "sell" && openSummary.hasOpenSell) {
       toast.error("현재 열린 판매글이 이미 있습니다. 판매글은 1개만 등록할 수 있습니다.");
       return;
     }
 
-    if (viewTab === "buy" && openSummary.hasOpenBuy) {
+    if (formType === "buy" && openSummary.hasOpenBuy) {
       toast.error("현재 열린 구매글이 이미 있습니다. 구매글은 1개만 등록할 수 있습니다.");
       return;
     }
@@ -686,7 +691,7 @@ export default function ArcaMarketPage() {
 
     try {
       const { data, error } = await supabase.rpc("create_arca_trade_post", {
-        p_post_type: viewTab === "sell" ? "sell" : "buy",
+        p_post_type: formType,
         p_ratio: ratio,
         p_arca_amount: arcaAmount,
         p_title: formTitle.trim() || null,
@@ -739,6 +744,7 @@ export default function ArcaMarketPage() {
     formNote,
     formRatio,
     formTitle,
+    formType,
     isProUser,
     minecraftNickname,
     sessionUserId,
@@ -1000,7 +1006,26 @@ export default function ArcaMarketPage() {
             판매/구매 글을 등록하고, 
             Pro 광고 상품으로 상단 노출할 수 있습니다.
           </p>
-
+          <div>
+            <div className="mb-2 text-sm font-medium text-zinc-700">거래 종류</div>
+            <div className="grid grid-cols-2 gap-2">
+              {(["sell", "buy"] as TradeTab[]).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setFormType(type)}
+                  className={classNames(
+                    "rounded-xl border px-4 py-2 text-sm font-medium transition",
+                    formType === type
+                      ? "border-emerald-600 bg-emerald-600 text-white"
+                      : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
+                  )}
+                >
+                  {TAB_LABEL[type]}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="mt-5 space-y-4">
             <div>
               <label className="mb-2 block text-sm font-medium text-zinc-700">
@@ -1187,7 +1212,6 @@ export default function ArcaMarketPage() {
                   { key: "buy", label: "삽니다" },
                   { key: "my_posts", label: "내가 등록한 거래" },
                   { key: "my_requests", label: "내 거래 신청" },
-                  { key: "received_requests", label: "받은 거래 신청" },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -1520,6 +1544,13 @@ export default function ArcaMarketPage() {
                               </div>
 
                               <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setDetailRequest(req)}
+                                  className="rounded-lg border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                                >
+                                  상세보기
+                                </button>
+
                                 {req.status === "pending" && (
                                   <button
                                     onClick={() => void handleCompleteRequest(req.id)}
@@ -1606,7 +1637,7 @@ export default function ArcaMarketPage() {
         )}
       </section>
     )}
-    {viewTab === "received_requests" && ( 
+    {/* {viewTab === "received_requests" && ( 
 
       <section className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6">
         <div className="mb-4 text-lg font-semibold text-zinc-900">받은 거래 신청</div>
@@ -1656,7 +1687,7 @@ export default function ArcaMarketPage() {
           </div>
         )}
       </section>
-    )}
+    )} */}
       {detailPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
@@ -1841,6 +1872,77 @@ export default function ArcaMarketPage() {
                 )}
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-zinc-200 px-6 py-5">
+              <div>
+                <div className="text-xs font-semibold text-zinc-500">거래 신청 상세</div>
+                <h3 className="mt-2 text-xl font-bold text-zinc-900">
+                  {detailRequest.post?.title?.trim() || "신청 상세"}
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setDetailRequest(null)}
+                className="rounded-xl border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                닫기
+              </button>
+            </div>
+
+            <div className="space-y-5 px-6 py-5">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">원본 글 유형</div>
+                  <div className="mt-2 text-base font-semibold text-zinc-900">
+                    {detailRequest.post?.post_type === "sell" ? "판매글" : "구매글"}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">거래 방식</div>
+                  <div className="mt-2 text-base font-semibold text-zinc-900">
+                    {detailRequest.post?.trade_mode === "bulk"
+                      ? "일괄"
+                      : `분할 (${formatNumber(detailRequest.post?.split_unit ?? 0)}단위)`}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">총 등록 수량</div>
+                  <div className="mt-2 text-base font-semibold text-zinc-900">
+                    {formatNumber(detailRequest.post?.arca_amount ?? 0)} 아르카
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">신청 수량</div>
+                  <div className="mt-2 text-base font-semibold text-zinc-900">
+                    {formatNumber(detailRequest.request_quantity)} 아르카
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">비율</div>
+                  <div className="mt-2 text-base font-semibold text-zinc-900">
+                    {formatNumber(detailRequest.ratio)} : 1
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">상태</div>
+                  <div className="mt-2 text-base font-semibold text-zinc-900">
+                    {getRequestStatusLabel(detailRequest)} / {getCompletionProgressLabel(detailRequest, sessionUserId)}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
