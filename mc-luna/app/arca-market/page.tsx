@@ -11,11 +11,10 @@ type SortKey = "recent" | "price_low" | "price_high";
 type PlanType = "free" | "pro";
 
 /**
- * 화면 우측 패널에서 사용하는 탭
- *
- * 중요:
- * - 기존 최종 요구사항 기준으로 received_requests 탭은 제거
- * - 우측 큰 패널 내부 콘텐츠만 이 값에 따라 교체됨
+ * 우측 콘텐츠 전환용 탭
+ * - 왼쪽 거래 등록 패널은 항상 유지
+ * - 오른쪽 상단 탭도 항상 유지
+ * - 오른쪽 큰 패널 안의 내용만 이 값에 따라 바뀜
  */
 type ArcaViewTab = "sell" | "buy" | "my_posts" | "my_requests";
 
@@ -110,11 +109,8 @@ function classNames(...values: Array<string | false | null | undefined>): string
 }
 
 /**
- * 현재 거래글의 실질 남은 수량 계산
- *
+ * 남은 수량 계산
  * 남은 수량 = 총 등록 수량 - 예약 수량 - 완료 수량
- * - 예약 수량: 아직 진행 중인 신청으로 잡혀 있는 수량
- * - 완료 수량: 실제 거래 완료되어 차감된 수량
  */
 function getRemainingQuantity(post: ArcaTradePostRow): number {
   return Math.max(0, post.arca_amount - post.reserved_quantity - post.completed_quantity);
@@ -127,13 +123,8 @@ function getRequestStatusLabel(request: ArcaTradeRequestRow): string {
 }
 
 /**
- * 현재 로그인한 사용자의 시점에서 완료 진행 상태 문구를 반환
- *
- * 예:
- * - 내가 완료 안 눌렀고 상대도 안 눌렀다 -> 대기 중
- * - 내가 완료 눌렀다 -> 내 완료 확인
- * - 상대가 완료 눌렀다 -> 상대 완료 확인
- * - 둘 다 눌렀다 -> 양측 완료
+ * 기존 문구 유지용
+ * - 표에 간단히 표시할 때 사용
  */
 function getCompletionProgressLabel(
   request: ArcaTradeRequestRow,
@@ -161,6 +152,119 @@ function getCompletionProgressLabel(
   if (otherDone) return "상대 완료 확인";
 
   return "대기 중";
+}
+
+/**
+ * UX 개선용:
+ * 사용자가 지금 이해하기 쉬운 행동 중심 상태 문구
+ *
+ * 예:
+ * - 내가 아직 안 눌렀고 상대도 안 눌렀으면 "내 완료 확인 필요"
+ * - 나는 눌렀고 상대가 안 눌렀으면 "상대방 완료 대기 중"
+ */
+function getActionStatusText(
+  request: ArcaTradeRequestRow,
+  sessionUserId: string | null,
+): string {
+  if (request.status === "completed") return "양측 완료됨";
+  if (request.status === "cancelled") return "취소된 신청";
+
+  const isRequester = sessionUserId === request.requester_id;
+  const isOwner = sessionUserId === request.owner_id;
+
+  const meDone = isRequester
+    ? !!request.requester_completed_at
+    : isOwner
+      ? !!request.owner_completed_at
+      : false;
+
+  const otherDone = isRequester
+    ? !!request.owner_completed_at
+    : isOwner
+      ? !!request.requester_completed_at
+      : false;
+
+  if (!meDone && !otherDone) return "내 완료 확인 필요";
+  if (meDone && !otherDone) return "상대방 완료 대기 중";
+  if (!meDone && otherDone) return "내 완료 확인 필요";
+  return "거래 조율 중";
+}
+
+/**
+ * UX 개선용:
+ * 상태 배지 스타일 정보
+ */
+function getActionStatusBadgeClass(
+  request: ArcaTradeRequestRow,
+  sessionUserId: string | null,
+): string {
+  if (request.status === "completed") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (request.status === "cancelled") {
+    return "bg-red-100 text-red-700";
+  }
+
+  const isRequester = sessionUserId === request.requester_id;
+  const isOwner = sessionUserId === request.owner_id;
+
+  const meDone = isRequester
+    ? !!request.requester_completed_at
+    : isOwner
+      ? !!request.owner_completed_at
+      : false;
+
+  const otherDone = isRequester
+    ? !!request.owner_completed_at
+    : isOwner
+      ? !!request.requester_completed_at
+      : false;
+
+  if (meDone || otherDone) {
+    return "bg-sky-100 text-sky-700";
+  }
+
+  return "bg-amber-100 text-amber-700";
+}
+
+/**
+ * UX 개선용:
+ * 단계형 상태 라벨
+ * - 신청 생성
+ * - 거래 조율 중
+ * - 한쪽 완료 확인
+ * - 양측 완료
+ * - 취소됨
+ */
+function getStepStatusText(request: ArcaTradeRequestRow): string {
+  if (request.status === "completed") return "양측 완료";
+  if (request.status === "cancelled") return "취소됨";
+
+  const requesterDone = !!request.requester_completed_at;
+  const ownerDone = !!request.owner_completed_at;
+
+  if (requesterDone || ownerDone) return "한쪽 완료 확인";
+  return "거래 조율 중";
+}
+
+function getStepStatusBadgeClass(request: ArcaTradeRequestRow): string {
+  if (request.status === "completed") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (request.status === "cancelled") {
+    return "bg-red-100 text-red-700";
+  }
+
+  const requesterDone = !!request.requester_completed_at;
+  const ownerDone = !!request.owner_completed_at;
+
+  if (requesterDone || ownerDone) {
+    return "bg-sky-100 text-sky-700";
+  }
+
+  return "bg-amber-100 text-amber-700";
 }
 
 function getArcaCreateRequestErrorMessage(message: string): string {
@@ -262,13 +366,30 @@ function resetArcaTradeForm(
   setFormFeatured(false);
   setFormTradeMode("bulk");
   setFormSplitUnit("10");
-
-  /**
-   * 폼 리셋 시 거래 종류도 기본값으로 되돌린다.
-   * - 사용자가 이전에 buy 글을 등록했더라도 다음 등록 시 기본 sell부터 시작
-   * - 원치 않으면 이 한 줄만 제거해도 됨
-   */
   setFormType("sell");
+}
+
+/**
+ * UX 개선용:
+ * 내가 등록한 거래 카드 상단에 표시할 신청 요약
+ * - 진행중 n건
+ * - 완료 n건
+ * - 취소 n건
+ */
+function getRequestSummaryCounts(requests: ArcaTradeRequestRow[]) {
+  return requests.reduce(
+    (acc, req) => {
+      if (req.status === "completed") {
+        acc.completed += 1;
+      } else if (req.status === "cancelled") {
+        acc.cancelled += 1;
+      } else {
+        acc.pending += 1;
+      }
+      return acc;
+    },
+    { pending: 0, completed: 0, cancelled: 0 },
+  );
 }
 
 export default function ArcaMarketPage() {
@@ -281,14 +402,6 @@ export default function ArcaMarketPage() {
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
-  /**
-   * 우측 콘텐츠 전환용 탭 state
-   *
-   * 중요:
-   * - 왼쪽 등록 패널은 이 값과 무관하게 항상 유지
-   * - 오른쪽 패널 상단 탭도 항상 유지
-   * - 오른쪽 콘텐츠만 이 값에 따라 바뀐다
-   */
   const [viewTab, setViewTab] = useState<ArcaViewTab>("sell");
 
   const [sortKey, setSortKey] = useState<SortKey>("recent");
@@ -304,8 +417,8 @@ export default function ArcaMarketPage() {
   const [detailPost, setDetailPost] = useState<ArcaTradePostRow | null>(null);
 
   /**
-   * "내가 등록한 거래" 탭의 신청 목록에서
-   * 상세보기 버튼을 눌렀을 때 띄우는 신청 상세 모달 state
+   * 내가 등록한 거래 탭의 신청 목록 상세 모달
+   * + 내 거래 신청 탭에서도 동일하게 재사용
    */
   const [detailRequest, setDetailRequest] = useState<ArcaTradeRequestRow | null>(null);
 
@@ -317,26 +430,18 @@ export default function ArcaMarketPage() {
   const [loadingRequests, setLoadingRequests] = useState(false);
 
   /**
-   * 받은 신청 전용 "탭"은 제거했지만,
-   * 내가 등록한 거래(my_posts) 안에서 각 글별 신청 목록을 보여주기 위해
-   * owner 기준 신청 데이터는 계속 필요하다.
-   *
-   * 즉, 이 데이터는
-   * - 우측 별도 탭 용도 X
-   * - 내 글별 신청 목록 공급용 O
+   * 받은 거래 신청 전용 탭은 제거했지만,
+   * 내가 등록한 거래 탭 안에서 각 글별 신청 목록을 보여주기 위해
+   * owner_id 기준 신청 데이터는 유지한다.
    */
   const [receivedRequests, setReceivedRequests] = useState<ArcaTradeRequestRow[]>([]);
 
   /**
    * 등록 폼 state
    *
-   * 아이템매니아식으로 간단한 핵심 정보 위주:
-   * - 거래 종류(판매/구매) -> viewTab과 무관하게 직접 선택
-   * - 비율
-   * - 수량
-   * - 제목/메모
-   * - 연락 방식
-   * - 광고 상품 여부 (Pro 전용)
+   * 중요:
+   * - 현재 우측 탭(viewTab)과 무관하게
+   * - 판매/구매를 formType으로 직접 선택해서 글을 등록할 수 있어야 한다.
    */
   const [formRatio, setFormRatio] = useState("300");
   const [formArcaAmount, setFormArcaAmount] = useState("1000");
@@ -350,13 +455,6 @@ export default function ArcaMarketPage() {
 
   const [formTradeMode, setFormTradeMode] = useState<"bulk" | "split">("bulk");
   const [formSplitUnit, setFormSplitUnit] = useState("10");
-
-  /**
-   * 중요:
-   * 거래글 등록 폼 안에서 판매/구매를 직접 선택한다.
-   * - 현재 우측 viewTab이 sell이든 buy든 상관없이
-   * - 폼에서는 sell/buy 둘 다 등록 가능해야 한다.
-   */
   const [formType, setFormType] = useState<TradeTab>("sell");
 
   const isProUser = profile?.plan_type === "pro";
@@ -400,8 +498,7 @@ export default function ArcaMarketPage() {
   }, [completedPosts]);
 
   /**
-   * 내가 등록한 거래(my_posts) 탭에서
-   * 각 게시글별로 신청 목록을 묶어서 보여주기 위한 그룹핑 결과
+   * 내가 등록한 거래 탭에서 각 게시글별로 신청 목록을 묶어 쓰기 위한 그룹핑
    */
   const receivedRequestsByPostId = useMemo(() => {
     return receivedRequests.reduce<Record<string, ArcaTradeRequestRow[]>>((acc, req) => {
@@ -458,11 +555,6 @@ export default function ArcaMarketPage() {
 
   const fetchPosts = useCallback(async () => {
     if (guardLoading || !allowed) return;
-
-    /**
-     * sell / buy 목록은 우측 일반 거래 탭에서만 필요
-     * my_posts / my_requests에서는 이 fetch를 굳이 돌리지 않는다.
-     */
     if (viewTab !== "sell" && viewTab !== "buy") return;
 
     setLoadingPosts(true);
@@ -493,9 +585,6 @@ export default function ArcaMarketPage() {
 
       /**
        * 2) 일반 목록
-       * - 광고 상품도 일반 목록에 다시 보여도 되지만
-       *   화면 중복이 과하다고 느껴지면 is_featured=false만 따로 볼 수 있다.
-       * - 여기서는 아이템매니아 느낌상 전체 open 목록을 그대로 보여준다.
        */
       let orderColumn: "created_at" | "ratio" = "created_at";
       let ascending = false;
@@ -533,8 +622,6 @@ export default function ArcaMarketPage() {
 
       /**
        * 3) 최근 완료 거래 20개
-       * - 간단 시세 통계용
-       * - 메인 페이지로 옮길 때도 같은 쿼리 재사용 가능
        */
       const { data: completedData, error: completedError } = await supabase
         .from("arca_trade_posts")
@@ -621,7 +708,7 @@ export default function ArcaMarketPage() {
     try {
       /**
        * 받은 신청 전용 탭은 제거했지만,
-       * 내가 등록한 거래 탭에서 각 글의 신청 목록을 보여주기 위해 owner_id 기준 조회는 유지한다.
+       * 내가 등록한 거래 탭에서 글별 신청 목록을 공급하기 위해 유지
        */
       const { data, error } = await supabase
         .from("arca_trade_requests")
@@ -696,10 +783,6 @@ export default function ArcaMarketPage() {
   }, [fetchReceivedRequests]);
 
   useEffect(() => {
-    /**
-     * 정렬 기준 혹은 우측 탭이 바뀌면 페이지 번호를 1로 되돌린다.
-     * 특히 sell/buy 목록에서 정렬 바뀌었을 때 페이지 유지보다 1페이지 복귀가 안전하다.
-     */
     setPage(1);
   }, [viewTab, sortKey]);
 
@@ -707,9 +790,9 @@ export default function ArcaMarketPage() {
     if (!detailPost) return;
 
     /**
-     * 상세 모달에서 신청 수량 입력 기본값 설정
+     * 상세 모달에서 신청 수량 기본값
      * - 일괄 거래: 전체 수량
-     * - 분할 거래: 최소 거래 단위
+     * - 분할 거래: 최소 단위
      */
     if (detailPost.trade_mode === "bulk") {
       setRequestQuantity(String(detailPost.arca_amount));
@@ -779,8 +862,7 @@ export default function ArcaMarketPage() {
       const { data, error } = await supabase.rpc("create_arca_trade_post", {
         /**
          * 중요:
-         * p_post_type은 viewTab이 아니라 formType을 사용해야 한다.
-         * 그래야 현재 보고 있는 탭과 무관하게 판매/구매 직접 등록이 가능하다.
+         * 현재 우측 탭(viewTab)이 아니라 등록 폼에서 직접 선택한 formType을 사용
          */
         p_post_type: formType,
         p_ratio: ratio,
@@ -822,12 +904,6 @@ export default function ArcaMarketPage() {
 
       setPage(1);
 
-      /**
-       * 등록 후 관련 데이터 재조회
-       * - sell/buy 탭이면 일반 목록 갱신
-       * - my_posts 탭 대비 내 글 목록도 갱신
-       * - 신청 관련 목록은 현 시점엔 직접 변하지 않지만 동기화 차원에서 유지 가능
-       */
       await fetchPosts();
       await fetchMyPosts();
       await fetchMyRequests();
@@ -915,12 +991,6 @@ export default function ArcaMarketPage() {
 
         setDetailPost(null);
 
-        /**
-         * 신청 후
-         * - 일반 목록 남은 수량 갱신
-         * - 내 신청 목록 갱신
-         * - 내 글 탭의 신청 목록 갱신
-         */
         await fetchPosts();
         await fetchMyRequests();
         await fetchReceivedRequests();
@@ -953,6 +1023,12 @@ export default function ArcaMarketPage() {
         await fetchPosts();
         await fetchReceivedRequests();
         await fetchMyPosts();
+
+        /**
+         * 상세 모달이 열려 있고, 방금 취소한 신청이었다면
+         * 바로 닫아주는 편이 UX상 자연스럽다.
+         */
+        setDetailRequest((prev) => (prev?.id === requestId ? null : prev));
       } finally {
         setRequestSubmitting(false);
       }
@@ -1034,7 +1110,6 @@ export default function ArcaMarketPage() {
       toast.success("거래글을 취소했습니다.");
 
       setDetailPost(null);
-
       await fetchPosts();
       await fetchMyRequests();
       await fetchReceivedRequests();
@@ -1117,16 +1192,10 @@ export default function ArcaMarketPage() {
        * 메인 2단 레이아웃
        * =========================
        *
-       * 중요 구조 변경:
-       * - 왼쪽 등록 패널: 항상 표시
-       * - 오른쪽 상단 탭: 항상 표시
-       * - 오른쪽 콘텐츠 영역만 viewTab에 따라 교체
-       *
-       * 기존 문제:
-       * - sell / buy일 때만 좌/우 2단 레이아웃이 렌더링되어
-       *   my_posts / my_requests에서는 레이아웃이 깨졌음
-       *
-       * 현재는 조건문 없이 항상 이 레이아웃을 유지한다.
+       * 중요:
+       * - 왼쪽 등록 패널은 항상 유지
+       * - 오른쪽 상단 탭은 항상 유지
+       * - 오른쪽 콘텐츠만 탭에 따라 바뀐다
        */}
       <section className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -1329,15 +1398,8 @@ export default function ArcaMarketPage() {
         <section className="space-y-4">
           {/**
            * =========================
-           * 우측 상단 탭 바 (항상 고정)
+           * 우측 상단 탭 바 (항상 유지)
            * =========================
-           *
-           * 기존 문제:
-           * - sell/buy 전용 블록 안에 탭 바가 있어서
-           *   my_posts / my_requests에서는 탭 바 자체가 사라졌음
-           *
-           * 현재:
-           * - 우측 패널 최상단에 항상 렌더링
            */}
           <div className="rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1364,10 +1426,6 @@ export default function ArcaMarketPage() {
                 ))}
               </div>
 
-              {/**
-               * 정렬 UI는 sell/buy 목록에서만 의미가 있으므로
-               * 내가 등록한 거래 / 내 거래 신청 탭에서는 숨긴다.
-               */}
               {(viewTab === "sell" || viewTab === "buy") && (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-zinc-500">정렬</span>
@@ -1387,15 +1445,6 @@ export default function ArcaMarketPage() {
             </div>
           </div>
 
-          {/**
-           * =========================
-           * 우측 콘텐츠 영역
-           * =========================
-           *
-           * 중요:
-           * - 탭에 따라 "내용만" 교체
-           * - 우측 패널 자체는 유지
-           */}
           {(viewTab === "sell" || viewTab === "buy") && (
             <>
               <div className="rounded-3xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
@@ -1636,6 +1685,7 @@ export default function ArcaMarketPage() {
                 <div className="space-y-4">
                   {myPosts.map((post) => {
                     const postRequests = receivedRequestsByPostId[post.id] ?? [];
+                    const summary = getRequestSummaryCounts(postRequests);
 
                     return (
                       <div
@@ -1644,23 +1694,77 @@ export default function ArcaMarketPage() {
                       >
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="text-sm text-zinc-700">
-                            <div className="font-medium text-zinc-900">
-                              {post.title || `${post.post_type === "sell" ? "판매" : "구매"} 거래`}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="font-medium text-zinc-900">
+                                {post.title || `${post.post_type === "sell" ? "판매" : "구매"} 거래`}
+                              </div>
+
+                              <span
+                                className={classNames(
+                                  "rounded-full px-2 py-1 text-xs font-semibold",
+                                  post.post_type === "sell"
+                                    ? "bg-rose-100 text-rose-700"
+                                    : "bg-sky-100 text-sky-700",
+                                )}
+                              >
+                                {post.post_type === "sell" ? "판매글" : "구매글"}
+                              </span>
+
+                              {summary.pending > 0 && (
+                                <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                                  진행중 신청 {summary.pending}건
+                                </span>
+                              )}
+                              {summary.completed > 0 && (
+                                <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                                  완료 {summary.completed}건
+                                </span>
+                              )}
+                              {summary.cancelled > 0 && (
+                                <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
+                                  취소 {summary.cancelled}건
+                                </span>
+                              )}
                             </div>
-                            <div className="mt-1">
-                              글 유형: {post.post_type === "sell" ? "판매글" : "구매글"}
+
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                              <div className="rounded-xl bg-zinc-50 px-3 py-3">
+                                <div className="text-xs text-zinc-500">총 등록 수량</div>
+                                <div className="mt-1 font-semibold text-zinc-900">
+                                  {formatNumber(post.arca_amount)} 아르카
+                                </div>
+                              </div>
+                              <div className="rounded-xl bg-zinc-50 px-3 py-3">
+                                <div className="text-xs text-zinc-500">예약 수량</div>
+                                <div className="mt-1 font-semibold text-zinc-900">
+                                  {formatNumber(post.reserved_quantity)} 아르카
+                                </div>
+                              </div>
+                              <div className="rounded-xl bg-zinc-50 px-3 py-3">
+                                <div className="text-xs text-zinc-500">완료 수량</div>
+                                <div className="mt-1 font-semibold text-zinc-900">
+                                  {formatNumber(post.completed_quantity)} 아르카
+                                </div>
+                              </div>
+                              <div className="rounded-xl bg-zinc-50 px-3 py-3">
+                                <div className="text-xs text-zinc-500">남은 수량</div>
+                                <div className="mt-1 font-semibold text-zinc-900">
+                                  {formatNumber(getRemainingQuantity(post))} 아르카
+                                </div>
+                              </div>
                             </div>
-                            <div>비율: {formatNumber(post.ratio)} : 1</div>
-                            <div>수량: {formatNumber(post.arca_amount)} 아르카</div>
-                            <div>남은 수량: {formatNumber(getRemainingQuantity(post))} 아르카</div>
-                            <div>
-                              거래 방식:{" "}
-                              {post.trade_mode === "bulk"
-                                ? "일괄"
-                                : `분할 (${formatNumber(post.split_unit ?? 0)}단위)`}
+
+                            <div className="mt-3 space-y-1">
+                              <div>비율: {formatNumber(post.ratio)} : 1</div>
+                              <div>
+                                거래 방식:{" "}
+                                {post.trade_mode === "bulk"
+                                  ? "일괄"
+                                  : `분할 (${formatNumber(post.split_unit ?? 0)}단위)`}
+                              </div>
+                              <div>등록일: {formatDate(post.created_at)}</div>
+                              <div className="text-xs text-zinc-500">상태: 진행중</div>
                             </div>
-                            <div>등록일: {formatDate(post.created_at)}</div>
-                            <div className="text-xs text-zinc-500">상태: 진행중</div>
                           </div>
 
                           <div className="flex gap-2">
@@ -1689,7 +1793,26 @@ export default function ArcaMarketPage() {
                                   className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-3 md:flex-row md:items-center md:justify-between"
                                 >
                                   <div className="text-sm text-zinc-700">
-                                    <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span
+                                        className={classNames(
+                                          "rounded-full px-2 py-1 text-xs font-semibold",
+                                          getStepStatusBadgeClass(req),
+                                        )}
+                                      >
+                                        {getStepStatusText(req)}
+                                      </span>
+                                      <span
+                                        className={classNames(
+                                          "rounded-full px-2 py-1 text-xs font-semibold",
+                                          getActionStatusBadgeClass(req, sessionUserId),
+                                        )}
+                                      >
+                                        {getActionStatusText(req, sessionUserId)}
+                                      </span>
+                                    </div>
+
+                                    <div className="mt-2">신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
                                     <div>비율: {formatNumber(req.ratio)} : 1</div>
                                     <div className="text-xs text-zinc-500">
                                       상태: {getRequestStatusLabel(req)} /{" "}
@@ -1706,15 +1829,21 @@ export default function ArcaMarketPage() {
                                       상세보기
                                     </button>
 
-                                    {req.status === "pending" && (
+                                    {req.status === "pending" && !req.owner_completed_at && (
                                       <button
                                         type="button"
                                         onClick={() => void handleCompleteRequest(req.id)}
-                                        disabled={requestSubmitting || !!req.owner_completed_at}
+                                        disabled={requestSubmitting}
                                         className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
                                       >
-                                        {req.owner_completed_at ? "완료 확인됨" : "거래 완료"}
+                                        거래 완료
                                       </button>
+                                    )}
+
+                                    {req.status === "pending" && req.owner_completed_at && (
+                                      <span className="text-xs font-medium text-sky-700">
+                                        내 완료 확인 반영됨
+                                      </span>
                                     )}
                                   </div>
                                 </div>
@@ -1740,71 +1869,134 @@ export default function ArcaMarketPage() {
                 <div className="text-sm text-zinc-500">신청 내역이 없습니다.</div>
               ) : (
                 <div className="space-y-3">
-                  {myRequests.map((req) => (
-                    <div
-                      key={req.id}
-                      className="flex flex-col gap-3 rounded-xl border border-zinc-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between"
-                    >
-                      <div className="text-sm text-zinc-700">
-                        <div className="font-medium text-zinc-900">
-                          {req.post?.title?.trim() ||
-                            `${req.post?.post_type === "sell" ? "판매" : "구매"} 거래글`}
-                        </div>
-                        <div>
-                          원본 글 유형: {req.post?.post_type === "sell" ? "판매글" : "구매글"}
-                        </div>
-                        <div>
-                          거래 방식:{" "}
-                          {req.post?.trade_mode === "bulk"
-                            ? "일괄"
-                            : `분할 (${formatNumber(req.post?.split_unit ?? 0)}단위)`}
-                        </div>
-                        <div>총 등록 수량: {formatNumber(req.post?.arca_amount ?? 0)} 아르카</div>
-                        <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
-                        <div>비율: {formatNumber(req.ratio)} : 1</div>
-                        <div className="text-xs text-zinc-500">
-                          상태: {getRequestStatusLabel(req)} /{" "}
-                          {getCompletionProgressLabel(req, sessionUserId)}
-                        </div>
-                      </div>
+                  {myRequests.map((req) => {
+                    const canRequesterComplete =
+                      req.status === "pending" && !req.requester_completed_at;
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setDetailRequest(req)}
-                          className="rounded-lg border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                        >
-                          상세보기
-                        </button>
+                    const canRequesterCancel =
+                      req.status === "pending" &&
+                      !req.requester_completed_at &&
+                      !req.owner_completed_at;
 
-                        {req.status === "pending" && (
-                          <>
+                    return (
+                      <div
+                        key={req.id}
+                        className="flex flex-col gap-3 rounded-xl border border-zinc-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between"
+                      >
+                        <div className="text-sm text-zinc-700">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="font-medium text-zinc-900">
+                              {req.post?.title?.trim() ||
+                                `${req.post?.post_type === "sell" ? "판매" : "구매"} 거래글`}
+                            </div>
+
+                            <span
+                              className={classNames(
+                                "rounded-full px-2 py-1 text-xs font-semibold",
+                                getStepStatusBadgeClass(req),
+                              )}
+                            >
+                              {getStepStatusText(req)}
+                            </span>
+
+                            <span
+                              className={classNames(
+                                "rounded-full px-2 py-1 text-xs font-semibold",
+                                getActionStatusBadgeClass(req, sessionUserId),
+                              )}
+                            >
+                              {getActionStatusText(req, sessionUserId)}
+                            </span>
+                          </div>
+
+                          <div className="mt-2">
+                            원본 글 유형: {req.post?.post_type === "sell" ? "판매글" : "구매글"}
+                          </div>
+                          <div>
+                            거래 방식:{" "}
+                            {req.post?.trade_mode === "bulk"
+                              ? "일괄"
+                              : `분할 (${formatNumber(req.post?.split_unit ?? 0)}단위)`}
+                          </div>
+                          <div>총 등록 수량: {formatNumber(req.post?.arca_amount ?? 0)} 아르카</div>
+                          <div>신청 수량: {formatNumber(req.request_quantity)} 아르카</div>
+                          <div>비율: {formatNumber(req.ratio)} : 1</div>
+                          <div className="text-xs text-zinc-500">
+                            상태: {getRequestStatusLabel(req)} /{" "}
+                            {getCompletionProgressLabel(req, sessionUserId)}
+                          </div>
+                        </div>
+
+                        <div className="flex min-w-[220px] flex-col items-start gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => void handleCompleteRequest(req.id)}
-                              disabled={requestSubmitting || !!req.requester_completed_at}
-                              className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => setDetailRequest(req)}
+                              className="rounded-lg border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
                             >
-                              {req.requester_completed_at ? "완료 확인됨" : "거래 완료"}
+                              상세보기
                             </button>
 
-                            <button
-                              type="button"
-                              onClick={() => void handleCancelRequest(req.id)}
-                              disabled={
-                                requestSubmitting ||
-                                !!req.requester_completed_at ||
-                                !!req.owner_completed_at
-                              }
-                              className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {req.requester_completed_at || req.owner_completed_at ? "취소 불가" : "취소"}
-                            </button>
-                          </>
-                        )}
+                            {canRequesterComplete && (
+                              <button
+                                type="button"
+                                onClick={() => void handleCompleteRequest(req.id)}
+                                disabled={requestSubmitting}
+                                className="rounded-lg bg-sky-600 px-3 py-1 text-xs text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                거래 완료
+                              </button>
+                            )}
+
+                            {canRequesterCancel && (
+                              <button
+                                type="button"
+                                onClick={() => void handleCancelRequest(req.id)}
+                                disabled={requestSubmitting}
+                                className="rounded-lg bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                취소
+                              </button>
+                            )}
+                          </div>
+
+                          {req.status === "pending" && req.requester_completed_at && (
+                            <div className="text-xs font-medium text-sky-700">
+                              내 완료 확인 반영됨 · 상대방 완료 대기 중
+                            </div>
+                          )}
+
+                          {req.status === "pending" &&
+                            !req.requester_completed_at &&
+                            req.owner_completed_at && (
+                              <div className="text-xs font-medium text-amber-700">
+                                상대방이 먼저 완료 확인함 · 내 완료 확인 필요
+                              </div>
+                            )}
+
+                          {req.status === "pending" &&
+                            !req.requester_completed_at &&
+                            !req.owner_completed_at && (
+                              <div className="text-xs text-zinc-500">
+                                아직 양측 완료 확인 전입니다. 거래 후 완료 버튼을 눌러 주세요.
+                              </div>
+                            )}
+
+                          {req.status === "completed" && (
+                            <div className="text-xs font-medium text-emerald-700">
+                              거래가 최종 완료되었습니다.
+                            </div>
+                          )}
+
+                          {req.status === "cancelled" && (
+                            <div className="text-xs font-medium text-red-700">
+                              취소된 신청입니다.
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -1849,6 +2041,10 @@ export default function ArcaMarketPage() {
             </div>
 
             <div className="space-y-5 px-6 py-5">
+              {/**
+               * UX 개선:
+               * 거래글 상세에서도 총/예약/완료/남은 수량을 함께 보여줌
+               */}
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">비율</div>
@@ -1858,9 +2054,23 @@ export default function ArcaMarketPage() {
                 </div>
 
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
-                  <div className="text-xs text-zinc-500">수량</div>
+                  <div className="text-xs text-zinc-500">총 등록 수량</div>
                   <div className="mt-2 text-xl font-bold text-zinc-900">
                     {formatNumber(detailPost.arca_amount)} 아르카
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">예약 수량</div>
+                  <div className="mt-2 text-xl font-bold text-zinc-900">
+                    {formatNumber(detailPost.reserved_quantity)} 아르카
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">완료 수량</div>
+                  <div className="mt-2 text-xl font-bold text-zinc-900">
+                    {formatNumber(detailPost.completed_quantity)} 아르카
                   </div>
                 </div>
 
@@ -2022,6 +2232,62 @@ export default function ArcaMarketPage() {
             </div>
 
             <div className="space-y-5 px-6 py-5">
+              {/**
+               * UX 개선:
+               * 신청 상세 모달 상단에 상태 요약 박스 추가
+               * - 현재 상태
+               * - 내 완료 여부
+               * - 상대 완료 여부
+               */}
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">현재 상태</div>
+                  <div className="mt-2">
+                    <span
+                      className={classNames(
+                        "rounded-full px-2 py-1 text-xs font-semibold",
+                        getStepStatusBadgeClass(detailRequest),
+                      )}
+                    >
+                      {getStepStatusText(detailRequest)}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-sm font-medium text-zinc-900">
+                    {getActionStatusText(detailRequest, sessionUserId)}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">내 완료 여부</div>
+                  <div className="mt-2 text-base font-semibold text-zinc-900">
+                    {sessionUserId === detailRequest.requester_id
+                      ? detailRequest.requester_completed_at
+                        ? "완료"
+                        : "미완료"
+                      : sessionUserId === detailRequest.owner_id
+                        ? detailRequest.owner_completed_at
+                          ? "완료"
+                          : "미완료"
+                        : "-"}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-zinc-50 px-4 py-4">
+                  <div className="text-xs text-zinc-500">상대 완료 여부</div>
+                  <div className="mt-2 text-base font-semibold text-zinc-900">
+                    {sessionUserId === detailRequest.requester_id
+                      ? detailRequest.owner_completed_at
+                        ? "완료"
+                        : "미완료"
+                      : sessionUserId === detailRequest.owner_id
+                        ? detailRequest.requester_completed_at
+                          ? "완료"
+                          : "미완료"
+                        : "-"}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-2xl bg-zinc-50 px-4 py-4">
                   <div className="text-xs text-zinc-500">원본 글 유형</div>
@@ -2078,44 +2344,53 @@ export default function ArcaMarketPage() {
 
               {detailRequest.status === "pending" && (
                 <div className="flex flex-wrap gap-2">
-                  {sessionUserId === detailRequest.owner_id && (
+                  {sessionUserId === detailRequest.owner_id && !detailRequest.owner_completed_at && (
                     <button
                       type="button"
                       onClick={() => void handleCompleteRequest(detailRequest.id)}
-                      disabled={requestSubmitting || !!detailRequest.owner_completed_at}
+                      disabled={requestSubmitting}
                       className="rounded-lg bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {detailRequest.owner_completed_at ? "완료 확인됨" : "거래 완료"}
+                      거래 완료
                     </button>
                   )}
 
-                  {sessionUserId === detailRequest.requester_id && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => void handleCompleteRequest(detailRequest.id)}
-                        disabled={requestSubmitting || !!detailRequest.requester_completed_at}
-                        className="rounded-lg bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {detailRequest.requester_completed_at ? "완료 확인됨" : "거래 완료"}
-                      </button>
+                  {sessionUserId === detailRequest.owner_id && detailRequest.owner_completed_at && (
+                    <span className="text-sm font-medium text-sky-700">
+                      내 완료 확인 반영됨
+                    </span>
+                  )}
 
+                  {sessionUserId === detailRequest.requester_id && !detailRequest.requester_completed_at && (
+                    <button
+                      type="button"
+                      onClick={() => void handleCompleteRequest(detailRequest.id)}
+                      disabled={requestSubmitting}
+                      className="rounded-lg bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      거래 완료
+                    </button>
+                  )}
+
+                  {sessionUserId === detailRequest.requester_id &&
+                    !detailRequest.requester_completed_at &&
+                    !detailRequest.owner_completed_at && (
                       <button
                         type="button"
                         onClick={() => void handleCancelRequest(detailRequest.id)}
-                        disabled={
-                          requestSubmitting ||
-                          !!detailRequest.requester_completed_at ||
-                          !!detailRequest.owner_completed_at
-                        }
+                        disabled={requestSubmitting}
                         className="rounded-lg bg-red-500 px-3 py-2 text-sm text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {detailRequest.requester_completed_at || detailRequest.owner_completed_at
-                          ? "취소 불가"
-                          : "취소"}
+                        취소
                       </button>
-                    </>
-                  )}
+                    )}
+
+                  {sessionUserId === detailRequest.requester_id &&
+                    detailRequest.requester_completed_at && (
+                      <span className="text-sm font-medium text-sky-700">
+                        내 완료 확인 반영됨
+                      </span>
+                    )}
                 </div>
               )}
             </div>
