@@ -1788,7 +1788,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleCancelPost(post)}
-                                  className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
+                                   className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
                                 >
                                   글 취소
                                 </button>
@@ -1796,7 +1796,7 @@ export default function ArcaMarketPage() {
                                 <button
                                   type="button"
                                   onClick={() => void handleDeletePost(post)}
-                                  className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-600"
+                                   className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
                                 >
                                   삭제
                                 </button>
@@ -2061,7 +2061,7 @@ export default function ArcaMarketPage() {
                                   type="button"
                                   onClick={() => void handleCancelRequest(req)}
                                   disabled={requestSubmitting}
-                                  className="min-w-[96px] rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                   className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-100"
                                 >
                                   취소
                                 </button>
