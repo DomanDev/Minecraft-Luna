@@ -1085,6 +1085,12 @@ export default function CookingCalculatorPage() {
     experiencePerSuccessfulCraft,
   ]);
 
+  const expectedCookCountPerHour =
+    result.expectedActionTimeSeconds > 0
+      ? (3600 / result.expectedActionTimeSeconds) *
+        result.expectedCraftCountPerAction
+      : 0;
+
     /**
    * 경험치 계산기 전용 계산
    *
@@ -1701,6 +1707,11 @@ export default function CookingCalculatorPage() {
               <div className="flex justify-between">
                 <span>1회 행동 기대 순이익</span>
                 <span>{formatCell(result.expectedNetProfitPerAction)}셀</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>시간당 예상 요리횟수</span>
+                <span>{formatDecimal(expectedCookCountPerHour, 2)}회</span>
               </div>
 
               <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
