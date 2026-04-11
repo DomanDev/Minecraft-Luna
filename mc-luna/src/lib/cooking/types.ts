@@ -92,16 +92,31 @@ export interface CookingStats {
   mastery: number;
   dexterity: number;
   cookingGradeUpChance: number;
+
+  /**
+   * 추가 조리 시간 감소
+   * - 현재 프로젝트 내부에서 유지 중인 보정값
+   */
   additionalCookTimeReductionPercent: number;
-  additionalFoodDurationBonusPercent: number;
 }
 
 export interface CookingSkills {
   preparationMaster: number;
   balanceOfTaste: number;
   gourmet: number;
+
+  /**
+   * 액티브 스킬 레벨
+   */
   instantCompletion: number;
   banquetPreparation: number;
+
+  /**
+   * 액티브 스킬 사용 여부
+   * - 레벨이 있어도 체크하지 않으면 계산에 반영하지 않음
+   */
+  useInstantCompletion: boolean;
+  useBanquetPreparation: boolean;
 }
 
 export interface CookingPrices {
@@ -115,6 +130,18 @@ export interface CookingCalculationInput {
   stats: CookingStats;
   skills: CookingSkills;
   prices: CookingPrices;
+
+  /**
+   * 1회 성공 요리 경험치
+   *
+   * 주의:
+   * - 현재 공개 코드와 업로드된 파일에서는
+   *   레시피별 정확한 경험치 테이블을 확인할 수 없으므로
+   *   우선 계산기 입력값으로 둔다.
+   * - 나중에 정확한 서버값을 확보하면
+   *   recipes.ts 또는 별도 exp 테이블로 이동 가능하다.
+   */
+  experiencePerSuccessfulCraft: number;
 
   /**
    * 재료별 희귀 재료 선택 여부
@@ -147,9 +174,19 @@ export interface CookingCalculationResult {
   additionalCookTimeReductionPercent: number;
   finalCraftTimeSeconds: number;
 
+  /**
+   * 액티브 스킬 관련
+   */
+  useInstantCompletion: boolean;
+  useBanquetPreparation: boolean;
+  instantCompletionProcChancePercent: number;
+  banquetPreparationProcChancePercent: number;
+  expectedActionTimeSeconds: number;
+  expectedCraftCountPerAction: number;
+  expectedSuccessfulCraftCountPerAction: number;
+
   baseDurationSeconds: number | null;
   balanceOfTasteBonusPercent: number;
-  additionalFoodDurationBonusPercent: number;
   rareIngredientDurationBonusSeconds: number;
   finalDurationSeconds: number | null;
 
@@ -162,6 +199,15 @@ export interface CookingCalculationResult {
   rareEffectSummaryLines: string[];
 
   expectedRevenuePerCraft: number;
+  expectedRevenuePerAction: number;
   expectedNetProfitPerCraft: number;
+  expectedNetProfitPerAction: number;
   expectedNetProfitPerHour: number;
+
+  /**
+   * 경험치 계산
+   */
+  experiencePerSuccessfulCraft: number;
+  expectedExperiencePerAction: number;
+  expectedExperiencePerHour: number;
 }

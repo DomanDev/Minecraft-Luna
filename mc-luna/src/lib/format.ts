@@ -18,11 +18,17 @@ export function formatInteger(value: number): string {
 
 /**
  * 셀 전용 표시
- * 현재는 일반 정수와 동일하지만,
- * 추후 "셀" 단위 특수 규칙이 생기면 여기서만 바꾸면 됨
+ *
+ * 정책:
+ * - 양수는 소수점 버림
+ * - 음수는 절댓값 기준으로 버림 후 다시 음수 부호 부여
+ *   예: -1234.9 -> "-1,234"
  */
 export function formatCell(value: number): string {
-  return Math.floor(Math.max(value, 0)).toLocaleString("ko-KR");
+  const truncated =
+    value < 0 ? -Math.floor(Math.abs(value)) : Math.floor(value);
+
+  return truncated.toLocaleString("ko-KR");
 }
 
 /**

@@ -2,14 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/src/lib/supabase";
-import { calculateMining } from "@/src/lib/mining/calc";
-import type {
-  MiningCalculationInput,
-  MiningOreType,
-  MiningProcessType,
-  MiningRecipeTier,
-  MiningThirstMin,
-} from "@/src/lib/mining/types";
+
 import CalculatorLayout from "@/src/components/calculator/CalculatorLayout";
 import CalculatorPanel from "@/src/components/calculator/CalculatorPanel";
 import Field from "@/src/components/calculator/Field";
@@ -17,265 +10,292 @@ import NumberInput from "@/src/components/calculator/NumberInput";
 import SelectInput from "@/src/components/calculator/SelectInput";
 import ActionButton from "@/src/components/calculator/ActionButton";
 import ResultCard from "@/src/components/calculator/ResultCard";
+
 import { useRequireProfile } from "@/src/hooks/useRequireProfile";
-import { formatInteger } from "@/src/lib/format";
+import { toast } from "sonner";
 
-/**
- * =========================
- * 채광 페이지 옵션 목록
- * =========================
- */
+import { calculateMining } from "@/src/lib/mining/calc";
+import {
+  MINING_RECIPES,
+  getMiningRecipe,
+  type MiningRecipeId,
+} from "@/src/lib/mining/recipes";
+import type {
+  MiningCalculationInput,
+  MiningCalculationResult,
+} from "@/src/lib/mining/types";
 
-const oreOptions: { value: MiningOreType; label: string; descriptionLines: string[] }[] = [
-  {
-    value: "mithril",
-    label: "미스릴",
-    descriptionLines: ["스폰 높이: Y -32 ~ 32", "허름한 화로 제련 가능"],
-  },
-  {
-    value: "argentite",
-    label: "아르젠타이트",
-    descriptionLines: ["스폰 높이: Y -48 ~ 16", "허름한 화로 제련 가능"],
-  },
-  {
-    value: "vellium",
-    label: "벨리움",
-    descriptionLines: ["스폰 높이: Y -64 ~ 0", "허름한 화로 제련 가능"],
-  },
-];
+import {
+  loadUserMarketPrices,
+  upsertUserMarketPrices,
+} from "@/src/lib/market/db";
+import type {
+  MarketGrade,
+  UserMarketPriceRow,
+} from "@/src/lib/market/types";
+import { MINING_MARKET_ITEMS } from "@/src/lib/market/defaultPrices";
+import { formatCell, formatDecimal, formatPercent } from "@/src/lib/format";
+import StatNumberInput from "@/src/components/calculator/StatNumberInput";
 
-const processOptions: { value: MiningProcessType; label: string }[] = [
-  { value: "furnace", label: "허름한 화로 제련" },
-  { value: "vellium_synthesis", label: "벨리움 합성" },
-];
+const recipeOptions = MINING_RECIPES.map((recipe) => ({
+  value: recipe.id,
+  label: `${recipe.name} (${recipe.tierLabel})`,
+}));
 
-const recipeOptions: { value: MiningRecipeTier; label: string }[] = [
-  { value: "sturdy_vellium", label: "단단한 벨리움" },
-  { value: "pure_vellium", label: "순수한 벨리움" },
-];
-
-const thirstOptions: { value: MiningThirstMin; label: string }[] = [
-  { value: 15, label: "15 이상 유지" },
-  { value: 10, label: "10 이상 유지" },
-  { value: 5, label: "5 이상 유지" },
-  { value: 1, label: "1 이상 유지" },
-  { value: 0, label: "0까지 허용" },
-];
-
-/**
- * 현재 단계에서는
- * - 공통 스탯 6종
- * - 채광 도감 효과 2종
- * - 채광 스킬 5종
- * 을 구조상 모두 잡아 둔다.
- *
- * 실제 계산 반영 강도는 추후 단계적으로 늘릴 예정.
- */
 const INITIAL_FORM = {
-  luck: 0,
-  sense: 0,
-  endurance: 0,
-  mastery: 0,
   dexterity: 0,
-  charisma: 0,
-
-  /**
-   * 도감 효과
-   * - 프로필 자동 반영
-   * - 수동 수정 불가
-   */
-  miningDelayReduction: 0,
-  miningDamageIncrease: 0,
-
-  temperedPickaxe: 0,
-  veinSense: 0,
-  veinFlow: 0,
-  veinDetection: 0,
-  explosiveMining: 0,
-
-  oreType: "mithril" as MiningOreType,
-  processType: "furnace" as MiningProcessType,
-  recipeTier: "sturdy_vellium" as MiningRecipeTier,
-  thirstMin: 15 as MiningThirstMin,
-
-  commonPrice: 100,
-  silverPrice: 180,
-  goldPrice: 350,
-  sturdyVelliumPrice: 1500,
-  pureVelliumPrice: 3000,
+  recipeId: "mithril_ingot" as MiningRecipeId,
 };
+
+function pickDefaultMiningPrice(itemKey: string, grade: MarketGrade): number | null {
+  const matched = MINING_MARKET_ITEMS.find((item) => item.key === itemKey);
+
+  if (!matched) return null;
+
+  const value = matched.prices[grade];
+  return typeof value === "number" ? value : null;
+}
+
+function createInitialIngredientPrices(
+  recipeId: MiningRecipeId,
+): Record<string, number> {
+  const recipe = getMiningRecipe(recipeId);
+
+  return recipe.ingredients.reduce<Record<string, number>>((acc, ingredient) => {
+    const price = pickDefaultMiningPrice(ingredient.itemKey, ingredient.grade);
+    acc[`${ingredient.itemKey}:${ingredient.grade}`] =
+      typeof price === "number" ? price : 0;
+    return acc;
+  }, {});
+}
+
+function createInitialResultPrices(
+  recipeId: MiningRecipeId,
+): Record<string, number> {
+  const recipe = getMiningRecipe(recipeId);
+
+  if (recipe.resultGradeType === "triple") {
+    return {
+      [`${recipe.resultItemKey}:normal`]:
+        pickDefaultMiningPrice(recipe.resultItemKey, "normal") ?? 0,
+      [`${recipe.resultItemKey}:advanced`]:
+        pickDefaultMiningPrice(recipe.resultItemKey, "advanced") ?? 0,
+      [`${recipe.resultItemKey}:rare`]:
+        pickDefaultMiningPrice(recipe.resultItemKey, "rare") ?? 0,
+    };
+  }
+
+  return {
+    [`${recipe.resultItemKey}:single`]:
+      pickDefaultMiningPrice(recipe.resultItemKey, "single") ?? 0,
+  };
+}
 
 function createInitialCalculationInput(): MiningCalculationInput {
   return {
-    stats: {
-      luck: INITIAL_FORM.luck,
-      sense: INITIAL_FORM.sense,
-      endurance: INITIAL_FORM.endurance,
-      mastery: INITIAL_FORM.mastery,
-      dexterity: INITIAL_FORM.dexterity,
-      charisma: INITIAL_FORM.charisma,
-      miningDelayReduction: INITIAL_FORM.miningDelayReduction,
-      miningDamageIncrease: INITIAL_FORM.miningDamageIncrease,
-    },
-    skills: {
-      temperedPickaxe: INITIAL_FORM.temperedPickaxe,
-      veinSense: INITIAL_FORM.veinSense,
-      veinFlow: INITIAL_FORM.veinFlow,
-      veinDetection: INITIAL_FORM.veinDetection,
-      explosiveMining: INITIAL_FORM.explosiveMining,
-    },
-    environment: {
-      oreType: INITIAL_FORM.oreType,
-      processType: INITIAL_FORM.processType,
-      recipeTier: INITIAL_FORM.recipeTier,
-      thirstMin: INITIAL_FORM.thirstMin,
-    },
+    recipeId: INITIAL_FORM.recipeId,
+    dexterity: INITIAL_FORM.dexterity,
     prices: {
-      common: INITIAL_FORM.commonPrice,
-      silver: INITIAL_FORM.silverPrice,
-      gold: INITIAL_FORM.goldPrice,
-      sturdyVellium: INITIAL_FORM.sturdyVelliumPrice,
-      pureVellium: INITIAL_FORM.pureVelliumPrice,
+      ingredientUnitPrices: createInitialIngredientPrices(INITIAL_FORM.recipeId),
+      resultPrices: createInitialResultPrices(INITIAL_FORM.recipeId),
     },
   };
 }
 
-function formatNumber(value: number, digits = 2): string {
-  return value.toLocaleString("ko-KR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  });
-}
-
-function formatPercentFromRatio(value: number, digits = 2): string {
-  return `${formatNumber(value * 100, digits)}%`;
+function formatSeconds(seconds: number, digits = 2): string {
+  return `${formatDecimal(seconds, digits)}초`;
 }
 
 export default function MiningCalculatorPage() {
-  /**
-   * 페이지 진입 전 공통 가드
-   *
-   * 정책:
-   * - 로그인 안 되어 있으면 /login
-   * - 마인크래프트 프로필 연동이 안 되어 있으면 /profile
-   */
   const { loading: guardLoading, allowed } = useRequireProfile({
-    loginMessage: "채광 계산기를 사용하려면 로그인이 필요합니다.",
-    profileMessage: "채광 계산기를 사용하려면 프로필 연동이 필요합니다.",
+    loginMessage: "광부 계산기를 사용하려면 로그인이 필요합니다.",
+    profileMessage: "광부 계산기를 사용하려면 프로필 연동이 필요합니다.",
   });
 
   const loadingProfileRef = useRef(false);
   const hasLoadedProfileRef = useRef(false);
+  const loadingMarketPriceRef = useRef(false);
 
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [planType, setPlanType] = useState<"free" | "pro" | null>(null);
 
-  /**
-   * 공통 스탯
-   */
-  const [luck, setLuck] = useState(INITIAL_FORM.luck);
-  const [sense, setSense] = useState(INITIAL_FORM.sense);
-  const [endurance, setEndurance] = useState(INITIAL_FORM.endurance);
-  const [mastery, setMastery] = useState(INITIAL_FORM.mastery);
   const [dexterity, setDexterity] = useState(INITIAL_FORM.dexterity);
-  const [charisma, setCharisma] = useState(INITIAL_FORM.charisma);
+  const [recipeId, setRecipeId] = useState<MiningRecipeId>(INITIAL_FORM.recipeId);
 
-  /**
-   * 도감 효과
-   */
-  const [miningDelayReduction, setMiningDelayReduction] = useState(
-    INITIAL_FORM.miningDelayReduction,
-  );
-  const [miningDamageIncrease, setMiningDamageIncrease] = useState(
-    INITIAL_FORM.miningDamageIncrease,
+  const [ingredientUnitPrices, setIngredientUnitPrices] = useState<
+    Record<string, number>
+  >(createInitialIngredientPrices(INITIAL_FORM.recipeId));
+
+  const [resultPrices, setResultPrices] = useState<Record<string, number>>(
+    createInitialResultPrices(INITIAL_FORM.recipeId),
   );
 
-  /**
-   * 채광 스킬
-   */
-  const [temperedPickaxe, setTemperedPickaxe] = useState(
-    INITIAL_FORM.temperedPickaxe,
-  );
-  const [veinSense, setVeinSense] = useState(INITIAL_FORM.veinSense);
-  const [veinFlow, setVeinFlow] = useState(INITIAL_FORM.veinFlow);
-  const [veinDetection, setVeinDetection] = useState(
-    INITIAL_FORM.veinDetection,
-  );
-  const [explosiveMining, setExplosiveMining] = useState(
-    INITIAL_FORM.explosiveMining,
-  );
-
-  /**
-   * 환경/선택값
-   */
-  const [oreType, setOreType] = useState(INITIAL_FORM.oreType);
-  const [processType, setProcessType] = useState(INITIAL_FORM.processType);
-  const [recipeTier, setRecipeTier] = useState(INITIAL_FORM.recipeTier);
-  const [thirstMin, setThirstMin] = useState(INITIAL_FORM.thirstMin);
-
-  /**
-   * 평균 시세
-   */
-  const [commonPrice, setCommonPrice] = useState(INITIAL_FORM.commonPrice);
-  const [silverPrice, setSilverPrice] = useState(INITIAL_FORM.silverPrice);
-  const [goldPrice, setGoldPrice] = useState(INITIAL_FORM.goldPrice);
-  const [sturdyVelliumPrice, setSturdyVelliumPrice] = useState(
-    INITIAL_FORM.sturdyVelliumPrice,
-  );
-  const [pureVelliumPrice, setPureVelliumPrice] = useState(
-    INITIAL_FORM.pureVelliumPrice,
-  );
-
-  const [result, setResult] = useState(() =>
+  const [result, setResult] = useState<MiningCalculationResult>(() =>
     calculateMining(createInitialCalculationInput()),
   );
   const [isDirty, setIsDirty] = useState(false);
 
+  const selectedRecipe = useMemo(() => getMiningRecipe(recipeId), [recipeId]);
+  const isProUser = planType === "pro";
+  const disableProfileFields = planType !== "pro";
+
   const buildCalculationInput = (): MiningCalculationInput => ({
-    stats: {
-      luck,
-      sense,
-      endurance,
-      mastery,
-      dexterity,
-      charisma,
-      miningDelayReduction,
-      miningDamageIncrease,
-    },
-    skills: {
-      temperedPickaxe,
-      veinSense,
-      veinFlow,
-      veinDetection,
-      explosiveMining,
-    },
-    environment: {
-      oreType,
-      processType,
-      recipeTier,
-      thirstMin,
-    },
+    recipeId,
+    dexterity,
     prices: {
-      common: commonPrice,
-      silver: silverPrice,
-      gold: goldPrice,
-      sturdyVellium: sturdyVelliumPrice,
-      pureVellium: pureVelliumPrice,
+      ingredientUnitPrices,
+      resultPrices,
     },
   });
 
-  /**
-   * 프로필 기반 자동 입력값 로드
-   *
-   * 현재 구조:
-   * - profiles 에서 plan_type 조회
-   * - mining_profiles 에서 채광 스탯/도감값 조회 시도
-   * - user_skill_levels + skill_definitions(job_code = mining) 로 스킬값 조회
-   *
-   * 주의:
-   * - mining_profiles 테이블/컬럼이 아직 완전히 준비되지 않았더라도
-   *   페이지가 죽지 않도록 최대한 안전하게 fallback 한다.
-   */
+  const applySavedMarketPriceToCalculator = useCallback(
+    async (targetRecipeId: MiningRecipeId) => {
+      if (loadingMarketPriceRef.current) return;
+      if (guardLoading || !allowed) return;
+
+      loadingMarketPriceRef.current = true;
+
+      try {
+        const recipe = getMiningRecipe(targetRecipeId);
+
+        const nextIngredientPrices = createInitialIngredientPrices(targetRecipeId);
+        const nextResultPrices = createInitialResultPrices(targetRecipeId);
+
+        if (planType !== "pro") {
+          setIngredientUnitPrices(nextIngredientPrices);
+          setResultPrices(nextResultPrices);
+          setIsDirty(true);
+          return;
+        }
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        const user = session?.user;
+        if (!user) return;
+
+        const miningRows = await loadUserMarketPrices(user.id, "mining");
+
+        recipe.ingredients.forEach((ingredient) => {
+          const key = `${ingredient.itemKey}:${ingredient.grade}`;
+
+          const saved = miningRows.find(
+            (row) =>
+              row.item_key === ingredient.itemKey &&
+              row.grade === ingredient.grade,
+          );
+
+          if (saved && typeof saved.price === "number") {
+            nextIngredientPrices[key] = saved.price;
+          }
+        });
+
+        if (recipe.resultGradeType === "triple") {
+          (["normal", "advanced", "rare"] as const).forEach((grade) => {
+            const saved = miningRows.find(
+              (row) =>
+                row.item_key === recipe.resultItemKey &&
+                row.grade === grade,
+            );
+
+            if (saved && typeof saved.price === "number") {
+              nextResultPrices[`${recipe.resultItemKey}:${grade}`] = saved.price;
+            }
+          });
+        } else {
+          const saved = miningRows.find(
+            (row) =>
+              row.item_key === recipe.resultItemKey &&
+              row.grade === "single",
+          );
+
+          if (saved && typeof saved.price === "number") {
+            nextResultPrices[`${recipe.resultItemKey}:single`] = saved.price;
+          }
+        }
+
+        setIngredientUnitPrices(nextIngredientPrices);
+        setResultPrices(nextResultPrices);
+        setIsDirty(true);
+      } catch (error) {
+        console.error("광부 시세 자동 불러오기 실패:", error);
+      } finally {
+        loadingMarketPriceRef.current = false;
+      }
+    },
+    [allowed, guardLoading, planType],
+  );
+
+  const handleSaveCurrentRecipePrice = useCallback(async () => {
+    if (!isProUser) {
+      toast.error("레시피 시세 저장은 Pro 사용자만 가능합니다.");
+      return;
+    }
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const user = session?.user;
+      if (!user) {
+        toast.error("로그인 정보가 없습니다.");
+        return;
+      }
+
+      const rows: UserMarketPriceRow[] = [];
+
+      selectedRecipe.ingredients.forEach((ingredient) => {
+        rows.push({
+          user_id: user.id,
+          category: "mining",
+          item_key: ingredient.itemKey,
+          grade: ingredient.grade,
+          price:
+            ingredientUnitPrices[
+              `${ingredient.itemKey}:${ingredient.grade}`
+            ] ?? 0,
+        });
+      });
+
+      if (selectedRecipe.resultGradeType === "triple") {
+        (["normal", "advanced", "rare"] as const).forEach((grade) => {
+          rows.push({
+            user_id: user.id,
+            category: "mining",
+            item_key: selectedRecipe.resultItemKey,
+            grade,
+            price: resultPrices[`${selectedRecipe.resultItemKey}:${grade}`] ?? 0,
+          });
+        });
+      } else {
+        rows.push({
+          user_id: user.id,
+          category: "mining",
+          item_key: selectedRecipe.resultItemKey,
+          grade: "single",
+          price: resultPrices[`${selectedRecipe.resultItemKey}:single`] ?? 0,
+        });
+      }
+
+      await upsertUserMarketPrices(rows);
+
+      toast.success("현재 레시피 재료/결과물 시세를 저장했습니다.");
+      await applySavedMarketPriceToCalculator(recipeId);
+    } catch (error) {
+      console.error("광부 시세 저장 실패:", error);
+      toast.error("시세 저장 중 오류가 발생했습니다.");
+    }
+  }, [
+    isProUser,
+    selectedRecipe,
+    ingredientUnitPrices,
+    resultPrices,
+    recipeId,
+    applySavedMarketPriceToCalculator,
+  ]);
+
   const loadProfileToCalculator = useCallback(async () => {
     if (loadingProfileRef.current) return;
     if (hasLoadedProfileRef.current) return;
@@ -288,12 +308,7 @@ export default function MiningCalculatorPage() {
       for (let i = 0; i < 5; i++) {
         const {
           data: { session },
-          error,
         } = await supabase.auth.getSession();
-
-        if (error) {
-          console.warn("getSession 실패:", error.message);
-        }
 
         if (session?.user) {
           user = session.user;
@@ -326,13 +341,9 @@ export default function MiningCalculatorPage() {
       const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
       setPlanType(nextPlanType);
 
-      /**
-       * mining_profiles 는 아직 세부 스키마가 조정될 수 있으므로
-       * select("*") 후 필요한 값만 읽는다.
-       */
       const { data: miningProfile, error: miningProfileError } = await supabase
         .from("mining_profiles")
-        .select("*")
+        .select("dexterity_total")
         .eq("user_id", user.id)
         .single();
 
@@ -340,240 +351,93 @@ export default function MiningCalculatorPage() {
         console.warn("mining_profiles 조회 실패:", miningProfileError.message);
       }
 
-      const { data: skillLevels, error: skillLevelsError } = await supabase
-        .from("user_skill_levels")
-        .select("skill_id, skill_level")
-        .eq("user_id", user.id);
-
-      if (skillLevelsError) {
-        console.warn("user_skill_levels 조회 실패:", skillLevelsError.message);
-        return;
-      }
-
-      const { data: skillDefinitions, error: skillDefinitionsError } =
-        await supabase
-          .from("skill_definitions")
-          .select("id, skill_name_ko")
-          .eq("job_code", "mining")
-          .eq("is_enabled", true);
-
-      if (skillDefinitionsError) {
-        console.warn("skill_definitions 조회 실패:", skillDefinitionsError.message);
-        return;
-      }
-
-      const skillMap = Object.fromEntries(
-        (skillLevels ?? []).map((row) => {
-          const matched = (skillDefinitions ?? []).find(
-            (def) => def.id === row.skill_id,
-          );
-          return [matched?.skill_name_ko ?? "", row.skill_level];
-        }),
-      );
-
-      const nextLuck = Number(miningProfile?.luck_total ?? INITIAL_FORM.luck);
-      const nextSense = Number(miningProfile?.sense_total ?? INITIAL_FORM.sense);
-      const nextEndurance = Number(
-        miningProfile?.endurance_total ?? INITIAL_FORM.endurance,
-      );
-      const nextMastery = Number(
-        miningProfile?.mastery_total ?? INITIAL_FORM.mastery,
-      );
       const nextDexterity = Number(
         miningProfile?.dexterity_total ?? INITIAL_FORM.dexterity,
       );
-      const nextCharisma = Number(
-        miningProfile?.charisma_total ?? INITIAL_FORM.charisma,
-      );
 
-      const nextMiningDelayReduction = Number(
-        miningProfile?.mining_delay_reduction_total ??
-          INITIAL_FORM.miningDelayReduction,
-      );
-      const nextMiningDamageIncrease = Number(
-        miningProfile?.mining_damage_increase_total ??
-          INITIAL_FORM.miningDamageIncrease,
-      );
-
-      const nextTemperedPickaxe = Number(
-        skillMap["단련된 곡괭이"] ?? INITIAL_FORM.temperedPickaxe,
-      );
-      const nextVeinSense = Number(
-        skillMap["광맥 감각"] ?? INITIAL_FORM.veinSense,
-      );
-      const nextVeinFlow = Number(
-        skillMap["광맥 흐름"] ?? INITIAL_FORM.veinFlow,
-      );
-      const nextVeinDetection = Number(
-        skillMap["광맥 탐지"] ?? INITIAL_FORM.veinDetection,
-      );
-      const nextExplosiveMining = Number(
-        skillMap["폭발적인 채광"] ?? INITIAL_FORM.explosiveMining,
-      );
-
-      setLuck(nextLuck);
-      setSense(nextSense);
-      setEndurance(nextEndurance);
-      setMastery(nextMastery);
       setDexterity(nextDexterity);
-      setCharisma(nextCharisma);
-
-      setMiningDelayReduction(nextMiningDelayReduction);
-      setMiningDamageIncrease(nextMiningDamageIncrease);
-
-      setTemperedPickaxe(nextTemperedPickaxe);
-      setVeinSense(nextVeinSense);
-      setVeinFlow(nextVeinFlow);
-      setVeinDetection(nextVeinDetection);
-      setExplosiveMining(nextExplosiveMining);
-
       setProfileLoaded(Boolean(miningProfile));
       hasLoadedProfileRef.current = true;
 
-      /**
-       * 초기 진입 시 결과도 프로필 기준으로 한 번 맞춰 둔다.
-       */
       setResult(
         calculateMining({
-          stats: {
-            luck: nextLuck,
-            sense: nextSense,
-            endurance: nextEndurance,
-            mastery: nextMastery,
-            dexterity: nextDexterity,
-            charisma: nextCharisma,
-            miningDelayReduction: nextMiningDelayReduction,
-            miningDamageIncrease: nextMiningDamageIncrease,
-          },
-          skills: {
-            temperedPickaxe: nextTemperedPickaxe,
-            veinSense: nextVeinSense,
-            veinFlow: nextVeinFlow,
-            veinDetection: nextVeinDetection,
-            explosiveMining: nextExplosiveMining,
-          },
-          environment: {
-            oreType,
-            processType,
-            recipeTier,
-            thirstMin,
-          },
+          recipeId,
+          dexterity: nextDexterity,
           prices: {
-            common: commonPrice,
-            silver: silverPrice,
-            gold: goldPrice,
-            sturdyVellium: sturdyVelliumPrice,
-            pureVellium: pureVelliumPrice,
+            ingredientUnitPrices,
+            resultPrices,
           },
         }),
       );
-
       setIsDirty(false);
     } finally {
       loadingProfileRef.current = false;
     }
-  }, [
-    oreType,
-    processType,
-    recipeTier,
-    thirstMin,
-    commonPrice,
-    silverPrice,
-    goldPrice,
-    sturdyVelliumPrice,
-    pureVelliumPrice,
-  ]);
+  }, [recipeId, ingredientUnitPrices, resultPrices]);
 
-  /**
-   * 공통 가드를 통과한 뒤에만
-   * 프로필 기반 계산기 자동 입력값을 불러온다.
-   */
   useEffect(() => {
-    if (guardLoading) return;
-    if (!allowed) return;
-
-    loadProfileToCalculator();
+    if (guardLoading || !allowed) return;
+    void loadProfileToCalculator();
   }, [guardLoading, allowed, loadProfileToCalculator]);
 
-  const isProUser = planType === "pro";
-  const disableProfileFields = planType !== "pro";
+  useEffect(() => {
+    if (guardLoading || !allowed) return;
+    void applySavedMarketPriceToCalculator(recipeId);
+  }, [guardLoading, allowed, recipeId, applySavedMarketPriceToCalculator]);
 
-  const selectedOre = useMemo(
-    () => oreOptions.find((item) => item.value === oreType),
-    [oreType],
-  );
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        setPlanType(null);
+        setProfileLoaded(false);
+        hasLoadedProfileRef.current = false;
+        return;
+      }
+
+      if (!hasLoadedProfileRef.current) {
+        void loadProfileToCalculator();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [loadProfileToCalculator]);
+
+  useEffect(() => {
+    setIngredientUnitPrices(createInitialIngredientPrices(recipeId));
+    setResultPrices(createInitialResultPrices(recipeId));
+  }, [recipeId]);
 
   const handleCalculate = useCallback(() => {
     setResult(calculateMining(buildCalculationInput()));
     setIsDirty(false);
-  }, [
-    luck,
-    sense,
-    endurance,
-    mastery,
-    dexterity,
-    charisma,
-    miningDelayReduction,
-    miningDamageIncrease,
-    temperedPickaxe,
-    veinSense,
-    veinFlow,
-    veinDetection,
-    explosiveMining,
-    oreType,
-    processType,
-    recipeTier,
-    thirstMin,
-    commonPrice,
-    silverPrice,
-    goldPrice,
-    sturdyVelliumPrice,
-    pureVelliumPrice,
-  ]);
+  }, [recipeId, dexterity, ingredientUnitPrices, resultPrices]);
 
-  const handleReset = () => {
-    hasLoadedProfileRef.current = false;
+  const handleReset = useCallback(() => {
     setProfileLoaded(false);
-
-    setLuck(INITIAL_FORM.luck);
-    setSense(INITIAL_FORM.sense);
-    setEndurance(INITIAL_FORM.endurance);
-    setMastery(INITIAL_FORM.mastery);
     setDexterity(INITIAL_FORM.dexterity);
-    setCharisma(INITIAL_FORM.charisma);
-
-    setMiningDelayReduction(INITIAL_FORM.miningDelayReduction);
-    setMiningDamageIncrease(INITIAL_FORM.miningDamageIncrease);
-
-    setTemperedPickaxe(INITIAL_FORM.temperedPickaxe);
-    setVeinSense(INITIAL_FORM.veinSense);
-    setVeinFlow(INITIAL_FORM.veinFlow);
-    setVeinDetection(INITIAL_FORM.veinDetection);
-    setExplosiveMining(INITIAL_FORM.explosiveMining);
-
-    setOreType(INITIAL_FORM.oreType);
-    setProcessType(INITIAL_FORM.processType);
-    setRecipeTier(INITIAL_FORM.recipeTier);
-    setThirstMin(INITIAL_FORM.thirstMin);
-
-    setCommonPrice(INITIAL_FORM.commonPrice);
-    setSilverPrice(INITIAL_FORM.silverPrice);
-    setGoldPrice(INITIAL_FORM.goldPrice);
-    setSturdyVelliumPrice(INITIAL_FORM.sturdyVelliumPrice);
-    setPureVelliumPrice(INITIAL_FORM.pureVelliumPrice);
-
+    setRecipeId(INITIAL_FORM.recipeId);
+    setIngredientUnitPrices(createInitialIngredientPrices(INITIAL_FORM.recipeId));
+    setResultPrices(createInitialResultPrices(INITIAL_FORM.recipeId));
     setResult(calculateMining(createInitialCalculationInput()));
     setIsDirty(false);
-  };
+  }, []);
 
-  /**
-   * 공통 가드 확인 중이거나 아직 접근이 허용되지 않은 경우
-   */
+  const primaryProfit =
+    result.furnace?.expectedNetProfitPerCraft ??
+    result.synthesis?.expectedNetProfitPerCraft ??
+    0;
+
+  const isNegativeProfit = primaryProfit < 0;
+
   if (guardLoading || !allowed) {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-100">
-          채광 계산기
+          광부 계산기
         </h1>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-zinc-300">
           로그인 및 프로필 연동 상태를 확인하고 있습니다.
@@ -584,448 +448,346 @@ export default function MiningCalculatorPage() {
 
   return (
     <CalculatorLayout
-      title="채광 계산기"
+      title="광부 계산기"
       left={
-        <div className="space-y-6">
-          <CalculatorPanel title="입력값">
-            <div className="space-y-6">
-              {profileLoaded && (
-                <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                  <p className="font-semibold">프로필 데이터를 불러왔습니다.</p>
-                  <p className="mt-1">플랜: {isProUser ? "Pro" : "Free"}</p>
-                  <p className="mt-1">
-                    {isProUser
-                      ? "→ 프로필 기반 채광 스탯/스킬 값을 수정할 수 있습니다."
-                      : "→ 프로필에서 불러온 채광 스탯/스킬 값은 수정할 수 없습니다. (Pro 전용)"}
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-zinc-900">공통 스탯</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="행운">
-                    <NumberInput
-                      value={luck}
-                      min={0}
-                      max={9999}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setLuck(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                  <Field label="감각">
-                    <NumberInput
-                      value={sense}
-                      min={0}
-                      max={9999}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setSense(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                  <Field label="인내력">
-                    <NumberInput
-                      value={endurance}
-                      min={0}
-                      max={9999}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setEndurance(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                  <Field label="손재주">
-                    <NumberInput
-                      value={mastery}
-                      min={0}
-                      max={9999}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setMastery(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                  <Field label="민첩">
-                    <NumberInput
-                      value={dexterity}
-                      min={0}
-                      max={9999}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setDexterity(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                  <Field label="매력">
-                    <NumberInput
-                      value={charisma}
-                      min={0}
-                      max={9999}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setCharisma(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-zinc-900">도감 효과</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="채광 딜레이 감소">
-                    <NumberInput
-                      value={miningDelayReduction}
-                      min={0}
-                      max={9999}
-                      disabled
-                      onChange={() => {}}
-                    />
-                  </Field>
-                  <Field label="채광 데미지 증가">
-                    <NumberInput
-                      value={miningDamageIncrease}
-                      min={0}
-                      max={9999}
-                      disabled
-                      onChange={() => {}}
-                    />
-                  </Field>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-zinc-900">채광 스킬</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="단련된 곡괭이">
-                    <NumberInput
-                      value={temperedPickaxe}
-                      min={0}
-                      max={30}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setTemperedPickaxe(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                  <Field label="광맥 감각">
-                    <NumberInput
-                      value={veinSense}
-                      min={0}
-                      max={30}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setVeinSense(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                  <Field label="광맥 흐름">
-                    <NumberInput
-                      value={veinFlow}
-                      min={0}
-                      max={30}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setVeinFlow(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                  <Field label="광맥 탐지">
-                    <NumberInput
-                      value={veinDetection}
-                      min={0}
-                      max={30}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setVeinDetection(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                  <Field label="폭발적인 채광">
-                    <NumberInput
-                      value={explosiveMining}
-                      min={0}
-                      max={30}
-                      disabled={disableProfileFields}
-                      onChange={(value) => {
-                        setExplosiveMining(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-zinc-900">채광 환경</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="광물 선택">
-                    <SelectInput
-                      value={oreType}
-                      options={oreOptions.map(({ value, label }) => ({
-                        value,
-                        label,
-                      }))}
-                      onChange={(value) => {
-                        setOreType(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                  <Field label="가공 방식">
-                    <SelectInput
-                      value={processType}
-                      options={processOptions}
-                      onChange={(value) => {
-                        setProcessType(value);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-
-                  {processType === "vellium_synthesis" && (
-                    <Field label="벨리움 합성 레시피">
-                      <SelectInput
-                        value={recipeTier}
-                        options={recipeOptions}
-                        onChange={(value) => {
-                          setRecipeTier(value);
-                          setIsDirty(true);
-                        }}
-                      />
-                    </Field>
-                  )}
-
-                  <Field label="갈증 최소치">
-                    <SelectInput
-                      value={thirstMin.toString()}
-                      options={thirstOptions.map(({ value, label }) => ({
-                        value: value.toString(),
-                        label,
-                      }))}
-                      onChange={(value) => {
-                        setThirstMin(Number(value) as MiningThirstMin);
-                        setIsDirty(true);
-                      }}
-                    />
-                  </Field>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-xl border border-zinc-700 bg-zinc-50 px-3 py-3 text-sm text-zinc-700">
-                    <p className="font-medium text-zinc-900">
-                      선택 광물 정보: {selectedOre?.label ?? "미선택"}
-                    </p>
-                    <div className="mt-2 space-y-0.5 leading-6">
-                      {(selectedOre?.descriptionLines ?? ["정보 없음"]).map((line) => (
-                        <p key={line}>{line}</p>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-zinc-700 bg-zinc-50 px-3 py-3 text-sm text-zinc-700">
-                    <p className="font-medium text-zinc-900">벨리움 합성 메모</p>
-                    <div className="mt-2 space-y-1 leading-6">
-                      <p>고급 + 고급 → 단단한 벨리움</p>
-                      <p>희귀 + 희귀 → 순수한 벨리움</p>
-                      <p>제작 성공률/시간은 손재주의 영향을 받도록 추후 반영</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-zinc-900">평균 시세</h3>
-
-                {processType === "furnace" ? (
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <Field label="일반 주괴">
-                      <NumberInput
-                        value={commonPrice}
-                        min={0}
-                        onChange={(value) => {
-                          setCommonPrice(value);
-                          setIsDirty(true);
-                        }}
-                      />
-                    </Field>
-                    <Field label="은별 주괴">
-                      <NumberInput
-                        value={silverPrice}
-                        min={0}
-                        onChange={(value) => {
-                          setSilverPrice(value);
-                          setIsDirty(true);
-                        }}
-                      />
-                    </Field>
-                    <Field label="금별 주괴">
-                      <NumberInput
-                        value={goldPrice}
-                        min={0}
-                        onChange={(value) => {
-                          setGoldPrice(value);
-                          setIsDirty(true);
-                        }}
-                      />
-                    </Field>
-                  </div>
-                ) : (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="단단한 벨리움">
-                      <NumberInput
-                        value={sturdyVelliumPrice}
-                        min={0}
-                        onChange={(value) => {
-                          setSturdyVelliumPrice(value);
-                          setIsDirty(true);
-                        }}
-                      />
-                    </Field>
-                    <Field label="순수한 벨리움">
-                      <NumberInput
-                        value={pureVelliumPrice}
-                        min={0}
-                        onChange={(value) => {
-                          setPureVelliumPrice(value);
-                          setIsDirty(true);
-                        }}
-                      />
-                    </Field>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <ActionButton onClick={handleCalculate}>계산하기</ActionButton>
-                <ActionButton onClick={handleReset} variant="secondary">
-                  전체 초기화
-                </ActionButton>
-              </div>
-
-              {isDirty && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  입력값이 변경되었습니다. 계산하기를 눌러 결과를 갱신하세요.
-                </div>
-              )}
+        <CalculatorPanel title="입력값">
+          {profileLoaded && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              <p className="font-semibold">프로필 데이터를 불러왔습니다.</p>
+              <p className="mt-1">플랜: {isProUser ? "Pro" : "Free"}</p>
+              <p className="mt-1">
+                {isProUser
+                  ? "→ 프로필 기반 손재주 값을 수정할 수 있습니다."
+                  : "→ 프로필에서 불러온 손재주 값은 수정할 수 없습니다. (Pro 전용)"}
+              </p>
             </div>
-          </CalculatorPanel>
-        </div>
+          )}
+
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">재련 정보</h3>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Field label="레시피 선택">
+                <SelectInput
+                  value={recipeId}
+                  onChange={(value) => {
+                    setRecipeId(value as MiningRecipeId);
+                    setIsDirty(true);
+                  }}
+                  options={recipeOptions}
+                />
+              </Field>
+
+              <Field label="손재주">
+                <StatNumberInput
+                  value={dexterity}
+                  step="0.01"
+                  min={0}
+                  max={999}
+                  onChange={(value) => {
+                    setDexterity(value);
+                    setIsDirty(true);
+                  }}
+                  disabled={disableProfileFields}
+                />
+              </Field>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+              <div className="font-semibold">선택 레시피: {selectedRecipe.name}</div>
+              <div className="mt-1">분류: {selectedRecipe.tierLabel}</div>
+              <div className="mt-1">설명: {selectedRecipe.description}</div>
+              {selectedRecipe.baseInfoLines.map((line) => (
+                <div key={line} className="mt-1">
+                  {line}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">재료 시세</h3>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {selectedRecipe.ingredients.map((ingredient) => {
+                const priceKey = `${ingredient.itemKey}:${ingredient.grade}`;
+
+                return (
+                  <Field
+                    key={priceKey}
+                    label={`${ingredient.name} (${ingredient.quantity}개 필요)`}
+                  >
+                    <NumberInput
+                      value={ingredientUnitPrices[priceKey] ?? 0}
+                      onChange={(value) => {
+                        setIngredientUnitPrices((prev) => ({
+                          ...prev,
+                          [priceKey]: value,
+                        }));
+                        setIsDirty(true);
+                      }}
+                    />
+                  </Field>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">결과물 시세</h3>
+
+            {selectedRecipe.resultGradeType === "triple" ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <Field label="일반 결과물 시세">
+                  <NumberInput
+                    value={resultPrices[`${selectedRecipe.resultItemKey}:normal`] ?? 0}
+                    onChange={(value) => {
+                      setResultPrices((prev) => ({
+                        ...prev,
+                        [`${selectedRecipe.resultItemKey}:normal`]: value,
+                      }));
+                      setIsDirty(true);
+                    }}
+                  />
+                </Field>
+
+                <Field label="고급 결과물 시세">
+                  <NumberInput
+                    value={resultPrices[`${selectedRecipe.resultItemKey}:advanced`] ?? 0}
+                    onChange={(value) => {
+                      setResultPrices((prev) => ({
+                        ...prev,
+                        [`${selectedRecipe.resultItemKey}:advanced`]: value,
+                      }));
+                      setIsDirty(true);
+                    }}
+                  />
+                </Field>
+
+                <Field label="희귀 결과물 시세">
+                  <NumberInput
+                    value={resultPrices[`${selectedRecipe.resultItemKey}:rare`] ?? 0}
+                    onChange={(value) => {
+                      setResultPrices((prev) => ({
+                        ...prev,
+                        [`${selectedRecipe.resultItemKey}:rare`]: value,
+                      }));
+                      setIsDirty(true);
+                    }}
+                  />
+                </Field>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Field label="결과물 시세">
+                  <NumberInput
+                    value={resultPrices[`${selectedRecipe.resultItemKey}:single`] ?? 0}
+                    onChange={(value) => {
+                      setResultPrices((prev) => ({
+                        ...prev,
+                        [`${selectedRecipe.resultItemKey}:single`]: value,
+                      }));
+                      setIsDirty(true);
+                    }}
+                  />
+                </Field>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ActionButton
+              onClick={handleSaveCurrentRecipePrice}
+              disabled={!isProUser}
+            >
+              현재 레시피 시세 저장
+            </ActionButton>
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-2">
+            <ActionButton onClick={handleCalculate}>계산하기</ActionButton>
+            <ActionButton variant="secondary" onClick={handleReset}>
+              전체 초기화
+            </ActionButton>
+          </div>
+
+          {isDirty && (
+            <div className="mt-3 text-sm text-amber-700">
+              입력값이 변경되었습니다. 계산하기를 눌러 결과를 갱신하세요.
+            </div>
+          )}
+        </CalculatorPanel>
       }
       right={
         <CalculatorPanel title="계산 결과">
-          <ResultCard title="광물 기본 정보">
+          <ResultCard title="제작 정보">
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span>선택 광물</span>
-                <span>{result.meta.oreName}</span>
+                <span>현재 레시피</span>
+                <span>{result.recipeName}</span>
               </div>
               <div className="flex justify-between">
-                <span>스폰 높이</span>
-                <span>{result.meta.spawnHeightText}</span>
+                <span>제작 방식</span>
+                <span>
+                  {result.recipeKind === "furnace"
+                    ? "허름한 화로 재련"
+                    : "벨리움 합성"}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span>가공 방식</span>
-                <span>{result.meta.processLabel}</span>
+                <span>손재주 입력값</span>
+                <span>{formatDecimal(result.dexterity, 2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>반올림 적용 손재주</span>
+                <span>{result.roundedDexterity}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>기본 제작 시간</span>
+                <span>{formatSeconds(result.baseCraftTimeSeconds)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>최종 제작 시간</span>
+                <span>{formatSeconds(result.finalCraftTimeSeconds)}</span>
               </div>
             </div>
           </ResultCard>
 
-          <ResultCard title="채광 시간 (임시)">
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>기본 채광 시간</span>
-                <span>{formatNumber(result.mining.baseMiningSeconds, 2)}초</span>
-              </div>
-              <div className="flex justify-between">
-                <span>총 딜레이 감소</span>
-                <span>{formatNumber(result.mining.miningDelayReductionPercent, 2)}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>최종 채광 시간</span>
-                <span>{formatNumber(result.mining.finalMiningSeconds, 2)}초</span>
-              </div>
-            </div>
-          </ResultCard>
+          {result.furnace && (
+            <>
+              <ResultCard title="결과물 확률">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>기본 성공 확률</span>
+                    <span>{formatPercent(result.furnace.baseSuccessChancePercent)}</span>
+                  </div>
+                  <div className="border-t border-gray-800/20 my-2" />
+                  <div className="flex justify-between">
+                    <span>일반 가중치</span>
+                    <span>{result.furnace.normalWeight}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>고급 가중치</span>
+                    <span>{result.furnace.advancedWeight}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>희귀 가중치</span>
+                    <span>{result.furnace.rareWeight}</span>
+                  </div>
+                  <div className="border-t border-gray-800/20 my-2" />
+                  <div className="flex justify-between">
+                    <span>일반 확률</span>
+                    <span>{formatPercent(result.furnace.normalChancePercent)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>고급 확률</span>
+                    <span>{formatPercent(result.furnace.advancedChancePercent)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>희귀 확률</span>
+                    <span>{formatPercent(result.furnace.rareChancePercent)}</span>
+                  </div>
+                </div>
+              </ResultCard>
 
-          {processType === "furnace" ? (
-            <ResultCard title="허름한 화로 결과 확률">
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>일반 주괴</span>
-                  <span>{formatPercentFromRatio(result.smelting.commonRate, 2)}</span>
+              <ResultCard title="수익 계산">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>1회 제작 재료 원가</span>
+                    <span>{formatCell(result.ingredientCostPerCraft)}셀</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1회 제작 기대 매출</span>
+                    <span>{formatCell(result.furnace.expectedRevenuePerCraft)}셀</span>
+                  </div>
+
+                  <div
+                    className={`mt-3 rounded-xl px-4 py-3 ${
+                      isNegativeProfit
+                        ? "border border-red-200 bg-red-50"
+                        : "border border-blue-200 bg-blue-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`font-semibold ${
+                          isNegativeProfit ? "text-red-900" : "text-blue-900"
+                        }`}
+                      >
+                        1회 제작 기대 순이익
+                      </span>
+                      <span
+                        className={`text-lg font-bold ${
+                          isNegativeProfit ? "text-red-700" : "text-blue-700"
+                        }`}
+                      >
+                        {formatCell(result.furnace.expectedNetProfitPerCraft)}셀
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span>은별 주괴</span>
-                  <span>{formatPercentFromRatio(result.smelting.silverRate, 2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>금별 주괴</span>
-                  <span>{formatPercentFromRatio(result.smelting.goldRate, 2)}</span>
-                </div>
-              </div>
-            </ResultCard>
-          ) : (
-            <ResultCard title="벨리움 합성 결과">
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>결과물</span>
-                  <span>{result.synthesis.outputLabel}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>성공 확률</span>
-                  <span>{formatPercentFromRatio(result.synthesis.successRate, 2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>제작 시간</span>
-                  <span>{formatNumber(result.synthesis.craftSeconds, 2)}초</span>
-                </div>
-              </div>
-            </ResultCard>
+              </ResultCard>
+            </>
           )}
 
-          <ResultCard title="기대 결과물 / 기대 수익">
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span>1행동당 기대 결과물</span>
-                <span>{formatNumber(result.yield.expectedOutputPerAction, 3)}개</span>
-              </div>
-              <div className="flex justify-between">
-                <span>시간당 행동 수</span>
-                <span>{formatNumber(result.yield.actionsPerHour, 2)}회</span>
-              </div>
-              <div className="border-t border-gray-800/20 my-2" />
-              <div className="flex justify-between">
-                <span>1행동당 기대 수익</span>
-                <span>{formatNumber(result.value.expectedValuePerAction, 2)}셀</span>
-              </div>
-              <div className="flex justify-between">
-                <span>시간당 기대 수익</span>
-                <span>{formatNumber(result.value.expectedValuePerHour, 2)}셀</span>
-              </div>
-            </div>
-          </ResultCard>
+          {result.synthesis && (
+            <>
+              <ResultCard title="결과물 확률">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>기본 성공 확률</span>
+                    <span>{formatPercent(result.synthesis.baseSuccessChancePercent)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>[손재주] 성공률 보정</span>
+                    <span>{formatPercent(result.synthesis.dexteritySuccessBonusPercent)}</span>
+                  </div>
+                  <div className="border-t border-gray-800/20 my-2" />
+                  <div className="flex justify-between">
+                    <span>최종 성공 확률</span>
+                    <span>{formatPercent(result.synthesis.finalSuccessChancePercent)}</span>
+                  </div>
+                </div>
+              </ResultCard>
 
-          <ResultCard title="안내">
-            <div className="space-y-2 text-sm text-zinc-700">
-              {result.notes.map((note) => (
-                <p key={note}>• {note}</p>
-              ))}
-            </div>
-          </ResultCard>
+              <ResultCard title="수익 계산">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>1회 제작 재료 원가</span>
+                    <span>{formatCell(result.ingredientCostPerCraft)}셀</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>1회 제작 기대 매출</span>
+                    <span>{formatCell(result.synthesis.expectedRevenuePerCraft)}셀</span>
+                  </div>
+
+                  <div
+                    className={`mt-3 rounded-xl px-4 py-3 ${
+                      isNegativeProfit
+                        ? "border border-red-200 bg-red-50"
+                        : "border border-blue-200 bg-blue-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`font-semibold ${
+                          isNegativeProfit ? "text-red-900" : "text-blue-900"
+                        }`}
+                      >
+                        1회 제작 기대 순이익
+                      </span>
+                      <span
+                        className={`text-lg font-bold ${
+                          isNegativeProfit ? "text-red-700" : "text-blue-700"
+                        }`}
+                      >
+                        {formatCell(result.synthesis.expectedNetProfitPerCraft)}셀
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </ResultCard>
+            </>
+          )}
         </CalculatorPanel>
       }
     />

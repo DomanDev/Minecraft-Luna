@@ -25,13 +25,13 @@ import { supabase } from '../lib/supabase';
  * profiles 테이블에서 최소한으로 확인할 필드 타입
  *
  * 핵심 체크 기준:
- * - minecraft_link_status === 'verified'
+ * - minecraft_link_status 확인
  * - minecraft_uuid 존재
  *
  * 참고:
- * linked 상태만으로 충분히 볼 수도 있지만,
- * 현재 네 프로젝트 설명 기준으로는 "프로필 연동 완료"를 좀 더 명확히 보려면
- * verified + uuid 존재를 함께 보는 쪽이 안전하다.
+ * - 이 훅은 "접근 허용 여부"만 판단하는 가드다.
+ * - plan_type, 표시명, 기타 프로필 데이터 로드는
+ *   각 페이지에서 별도로 처리한다.
  */
 type GuardProfileRow = {
   minecraft_uuid: string | null;
@@ -63,7 +63,13 @@ type UseRequireProfileOptions = {
 
   /**
    * verified 가 아니어도 linked 까지만 허용할지 여부
-   * 현재 기본값은 false = verified만 허용
+   *
+   * 현재 프로젝트 정책:
+   * - linked 또는 verified 상태를 연동 완료로 본다.
+   * - 따라서 기본값은 true 로 둔다.
+   *
+   * 필요 시 특정 페이지에서만 stricter 하게
+   * false를 넘겨 verified만 허용할 수 있다.
    */
   allowLinkedWithoutVerified?: boolean;
 };
@@ -163,6 +169,10 @@ export function useRequireProfile(options?: UseRequireProfileOptions) {
            * 이유:
            * - row 미생성 / RLS / 일시적 조회 실패 등 다양한 가능성이 있음
            * - 계산기 진입을 허용해버리면 뒤쪽 페이지 로직에서 더 애매하게 깨질 수 있음
+           *
+           * 참고:
+           * - profiles row의 자동 생성 책임은 이 훅이 아니라 /profile 페이지 쪽에 둔다.
+           * - 이 훅은 "접근 차단 및 유도" 역할만 담당한다.
            */
           if (!redirectingRef.current) {
             redirectingRef.current = true;
@@ -188,13 +198,16 @@ export function useRequireProfile(options?: UseRequireProfileOptions) {
 
         /**
          * 허용 기준:
-         * - 기본: verified + uuid 존재
-         * - 옵션 허용 시: linked 또는 verified + uuid 존재
+         * - 기본: linked 또는 verified + uuid 존재
+         * - 옵션에서 false를 넘기면 verified + uuid 존재만 허용
          */
-        const isLinkedEnough = options?.allowLinkedWithoutVerified == false
-          ? profile?.minecraft_link_status === 'verified' 
-          : profile?.minecraft_link_status === 'linked' || 
-            profile?.minecraft_link_status === 'verified';
+        const allowLinkedWithoutVerified =
+          options?.allowLinkedWithoutVerified ?? true;
+
+        const isLinkedEnough = allowLinkedWithoutVerified
+          ? profile?.minecraft_link_status === 'linked' ||
+            profile?.minecraft_link_status === 'verified'
+          : profile?.minecraft_link_status === 'verified';
 
         const canAccess = hasUuid && isLinkedEnough;
 

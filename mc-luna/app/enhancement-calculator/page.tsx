@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import CalculatorLayout from "@/src/components/calculator/CalculatorLayout";
 import CalculatorPanel from "@/src/components/calculator/CalculatorPanel";
 import Field from "@/src/components/calculator/Field";
@@ -23,10 +23,16 @@ import type {
 } from "@/src/lib/enhancement/types";
 import {
   formatCell,
-  formatDecimal,
   formatInteger,
   formatPercentFromRatio,
 } from "@/src/lib/format";
+import { supabase } from "@/src/lib/supabase";
+import {
+  loadUserMarketPrices,
+  upsertUserMarketPrices,
+} from "@/src/lib/market/db";
+import type { UserMarketPriceRow } from "@/src/lib/market/types";
+import { toast } from "sonner";
 
 /**
  * =========================
@@ -73,8 +79,8 @@ const INITIAL_FORM = {
   uncommonScrollPrice: 18000,
   rareScrollPrice: 48000,
   protectionCharmPrice: 20000,
-  moonAuraPotionPrice: 10000,
-  moonAuraRecoveryPerPotion: 20,
+  moonAuraPotionPrice: 16500,
+  moonAuraRecoveryPerPotion: 25,
 
   ownedCommonScroll: 0,
   ownedUncommonScroll: 0,
@@ -94,38 +100,21 @@ const INITIAL_FORM = {
   strategy9: DEFAULT_STRATEGY[9],
 };
 
-// /**
-//  * 셀 값은 소수점 없이 정수만 표시
-//  *
-//  * 요구사항:
-//  * - 비용(셀)은 소수점 버림
-//  * - 예: 12345.99 -> 12,345셀
-//  *
-//  * 주의:
-//  * - 확률은 퍼센트 표시이므로 별도 포맷 함수 사용
-//  */
-// function formatCell(value: number): string {
-//   return Math.floor(Math.max(value, 0)).toLocaleString("ko-KR");
-// }
-
-// /**
-//  * 일반 숫자도 소수점 없이 보고 싶을 때 사용
-//  * 예: 기대 주문서 수량 안내 등
-//  */
-// function formatInteger(value: number): string {
-//   return Math.floor(Math.max(value, 0)).toLocaleString("ko-KR");
-// }
-
-// /**
-//  * 확률 표시용
-//  * - 확률은 정수%가 아니라 소수점까지 남겨두는 편이 읽기 좋다.
-//  */
-// function formatPercentFromRatio(value: number, digits = 2): string {
-//   return `${(value * 100).toLocaleString("ko-KR", {
-//     minimumFractionDigits: 0,
-//     maximumFractionDigits: digits,
-//   })}%`;
-// }
+/**
+ * 강화 시세 저장용 item_key 매핑
+ *
+ * 주의:
+ * - 계산기 내부 변수명(common / uncommon / rare)과
+ *   시세 기본값 key(normalScroll / advancedScroll / rareScroll)가 다르므로
+ *   여기서 명시적으로 연결한다.
+ * - 달빛 기운 농축액(moonAuraPotion)은 이번 저장 대상에서 제외한다.
+ */
+const ENHANCEMENT_MARKET_KEYS = {
+  commonScroll: "normalScroll",
+  uncommonScroll: "advancedScroll",
+  rareScroll: "rareScroll",
+  protectionCharm: "protectionCharm",
+} as const;
 
 function createInitialInput(): EnhancementCalculationInput {
   return {
@@ -270,6 +259,15 @@ export default function EnhancementCalculatorPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
 
+  /**
+   * Pro 여부 / 시세 저장 로딩 상태
+   */
+  const [planType, setPlanType] = useState<"free" | "pro">("free");
+  const [marketLoaded, setMarketLoaded] = useState(false);
+  const [savingPrices, setSavingPrices] = useState(false);
+
+  const isProUser = planType === "pro";
+
   const [result, setResult] = useState(() =>
     calculateEnhancement(createInitialInput()),
   );
@@ -313,6 +311,194 @@ export default function EnhancementCalculatorPage() {
       },
     };
   };
+
+  /**
+   * 저장된 강화 시세 불러오기
+   *
+   * 정책:
+   * - enhancement 카테고리의 저장값을 읽는다.
+   * - 일반/고급/희귀 주문서 + 달빛 부적만 반영
+   * - 달빛 기운 농축액은 저장/불러오기 대상에서 제외
+   */
+  const loadSavedEnhancementPrices = useCallback(async () => {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      console.warn("강화 시세용 getSession 실패:", sessionError.message);
+      setMarketLoaded(true);
+      return;
+    }
+
+    const user = session?.user;
+
+    if (!user) {
+      setPlanType("free");
+      setMarketLoaded(true);
+      return;
+    }
+
+    const { data: profileRow, error: profileError } = await supabase
+      .from("profiles")
+      .select("plan_type")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError) {
+      console.warn("강화 계산기 profiles 조회 실패:", profileError.message);
+      setPlanType("free");
+      setMarketLoaded(true);
+      return;
+    }
+
+    const nextPlanType = (profileRow?.plan_type ?? "free") as "free" | "pro";
+    setPlanType(nextPlanType);
+
+    /**
+     * Free는 기본값만 사용
+     */
+    if (nextPlanType !== "pro") {
+      setMarketLoaded(true);
+      return;
+    }
+
+    try {
+      const rows = await loadUserMarketPrices(user.id, "enhancement");
+
+      const findSavedPrice = (itemKey: string) => {
+        const row = rows.find(
+          (item) => item.item_key === itemKey && item.grade === "single",
+        );
+        return typeof row?.price === "number" ? row.price : null;
+      };
+
+      const savedCommonScrollPrice = findSavedPrice(
+        ENHANCEMENT_MARKET_KEYS.commonScroll,
+      );
+      const savedUncommonScrollPrice = findSavedPrice(
+        ENHANCEMENT_MARKET_KEYS.uncommonScroll,
+      );
+      const savedRareScrollPrice = findSavedPrice(
+        ENHANCEMENT_MARKET_KEYS.rareScroll,
+      );
+      const savedProtectionCharmPrice = findSavedPrice(
+        ENHANCEMENT_MARKET_KEYS.protectionCharm,
+      );
+
+      if (typeof savedCommonScrollPrice === "number") {
+        setCommonScrollPrice(savedCommonScrollPrice);
+      }
+
+      if (typeof savedUncommonScrollPrice === "number") {
+        setUncommonScrollPrice(savedUncommonScrollPrice);
+      }
+
+      if (typeof savedRareScrollPrice === "number") {
+        setRareScrollPrice(savedRareScrollPrice);
+      }
+
+      if (typeof savedProtectionCharmPrice === "number") {
+        setProtectionCharmPrice(savedProtectionCharmPrice);
+      }
+    } catch (error) {
+      console.error("강화 저장 시세 불러오기 실패:", error);
+      toast.error("저장된 강화 시세를 불러오는 중 오류가 발생했습니다.");
+    } finally {
+      setMarketLoaded(true);
+    }
+  }, []);
+
+  /**
+   * 현재 강화 재료 시세 저장
+   *
+   * 저장 대상:
+   * - 일반 주문서
+   * - 고급 주문서
+   * - 희귀 주문서
+   * - 달빛 부적
+   *
+   * 저장 제외:
+   * - 달빛 기운 농축액
+   */
+  const handleSaveEnhancementPrices = useCallback(async () => {
+    if (!isProUser) {
+      toast.error("재료 시세 저장은 Pro 사용자만 가능합니다.");
+      return;
+    }
+
+    try {
+      setSavingPrices(true);
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.warn("강화 시세 저장용 getSession 실패:", sessionError.message);
+        toast.error("로그인 정보를 확인하지 못했습니다.");
+        return;
+      }
+
+      const user = session?.user;
+
+      if (!user) {
+        toast.error("로그인 정보가 없습니다.");
+        return;
+      }
+
+      const rows: UserMarketPriceRow[] = [
+        {
+          user_id: user.id,
+          category: "enhancement",
+          item_key: ENHANCEMENT_MARKET_KEYS.commonScroll,
+          grade: "single",
+          price: commonScrollPrice,
+        },
+        {
+          user_id: user.id,
+          category: "enhancement",
+          item_key: ENHANCEMENT_MARKET_KEYS.uncommonScroll,
+          grade: "single",
+          price: uncommonScrollPrice,
+        },
+        {
+          user_id: user.id,
+          category: "enhancement",
+          item_key: ENHANCEMENT_MARKET_KEYS.rareScroll,
+          grade: "single",
+          price: rareScrollPrice,
+        },
+        {
+          user_id: user.id,
+          category: "enhancement",
+          item_key: ENHANCEMENT_MARKET_KEYS.protectionCharm,
+          grade: "single",
+          price: protectionCharmPrice,
+        },
+      ];
+
+      /**
+       * moonAuraPotionPrice 는 저장하지 않는다.
+       */
+      await upsertUserMarketPrices(rows);
+
+      toast.success("강화 재료 시세를 저장했습니다.");
+    } catch (error) {
+      console.error("강화 재료 시세 저장 실패:", error);
+      toast.error("강화 재료 시세 저장 중 오류가 발생했습니다.");
+    } finally {
+      setSavingPrices(false);
+    }
+  }, [
+    isProUser,
+    commonScrollPrice,
+    uncommonScrollPrice,
+    rareScrollPrice,
+    protectionCharmPrice,
+  ]);
 
   const handleCalculate = () => {
     try {
@@ -387,6 +573,12 @@ export default function EnhancementCalculatorPage() {
     setErrorMessage(null);
     setResult(calculateEnhancement(createInitialInput()));
     setIsDirty(false);
+
+    /**
+     * 저장된 시세 자동 불러오기 상태도 초기화
+     * - 페이지를 완전히 새로 열지 않아도 다시 기본 흐름으로 돌아갈 수 있게 함
+     */
+    setMarketLoaded(false);
   };
 
   /**
@@ -404,6 +596,19 @@ export default function EnhancementCalculatorPage() {
       (level) => level >= currentLevel && level < targetLevel,
     );
   }, [currentLevel, targetLevel]);
+
+  /**
+   * 페이지 진입 시:
+   * - 플랜 조회
+   * - Pro면 저장된 강화 시세 불러오기
+   */
+  useEffect(() => {
+    if (guardLoading) return;
+    if (!allowed) return;
+    if (marketLoaded) return;
+
+    void loadSavedEnhancementPrices();
+  }, [guardLoading, allowed, marketLoaded, loadSavedEnhancementPrices]);
 
   /**
    * 공통 가드 확인 중이거나 아직 접근이 허용되지 않은 경우
@@ -715,6 +920,20 @@ export default function EnhancementCalculatorPage() {
                   />
                 </Field>
               </div>
+              <br/>
+              <ActionButton
+                onClick={handleSaveEnhancementPrices}
+                disabled={!isProUser || savingPrices}
+              >
+                {savingPrices ? "시세 저장 중..." : "재료 시세 저장"}
+              </ActionButton>
+  
+              <div className="mt-3 text-sm text-zinc-600">
+                {isProUser
+                  ? "  *Pro 사용자는 일반/고급/희귀 주문서와 달빛 부적 시세를 저장할 수 있습니다. (농축액 제외)"
+                  : "  *Free 사용자는 기본 시세만 사용할 수 있으며, 시세 저장은 Pro 전용입니다."}
+              </div>
+              
             </CalculatorPanel>
 
             <CalculatorPanel title="보유 재료">
@@ -788,9 +1007,12 @@ export default function EnhancementCalculatorPage() {
 
             <div className="flex flex-wrap gap-3">
               <ActionButton onClick={handleCalculate}>계산하기</ActionButton>
+
               <ActionButton onClick={handleReset} variant="secondary">
                 전체 초기화
               </ActionButton>
+
+              
             </div>
 
             {isDirty && (

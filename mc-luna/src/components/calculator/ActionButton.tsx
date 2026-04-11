@@ -14,20 +14,22 @@ type ActionButtonProps = {
   onClick: () => void;
   children: ReactNode;
   variant?: "primary" | "secondary";
+  disabled?: boolean;
 };
 
 export default function ActionButton({
   onClick,
   children,
   variant = "primary",
+  disabled = false,
 }: ActionButtonProps) {
   const className =
     variant === "primary"
-      ? "rounded-xl bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500"
-      : "rounded-xl border border-zinc-300 px-4 py-2 font-medium text-zinc-700 hover:bg-zinc-100";
-
+      ? "rounded-xl bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+      : "rounded-xl border border-zinc-300 px-4 py-2 font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50";
+    
   return (
-    <button onClick={onClick} className={className}>
+    <button onClick={onClick} className={className} disabled={disabled}>
       {children}
     </button>
   );

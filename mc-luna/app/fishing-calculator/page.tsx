@@ -26,6 +26,32 @@ import {
   formatPercent,
   formatPercentFromRatio,
 } from "@/src/lib/format";
+import StatNumberInput from "@/src/components/calculator/StatNumberInput";
+// 물고기 설정을 위한 Import
+import { toast } from "sonner";
+import { useAuth } from "@/src/hooks/useAuth";
+import FishSelectionModal from "@/src/components/fishing/FishSelectionModal";
+import {
+  APP_MIN_FISH_SELECTION,
+  BIOME_FISH_KEY_MAP,
+  FISHING_BIOME_OPTIONS,
+  canUseFishSelectionForBiome,
+  createInitialFishSelectionByBiome,
+  getDefaultFishKeysForBiome,
+  type FishingBiomeKey,
+} from "@/src/lib/fishing/fishBiome";
+import {
+  FISHING_MARKET_ITEMS,
+} from "@/src/lib/market/defaultPrices";
+import {
+  loadUserMarketPrices,
+  upsertUserMarketPrices,
+} from "@/src/lib/market/db";
+import type {
+  MarketGrade,
+  UserMarketPriceRow,
+} from "@/src/lib/market/types";
+import { mergeUserPrices } from "@/src/lib/market/merge";
 
 const baitOptions: {
   value: BaitType;
@@ -111,9 +137,84 @@ const thirstOptions: { value: ThirstMin; label: string }[] = [
   { value: 1, label: "1 이상 유지" },
 ];
 
+// 물고기 설정을 위한 함수
+function buildFishPriceEditKey(itemKey: string, grade: MarketGrade) {
+  return `${itemKey}:${grade}`;
+}
+
+function createInitialFishPriceMap() {
+  const next: Record<string, number> = {};
+
+  FISHING_MARKET_ITEMS.forEach((item) => {
+    next[buildFishPriceEditKey(item.key, "normal")] = Number(item.prices.normal ?? 0);
+    next[buildFishPriceEditKey(item.key, "advanced")] = Number(item.prices.advanced ?? 0);
+    next[buildFishPriceEditKey(item.key, "rare")] = Number(item.prices.rare ?? 0);
+  });
+
+  return next;
+}
+
+function average(values: number[]) {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function normalizeFishingBiome(value: unknown): FishingBiomeKey {
+  const fallback: FishingBiomeKey = "ocean";
+
+  if (typeof value !== "string") return fallback;
+
+  const matched = FISHING_BIOME_OPTIONS.find((item) => item.value === value);
+  return matched?.value ?? fallback;
+}
+
+function normalizeSelectedFishByBiome(
+  raw: unknown,
+): Record<FishingBiomeKey, string[]> {
+  const fallback = createInitialFishSelectionByBiome();
+
+  if (!raw || typeof raw !== "object") {
+    return fallback;
+  }
+
+  const source = raw as Record<string, unknown>;
+  const next = { ...fallback };
+
+  FISHING_BIOME_OPTIONS.forEach(({ value }) => {
+    const allowedFishKeys = new Set(BIOME_FISH_KEY_MAP[value] ?? []);
+    const rawFishKeys = Array.isArray(source[value]) ? source[value] : [];
+
+    const filtered = Array.from(
+      new Set(
+        rawFishKeys.filter(
+          (item): item is string =>
+            typeof item === "string" && allowedFishKeys.has(item),
+        ),
+      ),
+    );
+
+    /**
+     * 앱 정책상 선택 가능한 바이옴은 최소 5마리 이상이어야 한다.
+     * 저장값이 깨졌거나 조건 미달이면 기본값으로 복구한다.
+     * 선택 불가 바이옴(기본 물고기 수 < 5)은 기본값 그대로 둔다.
+     */
+    if (canUseFishSelectionForBiome(value)) {
+      next[value] =
+        filtered.length >= APP_MIN_FISH_SELECTION
+          ? filtered
+          : fallback[value];
+    } else {
+      next[value] = fallback[value];
+    }
+  });
+
+  return next;
+}
+
 const INITIAL_FORM = {
   luck: 0,
   sense: 0,
+  
 
   /**
    * 도감 효과
@@ -137,7 +238,7 @@ const INITIAL_FORM = {
   useSchoolFishing: false,
   normalPrice: 10,
   advancedPrice: 20,
-  rarePrice: 60,
+  rarePrice: 50,
 };
 
 function createInitialCalculationInput(): FishingCalculationInput {
@@ -238,7 +339,33 @@ export default function FishingCalculatorPage() {
   const [advancedPrice, setAdvancedPrice] = useState(INITIAL_FORM.advancedPrice);
   const [rarePrice, setRarePrice] = useState(INITIAL_FORM.rarePrice);
 
-  const [result, setResult] = useState(() =>
+  const { user, loading: authLoading } = useAuth();
+
+  const [selectedBiome, setSelectedBiome] = useState<FishingBiomeKey>("ocean");
+
+  /**
+   * 바이옴별 선택 물고기 목록을 따로 저장한다.
+   * 그래야 대양에서 설정한 뒤 강으로 바꿨다가 다시 대양으로 돌아와도
+   * 이전 설정이 유지된다.
+   */
+  const [selectedFishByBiome, setSelectedFishByBiome] = useState<
+    Record<FishingBiomeKey, string[]>
+  >(() => createInitialFishSelectionByBiome());
+
+  const [fishModalOpen, setFishModalOpen] = useState(false);
+  const [editingFishKeys, setEditingFishKeys] = useState<string[]>(
+    getDefaultFishKeysForBiome("ocean"),
+  );
+
+  const [fishPrices, setFishPrices] = useState<Record<string, number>>(
+    createInitialFishPriceMap(),
+  );
+
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [savingFishPrices, setSavingFishPrices] = useState(false);
+  const [savingFishSelections, setSavingFishSelections] = useState(false);
+
+  const [result, setResult] = useState(() =>                      
     calculateFishing(createInitialCalculationInput()),
   );
   const [isDirty, setIsDirty] = useState(false);
@@ -454,6 +581,301 @@ export default function FishingCalculatorPage() {
     }
   }, [schoolFishing, useSchoolFishing]);
 
+  // 물고기 설정을 위한 변수값
+  const currentBiomeFishKeys = useMemo(
+    () => BIOME_FISH_KEY_MAP[selectedBiome] ?? [],
+    [selectedBiome],
+  );
+
+  const appliedFishKeys = useMemo(
+    () => selectedFishByBiome[selectedBiome] ?? [],
+    [selectedBiome, selectedFishByBiome],
+  );
+
+  const canOpenFishSelection = useMemo(
+    () => canUseFishSelectionForBiome(selectedBiome),
+    [selectedBiome],
+  );
+
+  const selectedFishItems = useMemo(() => {
+    return FISHING_MARKET_ITEMS.filter((item) => appliedFishKeys.includes(item.key));
+  }, [appliedFishKeys]);
+
+  const calculatedNormalAverage = useMemo(() => {
+    const values = appliedFishKeys.map(
+      (fishKey) => fishPrices[buildFishPriceEditKey(fishKey, "normal")] ?? 0,
+    );
+    return average(values);
+  }, [appliedFishKeys, fishPrices]);
+
+  const calculatedAdvancedAverage = useMemo(() => {
+    const values = appliedFishKeys.map(
+      (fishKey) => fishPrices[buildFishPriceEditKey(fishKey, "advanced")] ?? 0,
+    );
+    return average(values);
+  }, [appliedFishKeys, fishPrices]);
+
+  const calculatedRareAverage = useMemo(() => {
+    const values = appliedFishKeys.map(
+      (fishKey) => fishPrices[buildFishPriceEditKey(fishKey, "rare")] ?? 0,
+    );
+    return average(values);
+  }, [appliedFishKeys, fishPrices]);
+
+  useEffect(() => {
+    setEditingFishKeys(selectedFishByBiome[selectedBiome] ?? getDefaultFishKeysForBiome(selectedBiome));
+  }, [selectedBiome, selectedFishByBiome]);
+
+  /**
+   * 선택된 물고기들의 평균 시세를 기존 평균 시세 입력칸에 자동 반영한다.
+   * 사용자가 필요하면 직접 다시 수정할 수 있다.
+   * 단, 물고기 선택/개별 시세가 바뀌면 다시 평균값으로 재계산된다.
+   */
+  useEffect(() => {
+    setNormalPrice(Number(calculatedNormalAverage.toFixed(2)));
+    setAdvancedPrice(Number(calculatedAdvancedAverage.toFixed(2)));
+    setRarePrice(Number(calculatedRareAverage.toFixed(2)));
+    setIsDirty(true);
+  }, [calculatedNormalAverage, calculatedAdvancedAverage, calculatedRareAverage]);
+
+  // 낚시 시세 로딩 callback 함수
+  const loadFishingPrices = useCallback(async () => {
+    if (guardLoading) return;
+    if (!allowed) return;
+    if (authLoading) return;
+    if (!user) return;
+
+    try {
+      setPriceLoading(true);
+
+      const userRows = await loadUserMarketPrices(user.id, "fishing");
+      const mergedItems = mergeUserPrices(FISHING_MARKET_ITEMS, userRows);
+
+      const nextMap: Record<string, number> = {};
+      mergedItems.forEach((item) => {
+        nextMap[buildFishPriceEditKey(item.key, "normal")] = Number(item.prices.normal ?? 0);
+        nextMap[buildFishPriceEditKey(item.key, "advanced")] = Number(item.prices.advanced ?? 0);
+        nextMap[buildFishPriceEditKey(item.key, "rare")] = Number(item.prices.rare ?? 0);
+      });
+
+      setFishPrices(nextMap);
+    } catch (error) {
+      console.error("fishing 시세 로딩 중 예외:", error);
+      toast.error("물고기 시세를 불러오는 중 오류가 발생했습니다.");
+    } finally {
+      setPriceLoading(false);
+    }
+  }, [allowed, authLoading, guardLoading, user]);
+
+  useEffect(() => {
+    void loadFishingPrices();
+  }, [loadFishingPrices]);
+
+  const loadFishingSelections = useCallback(async () => {
+    if (guardLoading) return;
+    if (!allowed) return;
+    if (authLoading) return;
+    if (!user) return;
+    if (!isProUser) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("user_fishing_settings")
+        .select("selected_fish_by_biome, last_selected_biome")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("fishing 설정 로딩 중 예외:", error);
+        toast.error("물고기 설정을 불러오는 중 오류가 발생했습니다.");
+        return;
+      }
+
+      if (!data) return;
+
+      const normalizedSelections = normalizeSelectedFishByBiome(
+        data.selected_fish_by_biome,
+      );
+      const normalizedBiome = normalizeFishingBiome(data.last_selected_biome);
+
+      setSelectedFishByBiome(normalizedSelections);
+      setSelectedBiome(normalizedBiome);
+    } catch (error) {
+      console.error("fishing 설정 로딩 중 예외:", error);
+      toast.error("물고기 설정을 불러오는 중 오류가 발생했습니다.");
+    }
+  }, [allowed, authLoading, guardLoading, user, isProUser]);
+
+  useEffect(() => {
+    void loadFishingSelections();
+  }, [loadFishingSelections]);
+
+  // 물고기 시세 저장 함수
+  const handleSaveFishPrices = async () => {
+    if (!user) {
+      toast.error("사용자 정보를 확인할 수 없습니다.");
+      return;
+    }
+
+    if (!isProUser) {
+      toast.error("물고기 시세 저장은 Pro 사용자만 가능합니다.");
+      return;
+    }
+
+    try {
+      setSavingFishPrices(true);
+
+      const rows: UserMarketPriceRow[] = [];
+
+      FISHING_MARKET_ITEMS.forEach((item) => {
+        rows.push({
+          user_id: user.id,
+          category: "fishing",
+          item_key: item.key,
+          grade: "normal",
+          price: fishPrices[buildFishPriceEditKey(item.key, "normal")] ?? 0,
+        });
+        rows.push({
+          user_id: user.id,
+          category: "fishing",
+          item_key: item.key,
+          grade: "advanced",
+          price: fishPrices[buildFishPriceEditKey(item.key, "advanced")] ?? 0,
+        });
+        rows.push({
+          user_id: user.id,
+          category: "fishing",
+          item_key: item.key,
+          grade: "rare",
+          price: fishPrices[buildFishPriceEditKey(item.key, "rare")] ?? 0,
+        });
+      });
+
+      await upsertUserMarketPrices(rows);
+      toast.success("물고기 시세가 저장되었습니다.");
+      await loadFishingPrices();
+    } catch (error) {
+      console.error("fishing 시세 저장 중 예외:", error);
+      toast.error("물고기 시세 저장 중 오류가 발생했습니다.");
+    } finally {
+      setSavingFishPrices(false);
+    }
+  };
+
+  const handleSaveFishSelections = async () => {
+  if (!user) {
+    toast.error("사용자 정보를 확인할 수 없습니다.");
+    return;
+  }
+
+  if (!isProUser) {
+    toast.error("물고기 설정 저장은 Pro 사용자만 가능합니다.");
+    return;
+  }
+
+  /**
+   * 현재 모달에서 편집 중인 선택값도 저장 대상에 포함한다.
+   * 즉, 적용 버튼을 누르지 않았더라도 저장 버튼만 눌러 저장 가능하게 한다.
+   */
+  const nextSelectedFishByBiome = {
+      ...selectedFishByBiome,
+    };
+
+    if (canOpenFishSelection) {
+      if (editingFishKeys.length < APP_MIN_FISH_SELECTION) {
+        toast.error(`최소 ${APP_MIN_FISH_SELECTION}마리 이상 선택해야 합니다.`);
+        return;
+      }
+
+      nextSelectedFishByBiome[selectedBiome] = [...editingFishKeys];
+    }
+
+    try {
+      setSavingFishSelections(true);
+
+      const payload = {
+        user_id: user.id,
+        selected_fish_by_biome: nextSelectedFishByBiome,
+        last_selected_biome: selectedBiome,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from("user_fishing_settings")
+        .upsert(payload, { onConflict: "user_id" });
+
+      if (error) {
+        console.error("fishing 설정 저장 중 예외:", error);
+        toast.error("물고기 설정 저장 중 오류가 발생했습니다.");
+        return;
+      }
+
+      /**
+       * 저장 성공 시 화면 상태도 즉시 동기화한다.
+       */
+      setSelectedFishByBiome(nextSelectedFishByBiome);
+      setEditingFishKeys([...nextSelectedFishByBiome[selectedBiome]]);
+      toast.success("물고기 설정이 저장되었습니다.");
+    } catch (error) {
+      console.error("fishing 설정 저장 중 예외:", error);
+      toast.error("물고기 설정 저장 중 오류가 발생했습니다.");
+    } finally {
+      setSavingFishSelections(false);
+    }
+  };
+
+  // 모달 열기,적용,토글 함수
+  const handleOpenFishModal = () => {
+    if (!canOpenFishSelection) {
+      toast.error(
+        `이 바이옴은 앱 정책상 최소 ${APP_MIN_FISH_SELECTION}마리 이상이 필요해 물고기 설정을 사용할 수 없습니다.`,
+      );
+      return;
+    }
+
+    setEditingFishKeys([...appliedFishKeys]);
+    setFishModalOpen(true);
+  };
+
+  const handleResetEditingFish = () => {
+    setEditingFishKeys(getDefaultFishKeysForBiome(selectedBiome));
+  };
+
+  const handleFishPriceChange = (
+    fishKey: string,
+    grade: "normal" | "advanced" | "rare",
+    value: number,
+  ) => {
+    setFishPrices((prev) => ({
+      ...prev,
+      [buildFishPriceEditKey(fishKey, grade)]: value,
+    }));
+  };
+
+  const handleToggleEditingFish = (fishKey: string) => {
+    setEditingFishKeys((prev) => {
+      if (prev.includes(fishKey)) {
+        return prev.filter((key) => key !== fishKey);
+      }
+
+      return [...prev, fishKey];
+    });
+  };
+
+  const handleApplyFishSelection = () => {
+    if (editingFishKeys.length < APP_MIN_FISH_SELECTION) {
+      toast.error(`최소 ${APP_MIN_FISH_SELECTION}마리 이상 선택해야 합니다.`);
+      return;
+    }
+
+    setSelectedFishByBiome((prev) => ({
+      ...prev,
+      [selectedBiome]: [...editingFishKeys],
+    }));
+    setFishModalOpen(false);
+    setIsDirty(true);
+  };
+
   const buildCalculationInput = (): FishingCalculationInput => {
     return {
       stats: {
@@ -537,6 +959,12 @@ export default function FishingCalculatorPage() {
     setNormalPrice(INITIAL_FORM.normalPrice);
     setAdvancedPrice(INITIAL_FORM.advancedPrice);
     setRarePrice(INITIAL_FORM.rarePrice);
+
+    setSelectedBiome("ocean");
+    setSelectedFishByBiome(createInitialFishSelectionByBiome());
+    setEditingFishKeys(getDefaultFishKeysForBiome("ocean"));
+    setFishPrices(createInitialFishPriceMap());
+    setSavingFishSelections(false);
 
     setResult(calculateFishing(createInitialCalculationInput()));
     setIsDirty(false);
@@ -667,10 +1095,11 @@ export default function FishingCalculatorPage() {
                 <h3 className="text-lg font-semibold text-zinc-900">낚시 스탯</h3>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="행운">
-                    <NumberInput
+                    <StatNumberInput
                       value={luck}
+                      step="0.01"
                       min={0}
-                      max={9999}
+                      max={999}
                       disabled={disableProfileFields}
                       onChange={(value) => {
                         setLuck(value);
@@ -680,10 +1109,11 @@ export default function FishingCalculatorPage() {
                   </Field>
 
                   <Field label="감각">
-                    <NumberInput
+                    <StatNumberInput
                       value={sense}
+                      step="0.01"
                       min={0}
-                      max={9999}
+                      max={999}
                       disabled={disableProfileFields}
                       onChange={(value) => {
                         setSense(value);
@@ -698,22 +1128,30 @@ export default function FishingCalculatorPage() {
                 <h3 className="text-lg font-semibold text-zinc-900">도감 효과</h3>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="일반 물고기 감소비율">
-                    <NumberInput
-                      value={normalFishReduction}
+                    <StatNumberInput
+                      step="0.01"
                       min={0}
-                      max={9999}
-                      disabled
-                      onChange={() => {}}
+                      max={999}
+                      value={normalFishReduction}
+                      onChange={(value) => {
+                        setNormalFishReduction(value);
+                        setIsDirty(true);
+                      }}
+                      disabled={disableProfileFields}
                     />
                   </Field>
 
                   <Field label="기척 시간 감소">
-                    <NumberInput
+                    <StatNumberInput
+                      step="0.01"
                       value={nibbleTimeReduction}
                       min={0}
-                      max={9999}
-                      disabled
-                      onChange={() => {}}
+                      max={999}
+                      onChange={(value) => {
+                        setNibbleTimeReduction(value);
+                        setIsDirty(true);
+                      }}
+                      disabled={disableProfileFields}
                     />
                   </Field>
                 </div>
@@ -830,7 +1268,7 @@ export default function FishingCalculatorPage() {
                     />
                   </Field>
 
-                  <Field label="Lure 인챈트">
+                  <Field label="미끼 인챈트">
                     <NumberInput
                       value={lureEnchantLevel}
                       min={0}
@@ -855,6 +1293,45 @@ export default function FishingCalculatorPage() {
                       }}
                     />
                   </Field>
+
+                  <Field label="바이옴 선택">
+                    <SelectInput
+                      value={selectedBiome}
+                      options={FISHING_BIOME_OPTIONS.map((item) => ({
+                        value: item.value,
+                        label: item.label,
+                      }))}
+                      onChange={(value) => {
+                        setSelectedBiome(value as FishingBiomeKey);
+                        setIsDirty(true);
+                      }}
+                    />
+                  </Field>
+
+                  <Field label="물고기 설정">
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={handleOpenFishModal}
+                        disabled={!canOpenFishSelection}
+                        className={[
+                          "w-full rounded-xl px-4 py-2 font-medium text-white transition",
+                          canOpenFishSelection
+                            ? "bg-blue-600 hover:bg-blue-500"
+                            : "cursor-not-allowed bg-zinc-400",
+                        ].join(" ")}
+                      >
+                        물고기 설정
+                      </button>
+
+                      <p className="text-xs text-zinc-500">
+                        현재 바이옴 선택 수: {appliedFishKeys.length}마리
+                        {!canOpenFishSelection &&
+                          ` / 이 바이옴은 앱 정책상 최소 ${APP_MIN_FISH_SELECTION}마리 조건 미달로 설정 불가`}
+                      </p>
+                    </div>
+                  </Field>
+
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -923,7 +1400,6 @@ export default function FishingCalculatorPage() {
                   </label>
                 </div>
               </div>
-
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold text-zinc-900">평균 시세</h3>
                 <div className="grid gap-4 sm:grid-cols-3">
@@ -975,6 +1451,26 @@ export default function FishingCalculatorPage() {
                 </div>
               )}
             </div>
+
+            <FishSelectionModal
+              open={fishModalOpen}
+              biome={selectedBiome}
+              fishKeys={currentBiomeFishKeys}
+              selectedKeys={editingFishKeys}
+              fishPrices={fishPrices}
+              buildFishPriceEditKey={buildFishPriceEditKey}
+              onToggle={handleToggleEditingFish}
+              onResetSelection={handleResetEditingFish}
+              onPriceChange={handleFishPriceChange}
+              onSavePrices={handleSaveFishPrices}
+              onSaveSelections={handleSaveFishSelections}
+              isProUser={isProUser}
+              savingFishPrices={savingFishPrices}
+              savingFishSelections={savingFishSelections}
+              onApply={handleApplyFishSelection}
+              onClose={() => setFishModalOpen(false)}
+              disabled={!canOpenFishSelection}
+            />
           </CalculatorPanel>
         </div>
       }
@@ -1124,7 +1620,7 @@ export default function FishingCalculatorPage() {
               <div className="flex justify-between">
                 <span>1사이클당 기대 낚시 횟수</span>
                 <span>
-                  {formatInteger(result.catchExpectation.catchCountPerCycle, 3)}회
+                  {formatInteger(result.catchExpectation.catchCountPerCycle)}회
                 </span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
@@ -1145,7 +1641,7 @@ export default function FishingCalculatorPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>물고기 1마리 기대가치</span>
-                <span>{formatCell(result.value.expectedValuePerFish, 2)}셀</span>
+                <span>{formatCell(result.value.expectedValuePerFish)}셀</span>
               </div>
               <div className="flex justify-between">
                 <span>시간당 커스텀 물고기 수</span>

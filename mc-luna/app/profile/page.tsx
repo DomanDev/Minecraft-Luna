@@ -42,12 +42,22 @@ import {
 
 /**
  * profiles 테이블에서 가져오는 기본 프로필 타입
+ *
+ * 추가:
+ * - role:
+ *   관리자/일반 사용자 구분용
+ *   -> 생활 정보 저장 쿨타임 계산에 사용
+ *
+ * 전제:
+ * - DB의 profiles 테이블에 role 컬럼이 있어야 한다.
+ * - 예: 'admin' | 'user'
  */
 type Profile = {
   id: string;
   username: string | null;
   display_name: string | null;
   plan_type: 'free' | 'pro';
+  role: 'admin' | 'user' | null;
   minecraft_uuid: string | null;
   minecraft_link_status: MinecraftLinkStatus;
   minecraft_linked_at: string | null;
@@ -269,6 +279,138 @@ function formatStatValue(stat: ParsedStatValue | undefined): string {
 }
 
 /**
+ * 값이 숫자가 아니면 0으로 정리하는 작은 헬퍼
+ */
+function toSafeManualNumber(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 0;
+  }
+  return value;
+}
+
+/**
+ * 저장된 ParsedLifeProfile -> 직접 입력 폼 state 로 역변환
+ *
+ * 목적:
+ * - 예전에 "직접 입력 저장"한 데이터를 다시 불러와
+ *   manualForm 입력칸에 자동으로 채워 넣기 위함
+ */
+function buildManualFormFromParsed(
+  parsed: ParsedLifeProfile,
+): ManualProfileState {
+  const fishingJob = parsed.jobs?.fishing;
+  const farmingJob = parsed.jobs?.farming;
+  const miningJob = parsed.jobs?.mining;
+  const cookingJob = parsed.jobs?.cooking;
+
+  const fishingSkills = parsed.skills?.fishing ?? {};
+  const farmingSkills = parsed.skills?.farming ?? {};
+  const miningSkills = parsed.skills?.mining ?? {};
+  const cookingSkills = parsed.skills?.cooking ?? {};
+
+  /**
+   * 공통 스탯은 현재 저장 구조상 각 직업 stats에 반복 저장되므로
+   * 우선순위를 정해서 하나를 기준으로 꺼내온다.
+   *
+   * - luck / sense / endurance 는 fishing 기준 우선
+   * - mastery / dexterity 는 cooking 기준 우선
+   * - 없으면 farming / mining 쪽에서 보조적으로 확인
+   */
+  const commonStatsSource =
+    fishingJob?.stats ??
+    farmingJob?.stats ??
+    miningJob?.stats ??
+    cookingJob?.stats ??
+    {};
+
+  return {
+    common: {
+      reputationLevel: toSafeManualNumber(parsed.reputationLevel),
+      luck: toSafeManualNumber(commonStatsSource.luck?.total),
+      sense: toSafeManualNumber(commonStatsSource.sense?.total),
+      endurance: toSafeManualNumber(commonStatsSource.endurance?.total),
+      mastery: toSafeManualNumber(
+        cookingJob?.stats?.mastery?.total ?? commonStatsSource.mastery?.total,
+      ),
+      dexterity: toSafeManualNumber(
+        cookingJob?.stats?.dexterity?.total ?? commonStatsSource.dexterity?.total,
+      ),
+      charisma: toSafeManualNumber(commonStatsSource.charisma?.total),
+    },
+
+    fishing: {
+      level: toSafeManualNumber(fishingJob?.level),
+      skills: {
+        treasureDetection: toSafeManualNumber(fishingSkills.treasureDetection),
+        famousBait: toSafeManualNumber(fishingSkills.famousBait),
+        lineTension: toSafeManualNumber(fishingSkills.lineTension),
+        doubleCatch: toSafeManualNumber(fishingSkills.doubleCatch),
+        schoolFishing: toSafeManualNumber(fishingSkills.schoolFishing),
+      },
+      codex: {
+        normalFishReduction: toSafeManualNumber(
+          fishingJob?.stats?.normalFishReduction?.total,
+        ),
+        nibbleTimeReduction: toSafeManualNumber(
+          fishingJob?.stats?.nibbleTimeReduction?.total,
+        ),
+      },
+    },
+
+    farming: {
+      level: toSafeManualNumber(farmingJob?.level),
+      skills: {
+        blessingOfHarvest: toSafeManualNumber(farmingSkills.blessingOfHarvest),
+        fertileSoil: toSafeManualNumber(farmingSkills.fertileSoil),
+        oathOfCultivation: toSafeManualNumber(farmingSkills.oathOfCultivation),
+        handOfHarvest: toSafeManualNumber(farmingSkills.handOfHarvest),
+        reseeding: toSafeManualNumber(farmingSkills.reseeding),
+      },
+      codex: {
+        normalCropReduction: toSafeManualNumber(
+          farmingJob?.stats?.normalCropReduction?.total,
+        ),
+      },
+    },
+
+    mining: {
+      level: toSafeManualNumber(miningJob?.level),
+      skills: {
+        temperedPickaxe: toSafeManualNumber(miningSkills.temperedPickaxe),
+        veinSense: toSafeManualNumber(miningSkills.veinSense),
+        veinFlow: toSafeManualNumber(miningSkills.veinFlow),
+        veinDetection: toSafeManualNumber(miningSkills.veinDetection),
+        explosiveMining: toSafeManualNumber(miningSkills.explosiveMining),
+      },
+      codex: {
+        miningDelayReduction: toSafeManualNumber(
+          miningJob?.stats?.miningDelayReduction?.total,
+        ),
+        miningDamageIncrease: toSafeManualNumber(
+          miningJob?.stats?.miningDamageIncrease?.total,
+        ),
+      },
+    },
+
+    cooking: {
+      level: toSafeManualNumber(cookingJob?.level),
+      skills: {
+        preparationMaster: toSafeManualNumber(cookingSkills.preparationMaster),
+        balanceOfTaste: toSafeManualNumber(cookingSkills.balanceOfTaste),
+        gourmet: toSafeManualNumber(cookingSkills.gourmet),
+        instantCompletion: toSafeManualNumber(cookingSkills.instantCompletion),
+        banquetPreparation: toSafeManualNumber(cookingSkills.banquetPreparation),
+      },
+      codex: {
+        cookingGradeUpChance: toSafeManualNumber(
+          cookingJob?.stats?.cookingGradeUpChance?.total,
+        ),
+      },
+    },
+  };
+}
+
+/**
  * 공통 스탯을 각 직업에 반복 주입해
  * ManualLifeProfileInput으로 변환
  *
@@ -381,28 +523,348 @@ function tabClass(active: boolean): string {
 }
 
 /**
- * 숫자 input 공통 렌더링용 작은 컴포넌트
+ * 생활 정보 저장 쿨타임 정책
+ *
+ * - 관리자: 제한 없음
+ * - Pro: 1시간
+ * - Free: 6시간
  */
-function NumberField(props: {
+const PRO_LIFE_PROFILE_COOLDOWN_MS = 60 * 60 * 1000; // 1시간
+const FREE_LIFE_PROFILE_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6시간;
+
+function getLifeProfileCooldownMs(profile: Profile | null): number {
+  if (!profile) {
+    return FREE_LIFE_PROFILE_COOLDOWN_MS;
+  }
+
+  if (profile.role === 'admin') {
+    return 0;
+  }
+
+  if (profile.plan_type === 'pro') {
+    return PRO_LIFE_PROFILE_COOLDOWN_MS;
+  }
+
+  return FREE_LIFE_PROFILE_COOLDOWN_MS;
+}
+
+/**
+ * 남은 시간을 사람이 읽기 쉬운 문구로 변환
+ *
+ * 예:
+ * - 2시간 13분
+ * - 14분 20초
+ * - 12초
+ */
+function formatRemainingDuration(ms: number): string {
+  if (ms <= 0) return '지금 저장 가능';
+
+  const totalSeconds = Math.ceil(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `남은 시간 ${hours}시간 ${minutes}분`;
+  }
+
+  if (minutes > 0) {
+    return `남은 시간 ${minutes}분 ${seconds}초`;
+  }
+
+  return `남은 시간 ${seconds}초`;
+}
+
+/**
+ * 현재 사용자의 쿨타임 정책 문구 반환
+ *
+ * 예:
+ * - 관리자 제한 없음
+ * - Pro 1시간
+ * - Free 6시간
+ */
+function getCooldownPolicyLabel(profile: Profile | null): string {
+  if (!profile) return 'Free 6시간';
+
+  if (profile.role === 'admin') {
+    return '관리자 제한 없음';
+  }
+
+  if (profile.plan_type === 'pro') {
+    return 'Pro 1시간';
+  }
+
+  return 'Free 6시간';
+}
+
+/**
+ * 저장 가능 여부 공통 판정
+ *
+ * 사용 위치:
+ * - 저장 버튼 disabled
+ * - 저장 핸들러 맨 앞 가드
+ * - 안내 문구 표시
+ */
+function canSaveLifeProfile(
+  profile: Profile | null,
+  cooldownLoading: boolean,
+  lastSavedAt: string | null,
+  remainingCooldownMs: number,
+): {
+  allowed: boolean;
+  message: string;
+} {
+  if (cooldownLoading) {
+    return {
+      allowed: false,
+      message: '저장 가능 시간을 확인하는 중...',
+    };
+  }
+
+  if (!profile) {
+    return {
+      allowed: false,
+      message: '프로필 정보를 불러오는 중입니다.',
+    };
+  }
+
+  if (profile.role === 'admin') {
+    return {
+      allowed: true,
+      message: '관리자 계정: 제한 없이 저장 가능',
+    };
+  }
+
+  if (!lastSavedAt || remainingCooldownMs <= 0) {
+    return {
+      allowed: true,
+      message: `지금 저장 가능 (${getCooldownPolicyLabel(profile)})`,
+    };
+  }
+
+  return {
+    allowed: false,
+    message: `${formatRemainingDuration(remainingCooldownMs)} (${getCooldownPolicyLabel(profile)})`,
+  };
+}
+
+/**
+ * 프로필 페이지 전용:
+ * 소수 2자리까지 허용하는 입력 컴포넌트
+ *
+ * 정책:
+ * - 천 단위 콤마 표시 안 함
+ * - 입력 중 반올림 안 함
+ * - 소수 둘째 자리까지만 허용
+ * - 빈 문자열은 입력 중간 상태로 허용
+ */
+function DecimalPlainInput(props: {
+  value: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  const { value, onChange, disabled = false } = props;
+
+  const [inputValue, setInputValue] = useState(String(value));
+
+  useEffect(() => {
+    setInputValue(String(value));
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={inputValue}
+      disabled={disabled}
+      onChange={(e) => {
+        const raw = e.target.value;
+
+        /**
+         * 허용 형식:
+         * - ""
+         * - "12"
+         * - "12."
+         * - "12.3"
+         * - "12.34"
+         *
+         * 불허:
+         * - 음수
+         * - 소수 셋째 자리 이상
+         * - 문자
+         * - 콤마
+         */
+        if (!/^\d*(\.\d{0,2})?$/.test(raw)) {
+          return;
+        }
+
+        setInputValue(raw);
+
+        /**
+         * 입력 중간 상태("", "12.")는 number 변환을 강제하지 않음
+         */
+        if (raw === '' || raw.endsWith('.')) {
+          return;
+        }
+
+        const parsed = Number(raw);
+        if (!Number.isNaN(parsed)) {
+          onChange(parsed);
+        }
+      }}
+      onBlur={() => {
+        /**
+         * blur 시에도 반올림/콤마 처리 없이
+         * 현재 입력값 그대로 정리
+         */
+        if (inputValue === '') {
+          setInputValue('0');
+          onChange(0);
+          return;
+        }
+
+        if (inputValue.endsWith('.')) {
+          const normalized = inputValue.slice(0, -1);
+          const parsed = Number(normalized === '' ? '0' : normalized);
+          setInputValue(String(parsed));
+          onChange(parsed);
+          return;
+        }
+
+        const parsed = Number(inputValue);
+        if (Number.isNaN(parsed) || parsed < 0) {
+          setInputValue('0');
+          onChange(0);
+          return;
+        }
+
+        setInputValue(inputValue);
+        onChange(parsed);
+      }}
+      className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-zinc-100 disabled:text-zinc-500"
+    />
+  );
+}
+
+/**
+ * 프로필 페이지 전용:
+ * 0 이상의 정수만 허용하는 입력 컴포넌트
+ *
+ * 정책:
+ * - 천 단위 콤마 표시 안 함
+ * - 소수 입력 불가
+ * - 음수 입력 불가
+ */
+function PositiveIntegerPlainInput(props: {
+  value: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  const { value, onChange, disabled = false } = props;
+
+  const [inputValue, setInputValue] = useState(
+    String(Math.max(0, Math.trunc(value))),
+  );
+
+  useEffect(() => {
+    setInputValue(String(Math.max(0, Math.trunc(value))));
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={inputValue}
+      disabled={disabled}
+      onChange={(e) => {
+        const raw = e.target.value;
+
+        /**
+         * 숫자만 허용
+         */
+        if (!/^\d*$/.test(raw)) {
+          return;
+        }
+
+        setInputValue(raw);
+
+        if (raw === '') {
+          return;
+        }
+
+        const parsed = Number(raw);
+        if (!Number.isNaN(parsed)) {
+          onChange(parsed);
+        }
+      }}
+      onBlur={() => {
+        if (inputValue === '') {
+          setInputValue('0');
+          onChange(0);
+          return;
+        }
+
+        const parsed = Number(inputValue);
+        if (Number.isNaN(parsed) || parsed < 0) {
+          setInputValue('0');
+          onChange(0);
+          return;
+        }
+
+        const normalized = Math.trunc(parsed);
+        setInputValue(String(normalized));
+        onChange(normalized);
+      }}
+      className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-zinc-100 disabled:text-zinc-500"
+    />
+  );
+}
+
+/**
+ * 소수 2자리 허용 필드
+ * - 공통 스탯
+ * - 도감 효과
+ */
+function DecimalField(props: {
   label: string;
   value: number;
   onChange: (value: number) => void;
-  step?: string;
   help?: string;
 }) {
-  const { label, value, onChange, step = '1', help } = props;
+  const { label, value, onChange, help } = props;
 
   return (
-    <label className="space-y-1">
-      <div className="text-sm font-medium">{label}</div>
-      <input
-        type="number"
-        step={step}
-        value={value}
-        onChange={(e) => onChange(toNumberValue(e.target.value))}
-        className="w-full rounded-lg border p-2"
-      />
-      {help && <div className="text-xs text-gray-500">{help}</div>}
+    <label className="block space-y-1">
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+
+      <DecimalPlainInput value={value} onChange={onChange} />
+
+      {help && <p className="text-xs text-gray-500">{help}</p>}
+    </label>
+  );
+}
+
+/**
+ * 양의 정수 전용 필드
+ * - 명성 레벨
+ * - 직업 레벨
+ * - 스킬 레벨
+ */
+function IntegerField(props: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  help?: string;
+}) {
+  const { label, value, onChange, help } = props;
+
+  return (
+    <label className="block space-y-1">
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+
+      <PositiveIntegerPlainInput value={value} onChange={onChange} />
+
+      {help && <p className="text-xs text-gray-500">{help}</p>}
     </label>
   );
 }
@@ -429,7 +891,10 @@ export default function ProfilePage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaveMessage, setProfileSaveMessage] = useState('');
 
-  const [inputMode, setInputMode] = useState<InputMode>('import');
+  /**
+   * 직접 입력을 왼쪽/기본값으로 유지
+   */
+  const [inputMode, setInputMode] = useState<InputMode>('manual');
   const [manualJobTab, setManualJobTab] = useState<ManualJobTab>('fishing');
 
   const [rawText, setRawText] = useState('');
@@ -438,7 +903,25 @@ export default function ProfilePage() {
 
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
-  const [parsedPreview, setParsedPreview] = useState<ParsedLifeProfile | null>(null);
+  const [manualLoadLoading, setManualLoadLoading] = useState(false);
+  const [parsedPreview, setParsedPreview] =
+    useState<ParsedLifeProfile | null>(null);
+
+  /**
+   * 생활 정보 저장 제한 관련 state
+   *
+   * - lastLifeProfileSavedAt:
+   *   마지막 생활 정보 저장 시각
+   * - remainingCooldownMs:
+   *   지금 기준으로 남아 있는 제한 시간
+   * - cooldownLoading:
+   *   최근 저장 시각을 조회 중인지 여부
+   */
+  const [lastLifeProfileSavedAt, setLastLifeProfileSavedAt] = useState<
+    string | null
+  >(null);
+  const [remainingCooldownMs, setRemainingCooldownMs] = useState(0);
+  const [cooldownLoading, setCooldownLoading] = useState(true);
 
   /**
    * 마인크래프트 프로필 연동 관련 state
@@ -455,6 +938,33 @@ export default function ProfilePage() {
   const [minecraftModalOpen, setMinecraftModalOpen] = useState(false);
   const [minecraftLinkSaving, setMinecraftLinkSaving] = useState(false);
 
+  /**
+   * 최근 생활 정보 저장 시각 조회
+   *
+   * 기준:
+   * - import/manual 구분 없이 가장 최근 1건
+   * - created_at이 가장 최신인 row를 사용
+   *
+   * 이유:
+   * - DB 과다 사용 방지는 "생활 정보 수정 전체"에 대해 적용해야 하므로
+   *   입력 방식과 무관하게 마지막 저장 시각 하나만 보면 된다.
+   */
+  const fetchLastLifeProfileSavedAt = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('life_profile_imports')
+      .select('created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`최근 생활정보 저장 시각 조회 실패: ${error.message}`);
+    }
+
+    return data?.created_at ?? null;
+  };
+
   useEffect(() => {
     if (!user) {
       setProfile(null);
@@ -468,11 +978,15 @@ export default function ProfilePage() {
       /**
        * 1차 조회:
        * - 기존 profiles row가 있는지 확인
+       *
+       * 추가:
+       * - role도 함께 조회한다.
+       *   -> 관리자 쿨타임 예외 처리에 필요
        */
       let { data, error } = await supabase
         .from('profiles')
         .select(
-          'id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
         )
         .eq('id', user.id)
         .maybeSingle();
@@ -493,6 +1007,7 @@ export default function ProfilePage() {
           username: null,
           display_name: null,
           plan_type: 'free' as const,
+          role: 'user' as const,
           minecraft_uuid: null,
           minecraft_link_status: 'needs_lookup' as const,
           minecraft_linked_at: null,
@@ -514,7 +1029,7 @@ export default function ProfilePage() {
         const retry = await supabase
           .from('profiles')
           .select(
-            'id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+            'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
           )
           .eq('id', user.id)
           .single();
@@ -539,6 +1054,76 @@ export default function ProfilePage() {
 
     void fetchProfile();
   }, [user]);
+
+  useEffect(() => {
+    const loadCooldownInfo = async () => {
+      if (!user) {
+        setLastLifeProfileSavedAt(null);
+        setRemainingCooldownMs(0);
+        setCooldownLoading(false);
+        return;
+      }
+
+      try {
+        setCooldownLoading(true);
+
+        const lastSavedAt = await fetchLastLifeProfileSavedAt(user.id);
+        setLastLifeProfileSavedAt(lastSavedAt);
+      } catch (error) {
+        console.error(error);
+        setLastLifeProfileSavedAt(null);
+      } finally {
+        setCooldownLoading(false);
+      }
+    };
+
+    void loadCooldownInfo();
+  }, [user]);
+
+  useEffect(() => {
+    const updateRemaining = () => {
+      if (!profile) {
+        setRemainingCooldownMs(0);
+        return;
+      }
+
+      const cooldownMs = getLifeProfileCooldownMs(profile);
+
+      if (cooldownMs <= 0 || !lastLifeProfileSavedAt) {
+        setRemainingCooldownMs(0);
+        return;
+      }
+
+      const lastSavedTime = new Date(lastLifeProfileSavedAt).getTime();
+      const nextAllowedTime = lastSavedTime + cooldownMs;
+      const now = Date.now();
+
+      setRemainingCooldownMs(Math.max(0, nextAllowedTime - now));
+    };
+
+    updateRemaining();
+
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [profile, lastLifeProfileSavedAt]);
+
+  /**
+   * 현재 저장 가능 상태를 한 번만 계산해서 재사용
+   *
+   * 사용 위치:
+   * - 상단 안내 배너
+   * - import 저장 버튼
+   * - manual 저장 버튼
+   * - 저장 핸들러 시작 가드
+   */
+  const saveAvailability = useMemo(() => {
+    return canSaveLifeProfile(
+      profile,
+      cooldownLoading,
+      lastLifeProfileSavedAt,
+      remainingCooldownMs,
+    );
+  }, [profile, cooldownLoading, lastLifeProfileSavedAt, remainingCooldownMs]);
 
   /**
    * 공통 스탯 업데이트
@@ -653,6 +1238,7 @@ export default function ProfilePage() {
     uuid: profile?.minecraft_uuid,
     size: 64,
   });
+
   /**
    * 기본 프로필 저장
    *
@@ -868,7 +1454,7 @@ export default function ProfilePage() {
         .from('profiles')
         .upsert(updatePayload, { onConflict: 'id' })
         .select(
-          'id, username, display_name, plan_type, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
         )
         .single();
 
@@ -895,6 +1481,17 @@ export default function ProfilePage() {
     }
   };
 
+  /**
+   * 가져오기 저장
+   *
+   * 추가:
+   * - 저장 직전 쿨타임 가드
+   * - 저장 성공 시 lastLifeProfileSavedAt 즉시 갱신
+   *
+   * 이유:
+   * - 버튼 비활성화만으로는 우회가 가능할 수 있으므로
+   *   핸들러 진입 시에도 한 번 더 막아준다.
+   */
   const handleSaveImportProfile = async () => {
     try {
       setSaving(true);
@@ -915,6 +1512,13 @@ export default function ProfilePage() {
         return;
       }
 
+      if (!saveAvailability.allowed) {
+        const message = `생활 정보 수정 제한 중 · ${saveAvailability.message}`;
+        setSaveMessage(message);
+        toast.error(message);
+        return;
+      }
+
       /**
        * 1) 생활 정보 원문을 파싱하고
        * 2) DB에 저장한 뒤
@@ -922,6 +1526,14 @@ export default function ProfilePage() {
        */
       const parsed = await saveLifeProfileFromText(user.id, rawText);
       setParsedPreview(parsed);
+
+      /**
+       * 저장 성공 즉시 마지막 저장 시각을 현재 시각으로 갱신
+       *
+       * 이유:
+       * - DB 재조회 없이도 화면 카운트다운을 바로 시작하기 위함
+       */
+      setLastLifeProfileSavedAt(new Date().toISOString());
 
       /**
        * 저장 완료 메시지
@@ -943,6 +1555,13 @@ export default function ProfilePage() {
     }
   };
 
+  /**
+   * 직접 입력 저장
+   *
+   * 추가:
+   * - 저장 직전 쿨타임 가드
+   * - 저장 성공 시 lastLifeProfileSavedAt 즉시 갱신
+   */
   const handleSaveManualProfile = async () => {
     try {
       setSaving(true);
@@ -963,12 +1582,24 @@ export default function ProfilePage() {
         return;
       }
 
+      if (!saveAvailability.allowed) {
+        const message = `생활 정보 수정 제한 중 · ${saveAvailability.message}`;
+        setSaveMessage(message);
+        toast.error(message);
+        return;
+      }
+
       /**
        * manual 입력값을 표준 구조로 변환해서 저장
        */
       const manualInput = buildManualLifeProfileInput(manualForm);
       const parsed = await saveManualLifeProfile(user.id, manualInput);
       setParsedPreview(parsed);
+
+      /**
+       * 저장 성공 즉시 마지막 저장 시각 반영
+       */
+      setLastLifeProfileSavedAt(new Date().toISOString());
 
       setSaveMessage('직접 입력 프로필 저장 완료');
       toast.success('프로필이 저장되었습니다.');
@@ -981,6 +1612,68 @@ export default function ProfilePage() {
       toast.error(message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleLoadLastManualProfile = async () => {
+    try {
+      setManualLoadLoading(true);
+      setSaveMessage('');
+
+      if (!user) {
+        const message = '사용자 정보를 불러올 수 없습니다.';
+        setSaveMessage(message);
+        toast.error(message);
+        return;
+      }
+
+      /**
+       * 직접 입력으로 저장했던 가장 최근 스냅샷 1개 조회
+       *
+       * 저장 구조 근거:
+       * - saveManualLifeProfile() -> saveParsedLifeProfile(...)
+       * - life_profile_imports 에 input_method = "manual" 로 저장됨
+       */
+      const { data, error } = await supabase
+        .from('life_profile_imports')
+        .select('parsed_json, created_at')
+        .eq('user_id', user.id)
+        .eq('input_method', 'manual')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`이전 직접 입력 데이터 조회 실패: ${error.message}`);
+      }
+
+      const parsed = (data?.parsed_json ?? null) as ParsedLifeProfile | null;
+
+      if (!parsed) {
+        const message = '이전에 직접 입력하여 저장한 데이터가 없습니다.';
+        setSaveMessage(message);
+        toast.error(message);
+        return;
+      }
+
+      const loadedForm = buildManualFormFromParsed(parsed);
+
+      setManualForm(loadedForm);
+      setParsedPreview(parsed);
+      setManualJobTab('fishing');
+
+      const message = '이전에 직접 입력한 데이터를 불러왔습니다.';
+      setSaveMessage(message);
+      toast.success(message);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : '이전 직접 입력 데이터를 불러오는 중 오류가 발생했습니다.';
+      setSaveMessage(message);
+      toast.error(message);
+    } finally {
+      setManualLoadLoading(false);
     }
   };
 
@@ -1285,18 +1978,18 @@ export default function ProfilePage() {
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setInputMode('import');
-              setSaveMessage('');
-            }}
-            className={tabClass(inputMode === 'import')}
-          >
-            가져오기
-          </button>
+        <div
+          className={`rounded-lg border p-4 text-sm ${
+            saveAvailability.allowed
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              : 'border-amber-200 bg-amber-50 text-amber-900'
+          }`}
+        >
+          <div className="font-semibold">생활 정보 수정 제한</div>
+          <p className="mt-1">{saveAvailability.message}</p>
+        </div>
 
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => {
@@ -1306,6 +1999,17 @@ export default function ProfilePage() {
             className={tabClass(inputMode === 'manual')}
           >
             직접 입력
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setInputMode('import');
+              setSaveMessage('');
+            }}
+            className={tabClass(inputMode === 'import')}
+          >
+            가져오기
           </button>
         </div>
 
@@ -1325,7 +2029,12 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={handleSaveImportProfile}
-                disabled={saving || rawText.trim().length === 0 || !isMinecraftLinked}
+                disabled={
+                  saving ||
+                  rawText.trim().length === 0 ||
+                  !isMinecraftLinked ||
+                  !saveAvailability.allowed
+                }
                 className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {saving ? '저장 중...' : '파싱 후 저장'}
@@ -1354,47 +2063,41 @@ export default function ProfilePage() {
               <h3 className="text-lg font-semibold">공통 스탯 (total 기준)</h3>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <NumberField
+                <IntegerField
                   label="명성 레벨"
                   value={manualForm.common.reputationLevel}
                   onChange={(value) => updateCommonStat('reputationLevel', value)}
                 />
-                <NumberField
+                <DecimalField
                   label="행운"
-                  step="0.1"
                   value={manualForm.common.luck}
                   onChange={(value) => updateCommonStat('luck', value)}
                 />
-                <NumberField
+                <DecimalField
                   label="감각"
-                  step="0.1"
                   value={manualForm.common.sense}
                   onChange={(value) => updateCommonStat('sense', value)}
                 />
-                <NumberField
+                <DecimalField
                   label="인내력"
-                  step="0.1"
                   value={manualForm.common.endurance}
                   onChange={(value) => updateCommonStat('endurance', value)}
                 />
-                <NumberField
+                <DecimalField
                   label="노련함"
-                  step="0.1"
                   value={manualForm.common.mastery}
                   onChange={(value) => updateCommonStat('mastery', value)}
                 />
-                <NumberField
+                <DecimalField
                   label="손재주"
-                  step="0.1"
                   value={manualForm.common.dexterity}
                   onChange={(value) => updateCommonStat('dexterity', value)}
                 />
-                <NumberField
+                {/* <DecimalField
                   label="카리스마"
-                  step="0.1"
                   value={manualForm.common.charisma}
                   onChange={(value) => updateCommonStat('charisma', value)}
-                />
+                /> */}
               </div>
             </div>
 
@@ -1440,7 +2143,7 @@ export default function ProfilePage() {
               {manualJobTab === 'fishing' && (
                 <div className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <NumberField
+                    <IntegerField
                       label="낚시 레벨"
                       value={manualForm.fishing.level}
                       onChange={(value) => updateJobLevel('fishing', value)}
@@ -1450,35 +2153,35 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">스킬 레벨</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <IntegerField
                         label="보물 감지"
                         value={manualForm.fishing.skills.treasureDetection}
                         onChange={(value) =>
                           updateJobSkill('fishing', 'treasureDetection', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="소문난 미끼"
                         value={manualForm.fishing.skills.famousBait}
                         onChange={(value) =>
                           updateJobSkill('fishing', 'famousBait', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="낚싯줄 장력"
                         value={manualForm.fishing.skills.lineTension}
                         onChange={(value) =>
                           updateJobSkill('fishing', 'lineTension', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="쌍걸이"
                         value={manualForm.fishing.skills.doubleCatch}
                         onChange={(value) =>
                           updateJobSkill('fishing', 'doubleCatch', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="떼낚시"
                         value={manualForm.fishing.skills.schoolFishing}
                         onChange={(value) =>
@@ -1491,17 +2194,15 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">도감 효과</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <DecimalField
                         label="일반 물고기 감소비율"
-                        step="0.1"
                         value={manualForm.fishing.codex.normalFishReduction}
                         onChange={(value) =>
                           updateJobCodex('fishing', 'normalFishReduction', value)
                         }
                       />
-                      <NumberField
+                      <DecimalField
                         label="기척 시간 감소"
-                        step="0.1"
                         value={manualForm.fishing.codex.nibbleTimeReduction}
                         onChange={(value) =>
                           updateJobCodex('fishing', 'nibbleTimeReduction', value)
@@ -1515,7 +2216,7 @@ export default function ProfilePage() {
               {manualJobTab === 'farming' && (
                 <div className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <NumberField
+                    <IntegerField
                       label="농사 레벨"
                       value={manualForm.farming.level}
                       onChange={(value) => updateJobLevel('farming', value)}
@@ -1525,35 +2226,35 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">스킬 레벨</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <IntegerField
                         label="풍년의 축복"
                         value={manualForm.farming.skills.blessingOfHarvest}
                         onChange={(value) =>
                           updateJobSkill('farming', 'blessingOfHarvest', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="비옥한 토양"
                         value={manualForm.farming.skills.fertileSoil}
                         onChange={(value) =>
                           updateJobSkill('farming', 'fertileSoil', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="개간의 서약"
                         value={manualForm.farming.skills.oathOfCultivation}
                         onChange={(value) =>
                           updateJobSkill('farming', 'oathOfCultivation', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="수확의 손길"
                         value={manualForm.farming.skills.handOfHarvest}
                         onChange={(value) =>
                           updateJobSkill('farming', 'handOfHarvest', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="되뿌리기"
                         value={manualForm.farming.skills.reseeding}
                         onChange={(value) =>
@@ -1566,9 +2267,8 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">도감 효과</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <DecimalField
                         label="일반 작물 감소비율"
-                        step="0.1"
                         value={manualForm.farming.codex.normalCropReduction}
                         onChange={(value) =>
                           updateJobCodex('farming', 'normalCropReduction', value)
@@ -1582,7 +2282,7 @@ export default function ProfilePage() {
               {manualJobTab === 'mining' && (
                 <div className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <NumberField
+                    <IntegerField
                       label="채광 레벨"
                       value={manualForm.mining.level}
                       onChange={(value) => updateJobLevel('mining', value)}
@@ -1592,35 +2292,35 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">스킬 레벨</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <IntegerField
                         label="단련된 곡괭이"
                         value={manualForm.mining.skills.temperedPickaxe}
                         onChange={(value) =>
                           updateJobSkill('mining', 'temperedPickaxe', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="광맥 감각"
                         value={manualForm.mining.skills.veinSense}
                         onChange={(value) =>
                           updateJobSkill('mining', 'veinSense', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="광맥 흐름"
                         value={manualForm.mining.skills.veinFlow}
                         onChange={(value) =>
                           updateJobSkill('mining', 'veinFlow', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="광맥 탐지"
                         value={manualForm.mining.skills.veinDetection}
                         onChange={(value) =>
                           updateJobSkill('mining', 'veinDetection', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="폭발적인 채광"
                         value={manualForm.mining.skills.explosiveMining}
                         onChange={(value) =>
@@ -1633,17 +2333,15 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">도감 효과</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <DecimalField
                         label="채광 딜레이 감소"
-                        step="0.1"
                         value={manualForm.mining.codex.miningDelayReduction}
                         onChange={(value) =>
                           updateJobCodex('mining', 'miningDelayReduction', value)
                         }
                       />
-                      <NumberField
+                      <DecimalField
                         label="채광 데미지 증가"
-                        step="0.1"
                         value={manualForm.mining.codex.miningDamageIncrease}
                         onChange={(value) =>
                           updateJobCodex('mining', 'miningDamageIncrease', value)
@@ -1657,7 +2355,7 @@ export default function ProfilePage() {
               {manualJobTab === 'cooking' && (
                 <div className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <NumberField
+                    <IntegerField
                       label="요리 레벨"
                       value={manualForm.cooking.level}
                       onChange={(value) => updateJobLevel('cooking', value)}
@@ -1667,35 +2365,35 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">스킬 레벨</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <IntegerField
                         label="손질 달인"
                         value={manualForm.cooking.skills.preparationMaster}
                         onChange={(value) =>
                           updateJobSkill('cooking', 'preparationMaster', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="맛의 균형"
                         value={manualForm.cooking.skills.balanceOfTaste}
                         onChange={(value) =>
                           updateJobSkill('cooking', 'balanceOfTaste', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="미식가"
                         value={manualForm.cooking.skills.gourmet}
                         onChange={(value) =>
                           updateJobSkill('cooking', 'gourmet', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="즉시 완성"
                         value={manualForm.cooking.skills.instantCompletion}
                         onChange={(value) =>
                           updateJobSkill('cooking', 'instantCompletion', value)
                         }
                       />
-                      <NumberField
+                      <IntegerField
                         label="연회 준비"
                         value={manualForm.cooking.skills.banquetPreparation}
                         onChange={(value) =>
@@ -1708,9 +2406,8 @@ export default function ProfilePage() {
                   <div className="space-y-3 rounded-xl border p-4">
                     <h4 className="text-base font-semibold">도감 효과</h4>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <NumberField
+                      <DecimalField
                         label="요리 등급업 확률"
-                        step="0.1"
                         value={manualForm.cooking.codex.cookingGradeUpChance}
                         onChange={(value) =>
                           updateJobCodex('cooking', 'cookingGradeUpChance', value)
@@ -1726,7 +2423,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={handleSaveManualProfile}
-                disabled={saving || !isMinecraftLinked}
+                disabled={saving || !isMinecraftLinked || !saveAvailability.allowed}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {saving ? '저장 중...' : '직접 입력 저장'}
@@ -1734,8 +2431,17 @@ export default function ProfilePage() {
 
               <button
                 type="button"
+                onClick={handleLoadLastManualProfile}
+                disabled={manualLoadLoading}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {manualLoadLoading ? '불러오는 중...' : '이전 입력 불러오기'}
+              </button>
+
+              <button
+                type="button"
                 onClick={resetManualState}
-                disabled={saving}
+                disabled={saving || manualLoadLoading}
                 className="rounded-lg bg-gray-500 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 초기화
@@ -1765,12 +2471,24 @@ export default function ProfilePage() {
 
             <div className="rounded-xl border p-4">
               <h3 className="mb-2 font-semibold">공통 스탯 확인</h3>
-              <div className="text-sm">행운: {formatStatValue(previewFishingJob?.stats?.luck)}</div>
-              <div className="text-sm">감각: {formatStatValue(previewFishingJob?.stats?.sense)}</div>
-              <div className="text-sm">손재주: {formatStatValue(previewCookingJob?.stats?.dexterity)}</div>
-              <div className="text-sm">노련함: {formatStatValue(previewCookingJob?.stats?.mastery)}</div>
-              <div className="text-sm">인내력: {formatStatValue(previewFishingJob?.stats?.endurance)}</div>
-              <div className="text-sm">카리스마: {formatStatValue(previewFishingJob?.stats?.charisma)}</div>
+              <div className="text-sm">
+                행운: {formatStatValue(previewFishingJob?.stats?.luck)}
+              </div>
+              <div className="text-sm">
+                감각: {formatStatValue(previewFishingJob?.stats?.sense)}
+              </div>
+              <div className="text-sm">
+                손재주: {formatStatValue(previewCookingJob?.stats?.dexterity)}
+              </div>
+              <div className="text-sm">
+                노련함: {formatStatValue(previewCookingJob?.stats?.mastery)}
+              </div>
+              <div className="text-sm">
+                인내력: {formatStatValue(previewFishingJob?.stats?.endurance)}
+              </div>
+              <div className="text-sm">
+                카리스마: {formatStatValue(previewFishingJob?.stats?.charisma)}
+              </div>
             </div>
 
             <div className="rounded-xl border p-4">
