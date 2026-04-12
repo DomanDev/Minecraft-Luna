@@ -986,35 +986,44 @@ export default function FishingCalculatorPage() {
   );
 
   /**
-   * =========================
    * 오른쪽 결과 패널 표시용 파생값
-   * =========================
-   *
-   * 요구사항 기준:
-   * - "실제 기척 시간(인챈트 적용)" 아래에 도감-기척 시간 감소 표시
-   * - "최종 기척 시간" = 실제 기척 시간 - 도감 효과
-   * - 시간당 값들도 이 최종 표시 시간을 기준으로 일관되게 다시 계산
+   * - calc.ts에서 계산된 결과만 표시한다.
+   * - page.tsx에서는 시간/수익을 다시 계산하지 않는다.
    */
-  const displayedFinalNibbleSeconds = Math.max(
-    result.catchTime.finalNibbleSeconds - nibbleTimeReduction,
-    0,
-  );
-  const displayedFinalNibbleTicks = displayedFinalNibbleSeconds * 20;
 
-  const displayedTotalCycleSeconds =
-    result.catchTime.castStartSeconds +
-    displayedFinalNibbleSeconds +
-    result.catchTime.displayBiteSeconds +
-    result.catchTime.reelInSeconds;
+  /** 결과표에 표시할 최종 기척 시간(기본 계산 결과 그대로 사용) */
+  const displayedFinalNibbleSeconds = result.catchTime.finalNibbleSeconds;
 
-  const cyclesPerHour =
-    displayedTotalCycleSeconds > 0 ? 3600 / displayedTotalCycleSeconds : 0;
+  /** 결과표에 표시할 최종 기척 시간 틱 */
+  const displayedFinalNibbleTicks = result.catchTime.finalNibbleTicks;
 
-  const customFishPerHour =
-    cyclesPerHour * result.catchExpectation.finalCustomFishPerCycle;
+  /** 결과표에 표시할 최종 1회 낚시 시간 */
+  const displayedTotalCycleSeconds = result.catchTime.totalCycleSeconds;
 
-  const expectedValuePerHour =
-    cyclesPerHour * result.value.expectedValuePerCycle;
+  /** 시간당 낚시 횟수 */
+  const cyclesPerHour = result.hourly?.castsPerHour ?? 0;
+
+  /** 시간당 커스텀 물고기 수 */
+  const customFishPerHour = result.hourly?.customFishPerHour ?? 0;
+
+  /** 시간당 기대 수익 */
+  const expectedValuePerHour = result.value.expectedValuePerHour ?? 0;
+
+  /** 시간당 떼낚시 사용 횟수 */
+  const schoolFishingUsesPerHour =
+    result.hourly?.schoolFishingUsesPerHour ?? 0;
+
+  /** 떼낚시 총 지속시간 */
+  const schoolFishingActiveSecondsPerHour =
+    result.hourly?.schoolFishingActiveSecondsPerHour ?? 0;
+
+  /** 시간당 쌍걸이 사용 횟수 */
+  const doubleHookUsesPerHour =
+    result.hourly?.doubleHookUsesPerHour ?? 0;
+
+  /** 쌍걸이 총 지속시간 */
+  const doubleHookActiveSecondsPerHour =
+    result.hourly?.doubleHookActiveSecondsPerHour ?? 0;
 
   const formatLevelUpTime = (hours: number) => {
     if (!Number.isFinite(hours) || hours < 0) return "계산 불가";
@@ -1026,8 +1035,7 @@ export default function FishingCalculatorPage() {
   };
 
   const handleCalculateExp = () => {
-    const nextCyclesPerHour =
-      displayedTotalCycleSeconds > 0 ? 3600 / displayedTotalCycleSeconds : 0;
+    const nextCyclesPerHour = result.hourly?.castsPerHour ?? 0;
 
     const expFishPerHour =
       nextCyclesPerHour * result.catchExpectation.expCatchCountPerCycle;
@@ -1637,36 +1645,62 @@ export default function FishingCalculatorPage() {
             </div>
           </ResultCard>
 
-          <ResultCard title="기대 수익">
+                    <ResultCard title="기대 수익">
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span>물고기 1마리 기대가치</span>
                 <span>{formatCell(result.value.expectedValuePerFish)}셀</span>
               </div>
+
               <div className="flex justify-between">
                 <span>시간당 커스텀 물고기 수</span>
-                <span>{formatInteger(customFishPerHour)}마리</span>
+                <span>{formatDecimal(customFishPerHour, 2)}마리</span>
               </div>
+
               <div className="border-t border-gray-800/20 my-2" />
+
               <div className="flex justify-between">
                 <span>낚시 1회당 기대 수익</span>
                 <span>{formatCell(result.value.expectedValuePerCycle)}셀</span>
               </div>
+
               <div className="flex justify-between">
                 <span>시간당 낚시 횟수</span>
-                <span>{Math.floor(cyclesPerHour).toString()}회</span>
+                <span>{formatDecimal(cyclesPerHour, 2)}회</span>
+              </div>
+
+              <div className="border-t border-gray-800/20 my-2" />
+
+              <div className="flex justify-between">
+                <span>시간당 떼낚시 사용 횟수</span>
+                <span>{schoolFishingUsesPerHour}회</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>떼낚시 총 지속시간</span>
+                <span>{formatDecimal(schoolFishingActiveSecondsPerHour, 2)}초</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>시간당 쌍걸이 사용 횟수</span>
+                <span>{doubleHookUsesPerHour}회</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>쌍걸이 총 지속시간</span>
+                <span>{formatDecimal(doubleHookActiveSecondsPerHour, 2)}초</span>
               </div>
             </div>
 
             <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-blue-900">
-                    시간당 기대 수익
-                  </span>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-blue-900">
+                  시간당 기대 수익
+                </span>
                 <span className="text-lg font-bold text-blue-700">
                   {formatCell(expectedValuePerHour)}셀
                 </span>
-                </div>
+              </div>
             </div>
           </ResultCard>
 
