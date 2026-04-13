@@ -77,7 +77,7 @@ function SeasonStatusCard({
 
     return (
     <div
-      className={`rounded-2xl border p-4 min-h-[132px] transition-all ${visual.cardClass} ${
+      className={`rounded-2xl border p-4 min-h-[92px] transition-all ${visual.cardClass} ${
         isCurrent ? "ring-2 ring-offset-1 ring-white/70" : ""
       }`}
     >
