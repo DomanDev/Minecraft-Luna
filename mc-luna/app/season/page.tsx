@@ -14,6 +14,95 @@ import {
   type VillageKey,
 } from "@/src/lib/season/calc";
 
+function getSeasonVisual(season: string, isCurrent: boolean) {
+  switch (season) {
+    case "봄":
+      return {
+        icon: "🌸",
+        cardClass: isCurrent
+          ? "border-pink-300 bg-pink-50 shadow-sm"
+          : "border-pink-200 bg-pink-50/60",
+        titleClass: isCurrent ? "text-pink-700" : "text-pink-600",
+        valueClass: isCurrent ? "text-pink-900" : "text-zinc-900",
+      };
+    case "여름":
+      return {
+        icon: "☀️",
+        cardClass: isCurrent
+          ? "border-amber-300 bg-amber-50 shadow-sm"
+          : "border-amber-200 bg-amber-50/60",
+        titleClass: isCurrent ? "text-amber-700" : "text-amber-600",
+        valueClass: isCurrent ? "text-amber-900" : "text-zinc-900",
+      };
+    case "가을":
+      return {
+        icon: "🍂",
+        cardClass: isCurrent
+          ? "border-orange-300 bg-orange-50 shadow-sm"
+          : "border-orange-200 bg-orange-50/60",
+        titleClass: isCurrent ? "text-orange-700" : "text-orange-600",
+        valueClass: isCurrent ? "text-orange-900" : "text-zinc-900",
+      };
+    case "겨울":
+      return {
+        icon: "❄️",
+        cardClass: isCurrent
+          ? "border-sky-300 bg-sky-50 shadow-sm"
+          : "border-sky-200 bg-sky-50/60",
+        titleClass: isCurrent ? "text-sky-700" : "text-sky-600",
+        valueClass: isCurrent ? "text-sky-900" : "text-zinc-900",
+      };
+    default:
+      return {
+        icon: "🕒",
+        cardClass: isCurrent
+          ? "border-emerald-300 bg-emerald-50 shadow-sm"
+          : "border-zinc-200 bg-white",
+        titleClass: "text-zinc-600",
+        valueClass: "text-zinc-900",
+      };
+  }
+}
+
+function SeasonStatusCard({
+  season,
+  isCurrent,
+  remainingMinutes,
+}: {
+  season: string;
+  isCurrent: boolean;
+  remainingMinutes: number;
+}) {
+  const visual = getSeasonVisual(season, isCurrent);
+
+  return (
+    <div
+      className={`rounded-2xl border p-4 min-h-[132px] transition-all ${visual.cardClass} ${
+        isCurrent ? "ring-2 ring-offset-1 ring-white/70" : ""
+      }`}
+    >
+      <div className={`flex items-center gap-2 text-sm font-semibold ${visual.titleClass}`}>
+        <span className="text-base leading-none">{visual.icon}</span>
+        <span>{season}</span>
+      </div>
+
+      <div
+        className={`className="mt-3 text-lg sm:text-xl font-bold leading-snug break-keep ${visual.valueClass}`}
+      >
+        {isCurrent ? (
+          "현재 계절"
+        ) : (
+          <>
+            {formatRemainingTime(remainingMinutes)}
+            <br />
+            후
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function buildSeasonSummaryRows(
   villageLabel: string,
   currentSeason: string,
@@ -115,21 +204,12 @@ export default function SeasonPage() {
           <ResultCard title="계절 남은 시간">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {seasonState.items.map((item) => (
-                <div
+                <SeasonStatusCard
                   key={item.season}
-                  className={`rounded-2xl border p-4 ${
-                    item.isCurrent
-                      ? "border-emerald-300 bg-emerald-50"
-                      : "border-zinc-200 bg-white"
-                  }`}
-                >
-                  <div className="text-sm text-zinc-500">{item.season}</div>
-                  <div className="mt-2 text-lg font-bold text-zinc-900">
-                    {item.isCurrent
-                      ? "현재 계절"
-                      : `${formatRemainingTime(item.remainingMinutes)} 후`}
-                  </div>
-                </div>
+                  season={item.season}
+                  isCurrent={item.isCurrent}
+                  remainingMinutes={item.remainingMinutes}
+                />
               ))}
             </div>
           </ResultCard>
