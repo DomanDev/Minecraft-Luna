@@ -75,7 +75,7 @@ function SeasonStatusCard({
 }) {
   const visual = getSeasonVisual(season, isCurrent);
 
-  return (
+    return (
     <div
       className={`rounded-2xl border p-4 min-h-[132px] transition-all ${visual.cardClass} ${
         isCurrent ? "ring-2 ring-offset-1 ring-white/70" : ""
@@ -87,17 +87,11 @@ function SeasonStatusCard({
       </div>
 
       <div
-        className={`className="mt-3 text-lg sm:text-xl font-bold leading-snug break-keep ${visual.valueClass}`}
+        className={`mt-3 text-sm sm:text-base font-bold leading-snug whitespace-nowrap ${visual.valueClass}`}
       >
-        {isCurrent ? (
-          "현재 계절"
-        ) : (
-          <>
-            {formatRemainingTime(remainingMinutes)}
-            <br />
-            후
-          </>
-        )}
+        {isCurrent
+          ? "현재 계절"
+          : `${formatRemainingTime(remainingMinutes)} 후`}
       </div>
     </div>
   );
