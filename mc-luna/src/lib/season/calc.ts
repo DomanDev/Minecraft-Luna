@@ -89,11 +89,16 @@ const REFERENCE_INGAME_TOTAL_MINUTES =
  */
 const VILLAGE_OFFSETS: Record<VillageKey, number> = {
   aries: 0,
-  taurus: 0,
-  gemini: 0,
-  leo: 0,
-  scorpio: 0,
-  aquarius: 0,
+
+  /**
+   * 사진 기준 양자리와 비교한 인게임 분 오프셋
+   * 음수 = 양자리보다 느림(더 이전 시간대)
+   */
+  taurus: -18813,   // 황소자리: 13일 1시간 33분 느림
+  gemini: -37047,   // 쌍둥이자리: 25일 17시간 27분 느림
+  leo: -23245,      // 사자자리: 16일 3시간 25분 느림
+  scorpio: -34522,  // 전갈자리: 23일 23시간 22분 느림
+  aquarius: -33904, // 물병자리: 23일 13시간 4분 느림
 };
 
 export const VILLAGE_OPTIONS: VillageOption[] = [

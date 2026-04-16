@@ -188,7 +188,7 @@ export default function SeasonPage() {
             </div>
 
             <p className="text-xs leading-5 text-zinc-500">
-              기준 규칙: 현실 1분 = 인게임 1시간, 계절 1개 = 인게임 30일
+              기준 규칙: 현실 50초 = 인게임 1시간, 계절 1개 = 인게임 28일
             </p>
           </div>
         </CalculatorPanel>
