@@ -14,6 +14,7 @@ import {
   type VillageKey,
 } from "@/src/lib/season/calc";
 
+
 function getSeasonVisual(season: string, isCurrent: boolean) {
   switch (season) {
     case "봄":
@@ -153,6 +154,10 @@ export default function SeasonPage() {
     );
   }, [seasonState.villageLabel, seasonState.currentSeason, currentTimeText]);
 
+  const currentSeasonVisual = useMemo(() => {
+    return getSeasonVisual(seasonState.currentSeason, true);
+  }, [seasonState.currentSeason]);
+
   return (
     <CalculatorLayout
       title="계절 계산기"
@@ -170,19 +175,22 @@ export default function SeasonPage() {
               />
             </Field>
 
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <div
+              className={`rounded-2xl border p-4 transition-all ${currentSeasonVisual.cardClass}`}
+            >
               <div className="text-sm text-zinc-600">현재 마을</div>
-              <div className="mt-1 text-lg font-bold text-emerald-700">
+              <div className={`mt-1 text-lg font-bold ${currentSeasonVisual.titleClass}`}>
                 {seasonState.villageLabel}
               </div>
 
               <div className="mt-4 text-sm text-zinc-600">현재 계절</div>
-              <div className="mt-1 text-2xl font-bold text-zinc-900">
-                {seasonState.currentSeason}
+              <div className={`mt-1 flex items-center gap-2 text-2xl font-bold ${currentSeasonVisual.valueClass}`}>
+                <span className="text-2xl leading-none">{currentSeasonVisual.icon}</span>
+                <span>{seasonState.currentSeason}</span>
               </div>
 
               <div className="mt-4 text-sm text-zinc-600">현재 인게임 시각</div>
-              <div className="mt-1 text-base font-semibold text-zinc-800">
+              <div className={`mt-1 text-base font-semibold ${currentSeasonVisual.valueClass}`}>
                 {currentTimeText}
               </div>
             </div>
