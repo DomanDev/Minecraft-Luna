@@ -67,7 +67,7 @@ const INGAME_MINUTES_PER_REAL_SECOND = 1440 / 1200; // 1.2
 /**
  * 기준 현실 시각: 2026-04-16 16:39:00 +09:00
  */
-const REAL_REFERENCE = new Date("2026-04-16T16:39:00+09:00");
+const REAL_REFERENCE = new Date("2026-04-21T22:13:15+09:00");
 
 /**
  * 기준 인게임 시각: 봄 3월 2일 12:00
@@ -75,8 +75,8 @@ const REAL_REFERENCE = new Date("2026-04-16T16:39:00+09:00");
  * - day는 1일부터 시작하므로 내부 계산에서는 (2 - 1)
  */
 const REFERENCE_INGAME_TOTAL_MINUTES =
-  ((0 * DAYS_PER_SEASON) + (2 - 1)) * INGAME_MINUTES_PER_DAY +
-  12 * MINUTES_PER_HOUR;
+  ((0 * DAYS_PER_SEASON) + (17 - 1)) * INGAME_MINUTES_PER_DAY +
+  15 * MINUTES_PER_HOUR;
 
 /**
  * 마을별 양자리 대비 인게임 분 오프셋
