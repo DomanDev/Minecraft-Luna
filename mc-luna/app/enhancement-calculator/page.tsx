@@ -71,6 +71,7 @@ const INITIAL_FORM = {
   targetLevel: 10 as EnhancementLevel,
 
   useProtectionCharm: true,
+  applyWeekdayBoost: false,
 
   currentMoonAura: 100,
   maxMoonAura: 100,
@@ -121,6 +122,7 @@ function createInitialInput(): EnhancementCalculationInput {
     currentLevel: INITIAL_FORM.currentLevel,
     targetLevel: INITIAL_FORM.targetLevel,
     useProtectionCharm: INITIAL_FORM.useProtectionCharm,
+    applyWeekdayBoost: INITIAL_FORM.applyWeekdayBoost,
     currentMoonAura: INITIAL_FORM.currentMoonAura,
     maxMoonAura: INITIAL_FORM.maxMoonAura,
     prices: {
@@ -168,6 +170,9 @@ export default function EnhancementCalculatorPage() {
 
   const [useProtectionCharm, setUseProtectionCharm] = useState(
     INITIAL_FORM.useProtectionCharm,
+  );
+  const [applyWeekdayBoost, setApplyWeekdayBoost] = useState(
+    INITIAL_FORM.applyWeekdayBoost,
   );
 
   const [currentMoonAura, setCurrentMoonAura] = useState(
@@ -280,6 +285,7 @@ export default function EnhancementCalculatorPage() {
       currentLevel,
       targetLevel,
       useProtectionCharm,
+      applyWeekdayBoost,
       currentMoonAura,
       maxMoonAura,
       prices: {
@@ -541,6 +547,7 @@ export default function EnhancementCalculatorPage() {
     setTargetLevel(INITIAL_FORM.targetLevel);
 
     setUseProtectionCharm(INITIAL_FORM.useProtectionCharm);
+    setApplyWeekdayBoost(INITIAL_FORM.applyWeekdayBoost);
 
     setCurrentMoonAura(INITIAL_FORM.currentMoonAura);
     setMaxMoonAura(INITIAL_FORM.maxMoonAura);
@@ -709,17 +716,31 @@ export default function EnhancementCalculatorPage() {
                   </Field>
                 </div>
 
-                <label className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-800">
-                  <input
-                    type="checkbox"
-                    checked={useProtectionCharm}
-                    onChange={(event) => {
-                      setUseProtectionCharm(event.target.checked);
-                      setIsDirty(true);
-                    }}
-                  />
-                  <span>하락 방지용 달빛 부적 사용</span>
-                </label>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-800">
+                    <input
+                      type="checkbox"
+                      checked={useProtectionCharm}
+                      onChange={(event) => {
+                        setUseProtectionCharm(event.target.checked);
+                        setIsDirty(true);
+                      }}
+                    />
+                    <span>하락 방지용 달빛 부적 사용</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-800">
+                    <input
+                      type="checkbox"
+                      checked={applyWeekdayBoost}
+                      onChange={(event) => {
+                        setApplyWeekdayBoost(event.target.checked);
+                        setIsDirty(true);
+                      }}
+                    />
+                    <span>요일별 부스트 적용 (강화 확률 x1.1)</span>
+                  </label>
+              </div>
               </div>
             </CalculatorPanel>
 
@@ -1032,6 +1053,11 @@ export default function EnhancementCalculatorPage() {
           <CalculatorPanel title="계산 결과">
             <div className="space-y-6">
               <ResultCard title="강화 단계별 확률 요약">
+                {applyWeekdayBoost && (
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-3 text-sm text-violet-900">
+                    요일별 부스트가 적용되어 현재 성공 확률은 기본값 대비 x1.1배로 계산됩니다.
+                  </div>
+                )}
                 <div className="space-y-2">
                   {visibleLevels.length === 0 ? (
                     <p className="text-sm text-zinc-600">
@@ -1048,7 +1074,10 @@ export default function EnhancementCalculatorPage() {
                             {level}강 → {level + 1}강
                           </span>
                           <span className="text-zinc-700">
-                            성공 {formatPercentFromRatio(getEnhancementStepSuccessRate(level), 2)}
+                            성공 {formatPercentFromRatio(
+                              getEnhancementStepSuccessRate(level, applyWeekdayBoost),
+                              2,
+                            )}
                           </span>
                         </div>
                         <div className="mt-2 flex justify-between text-sm text-zinc-700">

@@ -53,6 +53,15 @@ export type EnhancementCalculationInput = {
   useProtectionCharm: boolean;
 
   /**
+   * 요일별 부스트 적용 여부
+   *
+   * true:
+   * - 강화 성공 확률에 1.1배를 적용
+   * - 최종 성공 확률은 100%를 넘지 않도록 보정
+   */
+  applyWeekdayBoost: boolean;
+  
+  /**
    * 현재 달빛 기운 / 최대 달빛 기운
    *
    * 현재 1차 버전에서는 정보 표시용 성격이 크다.

@@ -79,6 +79,13 @@ const DROP_RATE_ON_FAIL_BY_LEVEL: Record<number, number> = {
 };
 
 /**
+ * 요일별 부스트 적용 시 강화 성공 확률 배수
+ *
+ * 예: 10% 증가 -> x1.1
+ */
+const WEEKDAY_BOOST_MULTIPLIER = 1.1;
+
+/**
  * 주문서 종류별 메타 정보
  *
  * 위키 기준:
@@ -158,8 +165,21 @@ function validateScrollUsable(level: number, scrollType: EnhancementScrollType) 
   }
 }
 
-function getSuccessRate(level: number): number {
-  return SUCCESS_RATE_BY_LEVEL[level] ?? 0;
+function getSuccessRate(
+  level: number,
+  applyWeekdayBoost = false,
+): number {
+  const baseSuccessRate = SUCCESS_RATE_BY_LEVEL[level] ?? 0;
+
+  if (!applyWeekdayBoost) {
+    return baseSuccessRate;
+  }
+
+  /**
+   * 요일별 부스트 적용 시 성공 확률 1.1배
+   * 혹시라도 100%를 넘는 경우를 대비해 clamp 처리
+   */
+  return clamp(baseSuccessRate * WEEKDAY_BOOST_MULTIPLIER, 0, 1);
 }
 
 function getDropRateOnFail(level: number): number {
@@ -174,7 +194,7 @@ function buildStepBaseCost(
   level: number,
   scrollType: EnhancementScrollType,
 ) {
-  const successRate = getSuccessRate(level);
+  const successRate = getSuccessRate(level, input.applyWeekdayBoost);
   const failRate = 1 - successRate;
   const dropRateOnFail = getDropRateOnFail(level);
 
@@ -551,6 +571,9 @@ function solveExpectedCosts(
       totalAdditionalPurchaseCost,
     },
     notes: [
+      input.applyWeekdayBoost
+        ? "요일별 부스트를 적용하여 강화 성공 확률에 x1.1배를 반영했습니다."
+        : "강화 성공 확률은 기본 확률 기준으로 계산했습니다.",
       "성공 확률과 하락 확률은 현재 강화 단계 기준으로 계산했습니다.",
       "달빛 부적은 하락이 실제 발생하는 경우에만 기대 소모량에 반영했습니다.",
       "달빛 기운 복구비는 주문서 실패 시 기대 소모량 기준으로 계산했습니다.",
@@ -651,8 +674,11 @@ export function createRecommendedEnhancementStrategy() {
   } as const;
 }
 
-export function getEnhancementStepSuccessRate(level: number): number {
-  return getSuccessRate(level);
+export function getEnhancementStepSuccessRate(
+  level: number,
+  applyWeekdayBoost = false,
+): number {
+  return getSuccessRate(level, applyWeekdayBoost);
 }
 
 export function getEnhancementStepDropRateOnFail(level: number): number {
