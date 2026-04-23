@@ -1576,6 +1576,21 @@ export default function CookingCalculatorPage() {
                 <span>[미식가] 등급업 보정</span>
                 <span>{formatPercent(result.gourmetGradeUpChancePercent)}</span>
               </div>
+              <div className="flex justify-between">
+                <span>[재료] 재료 등급 보정</span>
+                <span>
+                  {result.ingredientGradeSpecialChanceAdjustmentPercent > 0
+                    ? `+${formatPercent(result.ingredientGradeSpecialChanceAdjustmentPercent)}`
+                    : formatPercent(result.ingredientGradeSpecialChanceAdjustmentPercent)}
+                </span>
+              </div>
+              <div className="text-xs text-gray-400 leading-5">
+                고급 재료: 물고기 {formatInteger(result.advancedFishIngredientTypeCount)}종 /
+                농작물 {formatInteger(result.advancedCropIngredientTypeCount)}종
+                <br />
+                희귀 재료: 물고기 {formatInteger(result.rareFishIngredientTypeCount)}종 /
+                농작물 {formatInteger(result.rareCropIngredientTypeCount)}종
+              </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>최종 일반 확률</span>

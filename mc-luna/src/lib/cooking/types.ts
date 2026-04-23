@@ -25,6 +25,11 @@ export type CookingIngredientBonusGroup =
 
 export type CookingRareBonusType = "stat" | "recovery" | "durationOnly";
 
+export type CookingIngredientSpecialChanceCategory =
+  | "fish"
+  | "crop"
+  | "none";
+
 export interface CookingIngredient {
   id: string;
   name: string;
@@ -36,6 +41,18 @@ export interface CookingIngredient {
    * - fish/crop/fruit/seafood: 특정 유형만 카운트
    */
   rareBonusGroup?: CookingIngredientBonusGroup;
+
+  /**
+   * 재료 등급(고급/희귀)에 따른 일품 확률 보정 계산용 분류
+   *
+   * 주의:
+   * - 여기서 "fish"는 낚시/수산 재료 전체를 의미한다.
+   *   (예: 물고기, 갑각류, 문어, 개구리 등)
+   * - 여기서 "crop"은 농사 재료 전체를 의미한다.
+   *   (예: 채소, 과일)
+   * - "none"은 재료 등급 보정을 적용하지 않는 경우에 사용한다.
+   */
+  specialChanceCategory?: CookingIngredientSpecialChanceCategory;
 }
 
 export interface CookingRareBonusRule {
@@ -71,6 +88,15 @@ export interface CookingRecipe {
   name: string;
   tierLabel: "일반 요리" | "고급 요리" | "주스";
   description: string;
+
+  /**
+   * 재료 등급(고급/희귀)에 따른 일품 확률 보정 적용 여부
+   *
+   * 예:
+   * - 일반 요리 / 고급 요리: true
+   * - 옥수수 착즙 주스 / 무 착즙 주스: false
+   */
+  usesIngredientGradeSpecialChanceAdjustment?: boolean;
 
   /**
    * 버프형 요리는 지속시간이 있고
@@ -158,6 +184,13 @@ export interface CookingCalculationResult {
   ingredientCostPerCraft: number;
 
   baseSpecialChancePercent: number;
+  advancedFishIngredientTypeCount: number;
+  advancedCropIngredientTypeCount: number;
+  rareFishIngredientTypeCount: number;
+  rareCropIngredientTypeCount: number;
+  advancedIngredientPenaltyPercent: number;
+  rareIngredientBonusPercent: number;
+  ingredientGradeSpecialChanceAdjustmentPercent: number;
   codexGradeUpChancePercent: number;
   dexterityGradeUpChancePercent: number;
   gourmetGradeUpChancePercent: number;

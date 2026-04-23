@@ -9,7 +9,11 @@ import type {
  * 요리 공식
  * -------------------------------------------------------
  * 1) 등급 상승 확률
- * = 기본 확률 + 요리 등급업 확률 + (0.1 * 손재주) + 미식가 보정
+ * = 기본 확률
+ * + 요리 등급업 확률
+ * + (0.1 * 손재주)
+ * + 미식가 보정
+ * + 재료 등급 보정
  *
  * 2) 요리 속도
  * = 기본 속도 - (0.2 * 손재주) * (1 - 조리 단축 / 100)
@@ -22,10 +26,13 @@ import type {
  * 4) 요리 성공 확률
  * = 기본 확률 + (0.3 * 노련함)
  *
- * 5) 희귀 재료 보너스
- * - 레시피별 규칙에 따라 효과/지속시간 증가
- * - 체크된 재료 라인은 "라인 1개"가 아니라 해당 quantity 전체를 희귀 재료로 계산
- *   예: 토마토 x3 체크 -> 희귀 재료 3개로 카운트
+ * 5) 재료 등급 / 희귀 재료 보너스
+ * - 체크 해제(false) = 고급(은별) 재료 사용
+ * - 체크 선택(true) = 희귀(금별) 재료 사용
+ * - 일품 확률 보정은 "1개당"이 아니라 "1종당(재료 라인당)" 계산
+ *   예: 토마토 x3 이 희귀 체크면 +3%를 3번이 아니라 1번만 적용
+ * - 기존 rareBonusRules 기반 stat/recovery/duration 보너스는
+ *   기존 계산기 정책대로 quantity 전체를 희귀 재료 개수로 계산
  *
  * 6) 즉시 완성 / 연회 준비
  * - 즉시 완성:
@@ -266,6 +273,101 @@ const BANQUET_PREPARATION_EXTRA_CRAFT_COUNT: Record<number, number> = {
   30: 5,
 };
 
+
+const GENERAL_RECIPE_ADVANCED_FISH_PENALTY_PERCENT = 20;
+const GENERAL_RECIPE_ADVANCED_CROP_PENALTY_PERCENT = 15;
+const PREMIUM_RECIPE_ADVANCED_FISH_PENALTY_PERCENT = 12;
+const PREMIUM_RECIPE_ADVANCED_CROP_PENALTY_PERCENT = 6;
+
+const RARE_FISH_SPECIAL_CHANCE_BONUS_PERCENT = 6;
+const RARE_CROP_SPECIAL_CHANCE_BONUS_PERCENT = 3;
+
+interface IngredientGradeSpecialChanceAdjustment {
+  advancedFishIngredientTypeCount: number;
+  advancedCropIngredientTypeCount: number;
+  rareFishIngredientTypeCount: number;
+  rareCropIngredientTypeCount: number;
+  advancedIngredientPenaltyPercent: number;
+  rareIngredientBonusPercent: number;
+  ingredientGradeSpecialChanceAdjustmentPercent: number;
+}
+
+function getIngredientGradeSpecialChanceAdjustment(
+  input: CookingCalculationInput,
+): IngredientGradeSpecialChanceAdjustment {
+  const recipe = getCookingRecipe(input.recipeId);
+
+  if (!recipe.usesIngredientGradeSpecialChanceAdjustment) {
+    return {
+      advancedFishIngredientTypeCount: 0,
+      advancedCropIngredientTypeCount: 0,
+      rareFishIngredientTypeCount: 0,
+      rareCropIngredientTypeCount: 0,
+      advancedIngredientPenaltyPercent: 0,
+      rareIngredientBonusPercent: 0,
+      ingredientGradeSpecialChanceAdjustmentPercent: 0,
+    };
+  }
+
+  const advancedFishIngredientTypeCount = recipe.ingredients.filter(
+    (ingredient) =>
+      ingredient.specialChanceCategory === "fish" &&
+      input.rareIngredientFlags[ingredient.id] !== true,
+  ).length;
+
+  const advancedCropIngredientTypeCount = recipe.ingredients.filter(
+    (ingredient) =>
+      ingredient.specialChanceCategory === "crop" &&
+      input.rareIngredientFlags[ingredient.id] !== true,
+  ).length;
+
+  const rareFishIngredientTypeCount = recipe.ingredients.filter(
+    (ingredient) =>
+      ingredient.specialChanceCategory === "fish" &&
+      input.rareIngredientFlags[ingredient.id] === true,
+  ).length;
+
+  const rareCropIngredientTypeCount = recipe.ingredients.filter(
+    (ingredient) =>
+      ingredient.specialChanceCategory === "crop" &&
+      input.rareIngredientFlags[ingredient.id] === true,
+  ).length;
+
+  const advancedFishPenaltyPercent =
+    recipe.tierLabel === "일반 요리"
+      ? advancedFishIngredientTypeCount *
+        GENERAL_RECIPE_ADVANCED_FISH_PENALTY_PERCENT
+      : advancedFishIngredientTypeCount *
+        PREMIUM_RECIPE_ADVANCED_FISH_PENALTY_PERCENT;
+
+  const advancedCropPenaltyPercent =
+    recipe.tierLabel === "일반 요리"
+      ? advancedCropIngredientTypeCount *
+        GENERAL_RECIPE_ADVANCED_CROP_PENALTY_PERCENT
+      : advancedCropIngredientTypeCount *
+        PREMIUM_RECIPE_ADVANCED_CROP_PENALTY_PERCENT;
+
+  const advancedIngredientPenaltyPercent =
+    advancedFishPenaltyPercent + advancedCropPenaltyPercent;
+
+  const rareIngredientBonusPercent =
+    rareFishIngredientTypeCount * RARE_FISH_SPECIAL_CHANCE_BONUS_PERCENT +
+    rareCropIngredientTypeCount * RARE_CROP_SPECIAL_CHANCE_BONUS_PERCENT;
+
+  const ingredientGradeSpecialChanceAdjustmentPercent =
+    rareIngredientBonusPercent - advancedIngredientPenaltyPercent;
+
+  return {
+    advancedFishIngredientTypeCount,
+    advancedCropIngredientTypeCount,
+    rareFishIngredientTypeCount,
+    rareCropIngredientTypeCount,
+    advancedIngredientPenaltyPercent,
+    rareIngredientBonusPercent,
+    ingredientGradeSpecialChanceAdjustmentPercent,
+  };
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -328,11 +430,31 @@ export function calculateCooking(
   const gourmetGradeUpChancePercent =
     GOURMET_GRADE_UP_BONUS_PERCENT[gourmet] ?? 0;
 
+  /**
+   * 재료 등급 보정
+   *
+   * 정책:
+   * - 체크 해제(false) = 고급(은별) 재료
+   * - 체크 선택(true) = 희귀(금별) 재료
+   * - 이 보정은 "재료 개수"가 아니라 "재료 종류 수(라인 수)" 기준이다.
+   * - 주스 2종은 패치 노트 기준으로 제외한다.
+   */
+  const {
+    advancedFishIngredientTypeCount,
+    advancedCropIngredientTypeCount,
+    rareFishIngredientTypeCount,
+    rareCropIngredientTypeCount,
+    advancedIngredientPenaltyPercent,
+    rareIngredientBonusPercent,
+    ingredientGradeSpecialChanceAdjustmentPercent,
+  } = getIngredientGradeSpecialChanceAdjustment(input);
+
   const finalSpecialChancePercent = clamp(
     recipe.baseSpecialChancePercent +
       cookingGradeUpChance +
       dexterityGradeUpChancePercent +
-      gourmetGradeUpChancePercent,
+      gourmetGradeUpChancePercent +
+      ingredientGradeSpecialChanceAdjustmentPercent,
     0,
     100,
   );
@@ -533,6 +655,16 @@ export function calculateCooking(
     ingredientCostPerCraft: round(ingredientCostPerCraft, 2),
 
     baseSpecialChancePercent: round(recipe.baseSpecialChancePercent, 2),
+    advancedFishIngredientTypeCount,
+    advancedCropIngredientTypeCount,
+    rareFishIngredientTypeCount,
+    rareCropIngredientTypeCount,
+    advancedIngredientPenaltyPercent: round(advancedIngredientPenaltyPercent, 2),
+    rareIngredientBonusPercent: round(rareIngredientBonusPercent, 2),
+    ingredientGradeSpecialChanceAdjustmentPercent: round(
+      ingredientGradeSpecialChanceAdjustmentPercent,
+      2,
+    ),
     codexGradeUpChancePercent: round(cookingGradeUpChance, 2),
     dexterityGradeUpChancePercent: round(dexterityGradeUpChancePercent, 2),
     gourmetGradeUpChancePercent: round(gourmetGradeUpChancePercent, 2),
