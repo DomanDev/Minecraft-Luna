@@ -29,9 +29,9 @@ export const DEFAULT_FISHING_CONFIG: FishingCalcConfig = {
   baseBiteTicks: 90,
   senseNibbleCoeff: 0.9,
   senseBiteCoeff: 0.3,
-  baseGradeNormal: 150,
-  baseGradeAdvanced: 30,
-  baseGradeRare: 15,
+  baseGradeNormal: 110,
+  baseGradeAdvanced: 45,
+  baseGradeRare: 25,
   luckGradeCoeff: 1.6,
   vanillaBasePercent: 20,
   vanillaLuckCoeff: 0.15,
@@ -545,6 +545,7 @@ function calculateBaseCatchExpectation(
 
   /** 더블 캐치 확률 */
   const doubleCatchChancePercent = clamp(
+    5 + //기본확률(04.23 패치)
     6 * effectiveThirstMultiplier +
       0.45 * stats.luck +
       rumoredBaitChancePercent,
@@ -558,6 +559,7 @@ function calculateBaseCatchExpectation(
 
   /** 쌍걸이 미적용 기준 2회 낚시 확률 */
   const doubleCastChancePercent = clamp(
+    5 + // 기본확률
     baitDoubleCastChancePercent,
     0,
     100,
