@@ -16,6 +16,7 @@ import type {
   CookingCalculationInput,
   CookingCalculationResult,
   CookingRecipeId,
+  CookingThirstMin,
 } from "@/src/lib/cooking/types";
 import { useRequireProfile } from "@/src/hooks/useRequireProfile";
 import {
@@ -44,6 +45,17 @@ const recipeOptions = COOKING_RECIPES.map((recipe) => ({
   value: recipe.id,
   label: `${recipe.name} (${recipe.tierLabel})`,
 }));
+
+/**
+ * 갈증 최소치 드롭다운 옵션
+ *
+ * 현재 정책:
+ * - 다른 계산기 페이지와 UI를 맞추기 위해 드롭다운 구조는 유지
+ * - 패치 반영 1차 버전이라 15 이상 유지 1개만 먼저 노출
+ */
+const thirstMinOptions: { value: CookingThirstMin; label: string }[] = [
+  { value: 15, label: "15 이상 유지" },
+];
 
 const INITIAL_FORM = {
   mastery: 0,
@@ -82,6 +94,7 @@ const INITIAL_FORM = {
   experiencePerSuccessfulCraft: 0,
 
   recipeId: "ssambap" as CookingRecipeId,
+  thirstMin: 15 as CookingThirstMin,
   normalDishPrice: 100,
   specialDishPrice: 500,
 };
@@ -395,6 +408,7 @@ function createInitialCalculationInput(): CookingCalculationInput {
       ingredientUnitPrices: initialIngredientPrices,
     },
     experiencePerSuccessfulCraft: INITIAL_FORM.experiencePerSuccessfulCraft,
+    thirstMin: INITIAL_FORM.thirstMin,
     rareIngredientFlags: initialRareFlags,
   };
 }
@@ -536,6 +550,9 @@ export default function CookingCalculatorPage() {
   } | null>(null);
 
   const [recipeId, setRecipeId] = useState<CookingRecipeId>(INITIAL_FORM.recipeId);
+  const [thirstMin, setThirstMin] = useState<CookingThirstMin>(
+    INITIAL_FORM.thirstMin,
+  );
 
   const [rareIngredientFlags, setRareIngredientFlags] = useState<
     Record<string, boolean>
@@ -593,6 +610,7 @@ export default function CookingCalculatorPage() {
         ingredientUnitPrices,
       },
       experiencePerSuccessfulCraft,
+      thirstMin,
       rareIngredientFlags,
     };
   };
@@ -991,6 +1009,7 @@ export default function CookingCalculatorPage() {
           ingredientUnitPrices,
         },
         experiencePerSuccessfulCraft,
+        thirstMin,
         rareIngredientFlags,
       });
 
@@ -1008,6 +1027,7 @@ export default function CookingCalculatorPage() {
     ingredientUnitPrices,
     rareIngredientFlags,
     experiencePerSuccessfulCraft,
+    thirstMin,
   ]);
 
   useEffect(() => {
@@ -1083,6 +1103,7 @@ export default function CookingCalculatorPage() {
     normalDishPrice,
     specialDishPrice,
     experiencePerSuccessfulCraft,
+    thirstMin,
   ]);
 
   const expectedCookCountPerHour =
@@ -1137,6 +1158,7 @@ export default function CookingCalculatorPage() {
     normalDishPrice,
     specialDishPrice,
     experiencePerSuccessfulCraft,
+    thirstMin,
     remainingExp,
   ]);
 
@@ -1191,6 +1213,7 @@ export default function CookingCalculatorPage() {
     setExperiencePerSuccessfulCraft(INITIAL_FORM.experiencePerSuccessfulCraft);
 
     setRecipeId(INITIAL_FORM.recipeId);
+    setThirstMin(INITIAL_FORM.thirstMin);
     setIngredientUnitPrices(resetIngredientPrices);
     setRareIngredientFlags(resetRareFlags);
     setNormalDishPrice(resetNormalDishPrice);
@@ -1251,6 +1274,17 @@ export default function CookingCalculatorPage() {
                   options={recipeOptions}
                 />
               </Field>
+
+              <Field label="갈증 최소치">
+                <SelectInput
+                  value={thirstMin}
+                  onChange={(value) => {
+                    setThirstMin(Number(value) as CookingThirstMin);
+                    setIsDirty(true);
+                  }}
+                  options={thirstMinOptions}
+                />
+              </Field>
             </div>
 
             <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
@@ -1265,6 +1299,10 @@ export default function CookingCalculatorPage() {
               </div>
               <div className="mt-1">
                 기본 일품 확률: {formatPercent(selectedRecipe.baseSpecialChancePercent)}
+              </div>
+              <div className="mt-1">
+                갈증 최소치: {formatInteger(thirstMin)} 이상 유지
+                {" / 현재 정책상 일품 +10%"}
               </div>
               <div className="mt-1">
                 기본 지속시간: {formatSeconds(selectedRecipe.baseDurationSeconds, 0)}
@@ -1584,12 +1622,18 @@ export default function CookingCalculatorPage() {
                     : formatPercent(result.ingredientGradeSpecialChanceAdjustmentPercent)}
                 </span>
               </div>
+              <div className="flex justify-between">
+                <span>[갈증] 일품 보정</span>
+                <span>+{formatPercent(result.thirstSpecialChanceBonusPercent)}</span>
+              </div>
               <div className="text-xs text-gray-400 leading-5">
                 고급 재료: 물고기 {formatInteger(result.advancedFishIngredientTypeCount)}종 /
                 농작물 {formatInteger(result.advancedCropIngredientTypeCount)}종
                 <br />
                 희귀 재료: 물고기 {formatInteger(result.rareFishIngredientTypeCount)}종 /
                 농작물 {formatInteger(result.rareCropIngredientTypeCount)}종
+                <br />
+                갈증 기준: {formatInteger(result.selectedThirstMin)} 이상 유지
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">

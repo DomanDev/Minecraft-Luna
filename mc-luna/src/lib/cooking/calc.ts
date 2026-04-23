@@ -389,6 +389,22 @@ function getBanquetPreparationExtraCraftCount(level: number): number {
   return BANQUET_PREPARATION_EXTRA_CRAFT_COUNT[level] ?? 0;
 }
 
+/**
+ * 갈증 최소치 드롭다운에 따른 일품 확률 추가 보정
+ *
+ * 현재 정책:
+ * - 15 이상 유지: +10%
+ * - 아직 다른 구간 데이터는 없으므로 나머지는 0 처리
+ */
+function getThirstSpecialChanceBonusPercent(thirstMin: number): number {
+  switch (thirstMin) {
+    case 15:
+      return 10;
+    default:
+      return 0;
+  }
+}
+
 export function calculateCooking(
   input: CookingCalculationInput,
 ): CookingCalculationResult {
@@ -400,6 +416,10 @@ export function calculateCooking(
     cookingGradeUpChance,
     additionalCookTimeReductionPercent,
   } = input.stats;
+
+  const thirstSpecialChanceBonusPercent = getThirstSpecialChanceBonusPercent(
+    input.thirstMin,
+  );
 
   const {
     preparationMaster,
@@ -454,7 +474,8 @@ export function calculateCooking(
       cookingGradeUpChance +
       dexterityGradeUpChancePercent +
       gourmetGradeUpChancePercent +
-      ingredientGradeSpecialChanceAdjustmentPercent,
+      ingredientGradeSpecialChanceAdjustmentPercent +
+      thirstSpecialChanceBonusPercent,
     0,
     100,
   );
@@ -665,6 +686,8 @@ export function calculateCooking(
       ingredientGradeSpecialChanceAdjustmentPercent,
       2,
     ),
+    selectedThirstMin: input.thirstMin,
+    thirstSpecialChanceBonusPercent: round(thirstSpecialChanceBonusPercent, 2),
     codexGradeUpChancePercent: round(cookingGradeUpChance, 2),
     dexterityGradeUpChancePercent: round(dexterityGradeUpChancePercent, 2),
     gourmetGradeUpChancePercent: round(gourmetGradeUpChancePercent, 2),

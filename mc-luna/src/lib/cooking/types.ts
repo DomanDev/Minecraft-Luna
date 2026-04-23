@@ -30,6 +30,16 @@ export type CookingIngredientSpecialChanceCategory =
   | "crop"
   | "none";
 
+/**
+ * 요리 갈증 최소치 드롭다운 값
+ *
+ * 현재 정책:
+ * - 우선 15 이상 유지 1개만 노출
+ * - 패치노트 기준으로 15 이상일 때 일품 확률 +10% 반영
+ * - 추후 서버 데이터가 더 확보되면 20/25 등 상위 구간을 확장할 수 있다.
+ */
+export type CookingThirstMin = 15;
+
 export interface CookingIngredient {
   id: string;
   name: string;
@@ -170,6 +180,14 @@ export interface CookingCalculationInput {
   experiencePerSuccessfulCraft: number;
 
   /**
+   * 갈증 최소치 드롭다운 선택값
+   *
+   * 현재 정책:
+   * - 15 이상 유지 시 일품 확률 +10%
+   */
+  thirstMin: CookingThirstMin;
+
+  /**
    * 재료별 희귀 재료 선택 여부
    * - true면 해당 재료 라인의 필요 수량 전체를 희귀 재료로 사용한다고 가정
    *   예: 토마토 x3 체크 -> 희귀 토마토 3개 사용
@@ -191,6 +209,8 @@ export interface CookingCalculationResult {
   advancedIngredientPenaltyPercent: number;
   rareIngredientBonusPercent: number;
   ingredientGradeSpecialChanceAdjustmentPercent: number;
+  selectedThirstMin: CookingThirstMin;
+  thirstSpecialChanceBonusPercent: number;
   codexGradeUpChancePercent: number;
   dexterityGradeUpChancePercent: number;
   gourmetGradeUpChancePercent: number;
