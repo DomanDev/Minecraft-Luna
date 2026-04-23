@@ -5,7 +5,7 @@ import type { CookingRecipe, CookingRecipeId } from "./types";
  * 요리 기본값 정리 기준
  * -------------------------------------------------------
  * 1) 일반 요리 5종:
- *    - 희귀(=일품) 기본 확률 10.3%
+ *    - 희귀(=일품) 기본 확률 5%
  *    - 제작 시간 29.4초
  *    - 성공 확률 80%
  *
@@ -14,7 +14,7 @@ import type { CookingRecipe, CookingRecipeId } from "./types";
  *    - 성공 확률 90%
  *
  * 3) 고급 요리 9종:
- *    - 희귀(=일품) 기본 확률 5.3%
+ *    - 희귀(=일품) 기본 확률 5%
  *    - 제작 시간 39.4초
  *    - 성공 확률 80%
  *
@@ -33,7 +33,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 29.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 10.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "miscFish", name: "잡어", quantity: 1, rareBonusGroup: "any" },
       { id: "lettuce", name: "상추", quantity: 2, rareBonusGroup: "any" },
@@ -57,7 +57,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 29.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 10.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "sardine", name: "정어리", quantity: 1, rareBonusGroup: "any" },
       { id: "lettuce", name: "상추", quantity: 2, rareBonusGroup: "any" },
@@ -81,7 +81,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 29.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 10.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "catfish", name: "메기", quantity: 1, rareBonusGroup: "any" },
       { id: "cabbage", name: "양배추", quantity: 2, rareBonusGroup: "any" },
@@ -105,7 +105,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 29.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 10.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "carp", name: "잉어", quantity: 1, rareBonusGroup: "fish" },
       { id: "cabbage", name: "양배추", quantity: 2, rareBonusGroup: "crop" },
@@ -136,7 +136,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 29.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 10.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "miscFish", name: "잡어", quantity: 1, rareBonusGroup: "any" },
       { id: "radish", name: "무", quantity: 2, rareBonusGroup: "any" },
@@ -202,7 +202,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 39.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 5.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "redSnapper", name: "적색통돔", quantity: 1, rareBonusGroup: "any" },
       { id: "anglerfish", name: "아귀", quantity: 1, rareBonusGroup: "any" },
@@ -226,7 +226,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 39.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 5.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "tuna", name: "다랑어", quantity: 1, rareBonusGroup: "any" },
       { id: "lobster", name: "랍스터", quantity: 1, rareBonusGroup: "any" },
@@ -250,7 +250,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 39.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 5.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "seaBass", name: "농어", quantity: 1, rareBonusGroup: "any" },
       { id: "mullet", name: "숭어", quantity: 1, rareBonusGroup: "any" },
@@ -274,7 +274,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 39.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 5.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "blueTang", name: "블루탱", quantity: 1, rareBonusGroup: "any" },
       { id: "clownfish", name: "흰동가리", quantity: 1, rareBonusGroup: "any" },
@@ -298,7 +298,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 39.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 5.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "sunfish", name: "개복치", quantity: 1, rareBonusGroup: "any" },
       { id: "stripedSeabream", name: "줄돔", quantity: 1, rareBonusGroup: "any" },
@@ -324,7 +324,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 39.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 5.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "mantaRay", name: "만타 가오리", quantity: 1, rareBonusGroup: "any" },
       { id: "octopus", name: "문어", quantity: 1, rareBonusGroup: "any" },
@@ -349,7 +349,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 39.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 5.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "salmon", name: "연어", quantity: 1, rareBonusGroup: "any" },
       { id: "sturgeon", name: "철갑상어", quantity: 1, rareBonusGroup: "any" },
@@ -374,7 +374,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 39.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 5.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "pike", name: "강꼬치고기", quantity: 1, rareBonusGroup: "any" },
       { id: "goldfish", name: "금붕어", quantity: 1, rareBonusGroup: "any" },
@@ -399,7 +399,7 @@ export const COOKING_RECIPES: CookingRecipe[] = [
     baseDurationSeconds: 600,
     baseCraftTimeSeconds: 39.4,
     baseSuccessChancePercent: 80,
-    baseSpecialChancePercent: 5.3,
+    baseSpecialChancePercent: 5,
     ingredients: [
       { id: "blueJellyfish", name: "푸른 해파리", quantity: 1, rareBonusGroup: "any" },
       { id: "eel", name: "뱀장어", quantity: 1, rareBonusGroup: "any" },
