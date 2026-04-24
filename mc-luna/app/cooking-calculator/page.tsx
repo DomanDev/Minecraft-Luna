@@ -16,7 +16,6 @@ import type {
   CookingCalculationInput,
   CookingCalculationResult,
   CookingRecipeId,
-  CookingThirstMin,
 } from "@/src/lib/cooking/types";
 import { useRequireProfile } from "@/src/hooks/useRequireProfile";
 import {
@@ -53,9 +52,20 @@ const recipeOptions = COOKING_RECIPES.map((recipe) => ({
  * - 다른 계산기 페이지와 UI를 맞추기 위해 드롭다운 구조는 유지
  * - 패치 반영 1차 버전이라 15 이상 유지 1개만 먼저 노출
  */
-const thirstMinOptions: { value: CookingThirstMin; label: string }[] = [
-  { value: 15, label: "15 이상 유지" },
+const thirstMinOptions: { value: string; label: string }[] = [
+  { value: "15", label: "15 이상 유지" },
 ];
+
+/**
+ * SelectInput 은 string 값을 사용하므로
+ * 드롭다운 선택값은 string 으로 들고 있다가
+ * 실제 계산 직전에만 숫자 15로 변환한다.
+ */
+function parseThirstMinSelectValue(
+  value: string,
+): CookingCalculationInput["thirstMin"] {
+  return Number(value) as CookingCalculationInput["thirstMin"];
+}
 
 const INITIAL_FORM = {
   mastery: 0,
@@ -94,7 +104,12 @@ const INITIAL_FORM = {
   experiencePerSuccessfulCraft: 0,
 
   recipeId: "ssambap" as CookingRecipeId,
-  thirstMin: 15 as CookingThirstMin,
+  /**
+   * 갈증 최소치 기본값
+   * - 계산 입력으로 넘길 때는 숫자 15로 사용
+   * - 드롭다운 상태값은 별도 string 상태(thirstMin)로 관리
+   */
+  thirstMin: 15 as const,
   normalDishPrice: 100,
   specialDishPrice: 500,
 };
@@ -550,8 +565,8 @@ export default function CookingCalculatorPage() {
   } | null>(null);
 
   const [recipeId, setRecipeId] = useState<CookingRecipeId>(INITIAL_FORM.recipeId);
-  const [thirstMin, setThirstMin] = useState<CookingThirstMin>(
-    INITIAL_FORM.thirstMin,
+  const [thirstMin, setThirstMin] = useState<string>(
+    String(INITIAL_FORM.thirstMin),
   );
 
   const [rareIngredientFlags, setRareIngredientFlags] = useState<
@@ -610,7 +625,7 @@ export default function CookingCalculatorPage() {
         ingredientUnitPrices,
       },
       experiencePerSuccessfulCraft,
-      thirstMin,
+      thirstMin: parseThirstMinSelectValue(thirstMin),
       rareIngredientFlags,
     };
   };
@@ -1009,7 +1024,7 @@ export default function CookingCalculatorPage() {
           ingredientUnitPrices,
         },
         experiencePerSuccessfulCraft,
-        thirstMin,
+        thirstMin: parseThirstMinSelectValue(thirstMin),
         rareIngredientFlags,
       });
 
@@ -1213,7 +1228,7 @@ export default function CookingCalculatorPage() {
     setExperiencePerSuccessfulCraft(INITIAL_FORM.experiencePerSuccessfulCraft);
 
     setRecipeId(INITIAL_FORM.recipeId);
-    setThirstMin(INITIAL_FORM.thirstMin);
+    setThirstMin(String(INITIAL_FORM.thirstMin));
     setIngredientUnitPrices(resetIngredientPrices);
     setRareIngredientFlags(resetRareFlags);
     setNormalDishPrice(resetNormalDishPrice);
@@ -1279,7 +1294,7 @@ export default function CookingCalculatorPage() {
                 <SelectInput
                   value={thirstMin}
                   onChange={(value) => {
-                    setThirstMin(Number(value) as CookingThirstMin);
+                    setThirstMin(value);
                     setIsDirty(true);
                   }}
                   options={thirstMinOptions}
@@ -1301,7 +1316,7 @@ export default function CookingCalculatorPage() {
                 기본 일품 확률: {formatPercent(selectedRecipe.baseSpecialChancePercent)}
               </div>
               <div className="mt-1">
-                갈증 최소치: {formatInteger(thirstMin)} 이상 유지
+                갈증 최소치: {formatInteger(Number(thirstMin))} 이상 유지
                 {" / 현재 정책상 일품 +10%"}
               </div>
               <div className="mt-1">
@@ -1477,10 +1492,13 @@ export default function CookingCalculatorPage() {
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <div className="font-semibold">액티브 스킬 계산 기준</div>
               <div className="mt-1">
-                - 즉시 완성: 발동 시 해당 1회 제작 시간 0초 처리
+                - 즉시 완성: 발동 시 해당 기본 1회 제작 시간 0초 + 재료 소모 스킵
               </div>
               <div className="mt-1">
                 - 연회 준비: 발동 시 재료가 자동 투입되어 추가 제작이 진행
+              </div>
+              <div className="mt-1 text-xs text-amber-800">
+                * 즉시 완성과 연회 준비가 동시에 발동하면, 연회 준비로 늘어난 추가 제작분까지 모두 즉시 완성으로 처리되어 해당 행동 전체 재료 소모가 0이 되도록 계산합니다.
               </div>
               <div className="mt-1 text-xs text-amber-800">
                 * 연회 준비는 재료 공짜가 아니라 추가 제작으로 계산하므로, 원가/수익/경험치가 함께 증가합니다.
@@ -1678,6 +1696,10 @@ export default function CookingCalculatorPage() {
                 <span>[즉시 완성] 발동 확률</span>
                 <span>{formatPercent(result.instantCompletionProcChancePercent)}</span>
               </div>
+              <div className="flex justify-between">
+                <span>[즉시 완성] 재료 스킵 기대값</span>
+                <span>{formatCell(result.expectedIngredientCostSavedPerAction)}셀</span>
+              </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>액티브 반영 기대 시간</span>
@@ -1755,12 +1777,24 @@ export default function CookingCalculatorPage() {
                 <span>{formatDecimal(result.expectedCraftCountPerAction, 4)}회</span>
               </div>
               <div className="flex justify-between">
+                <span>액티브 반영 기대 재료 소모 제작 수</span>
+                <span>{formatDecimal(result.expectedConsumedCraftCountPerAction, 4)}회</span>
+              </div>
+              <div className="flex justify-between">
                 <span>1회 제작 기대 매출</span>
                 <span>{formatCell(result.expectedRevenuePerCraft)}셀</span>
               </div>
               <div className="flex justify-between">
                 <span>1회 행동 기대 매출</span>
                 <span>{formatCell(result.expectedRevenuePerAction)}셀</span>
+              </div>
+              <div className="flex justify-between">
+                <span>1회 행동 기대 재료 원가</span>
+                <span>{formatCell(result.expectedIngredientCostPerAction)}셀</span>
+              </div>
+              <div className="flex justify-between">
+                <span>[즉시 완성] 기대 원가 절감</span>
+                <span>{formatCell(result.expectedIngredientCostSavedPerAction)}셀</span>
               </div>
               <div className="flex justify-between">
                 <span>1회 제작 기대 순이익</span>
@@ -1869,10 +1903,10 @@ export default function CookingCalculatorPage() {
                 - 희귀 재료는 체크된 라인의 필요 수량 전체를 희귀 재료로 계산합니다.
               </div>
               <div className="mt-2">
-                - 즉시 완성은 발동 시 해당 제작 시간이 0초가 되는 것으로 계산합니다.
+                - 즉시 완성은 발동 시 해당 행동 전체 제작 시간이 0초가 되고, 동시에 해당 행동의 재료를 소모하지 않는 것으로 계산합니다.
               </div>
               <div className="mt-2">
-                - 연회 준비는 재료가 공짜가 아니라, 재료 자동 투입으로 1회 추가 제작이 진행되는 것으로 계산합니다.
+                - 연회 준비는 재료 자동 투입으로 추가 제작이 진행되는 것으로 계산하되, 즉시 완성과 동시에 발동한 경우에는 그 추가 제작분까지 재료 무료로 처리합니다.
               </div>
               <div className="mt-2">
                 - 경험치는 오른쪽 하단 "경험치 계산기"의 1회 성공 경험치 입력값을 기준으로 계산합니다.

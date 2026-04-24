@@ -547,7 +547,7 @@ function calculateBaseCatchExpectation(
   const doubleCatchChancePercent = clamp(
     5 + //기본확률(04.23 패치)
     6 * effectiveThirstMultiplier +
-      0.5 * stats.luck +
+      0.45 * stats.luck +
       rumoredBaitChancePercent,
     0,
     100,

@@ -234,6 +234,14 @@ export interface CookingCalculationResult {
   useBanquetPreparation: boolean;
   instantCompletionProcChancePercent: number;
   banquetPreparationProcChancePercent: number;
+  /**
+   * 액티브 스킬 반영 후 기대 재료 소모량
+   * - 즉시 완성 발동 시 해당 action 전체 재료를 소모하지 않는다고 가정
+   * - 따라서 연회 준비와 동시에 발동하면 추가 제작분까지 모두 무료 처리된다.
+   */
+  expectedConsumedCraftCountPerAction: number;
+  expectedIngredientCostPerAction: number;
+  expectedIngredientCostSavedPerAction: number;
   expectedActionTimeSeconds: number;
   expectedCraftCountPerAction: number;
   expectedSuccessfulCraftCountPerAction: number;

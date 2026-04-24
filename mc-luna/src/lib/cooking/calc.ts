@@ -36,13 +36,18 @@ import type {
  *
  * 6) 즉시 완성 / 연회 준비
  * - 즉시 완성:
- *   발동 시 해당 1회 제작 시간이 0초가 된다고 가정
+ *   발동 시 해당 행동(action) 전체의 제작 시간이 0초가 되고
+ *   기본 1회분 재료를 소모하지 않는다고 가정
  *
  * - 연회 준비:
  *   발동 시 "재료가 공짜"가 아니라
  *   인벤에 있는 재료가 자동 투입되어 추가 제작이 진행된다고 가정
  *   = 시간은 추가로 들지 않지만
  *   = 재료 원가 / 매출 / 경험치는 추가 제작 기대값만큼 반영
+ *
+ * - 즉시 완성과 연회 준비가 동시에 발동하면:
+ *   연회 준비로 증가한 추가 제작분까지 모두 즉시 완성으로 처리되어
+ *   해당 action 전체 재료 소모가 0이 된다고 가정
  *
  * 이번 수정:
  * - 액티브 스킬은 루나위키 수치표 기준으로 계산
@@ -517,7 +522,7 @@ export function calculateCooking(
    * -------------------------------------------------------
    *
    * 즉시 완성:
-   * - 발동 시 해당 1회 제작 시간이 0초
+   * - 발동 시 해당 action 전체 제작 시간이 0초
    * - 기대 시간 = 기본시간 * (1 - 발동확률)
    *
    * 연회 준비:
@@ -551,6 +556,32 @@ export function calculateCooking(
 
   const expectedCraftCountPerAction =
     1 + banquetPreparationChanceRatio * banquetPreparationExtraCraftCount;
+
+  /**
+   * 재료 소모 기대값
+   *
+   * 계산 가정:
+   * - 연회 준비가 발동하면 기본 1회 + 추가 제작 횟수만큼 더 제작됨
+   * - 즉시 완성이 발동하면 해당 action 전체의 재료 소모가 0이 됨
+   * - 따라서 즉시 완성과 연회 준비가 동시에 발동하면,
+   *   연회 준비 추가 제작분까지 모두 재료를 소모하지 않음
+   *
+   * 확률식(독립 가정):
+   * - 기대 총 제작 수 = 1 + b*k
+   *   (b: 연회 준비 발동확률, k: 추가 제작 횟수)
+   * - 기대 재료 소모 제작 수 = (1 - i) * (1 + b*k)
+   *   (i: 즉시 완성 발동확률)
+   */
+  const expectedConsumedCraftCountPerAction =
+    expectedCraftCountPerAction * (1 - instantCompletionChanceRatio);
+
+  const expectedIngredientCostPerAction =
+    ingredientCostPerCraft * expectedConsumedCraftCountPerAction;
+
+  const expectedIngredientCostSavedPerAction =
+    ingredientCostPerCraft *
+    expectedCraftCountPerAction *
+    instantCompletionChanceRatio;
 
   const expectedSuccessfulCraftCountPerAction =
     expectedCraftCountPerAction * successChanceRatio;
@@ -637,12 +668,13 @@ export function calculateCooking(
   const expectedRevenuePerAction =
     expectedRevenuePerCraft * expectedCraftCountPerAction;
 
-  const expectedNetProfitPerCraft =
-    expectedRevenuePerCraft - ingredientCostPerCraft;
-
   const expectedNetProfitPerAction =
-    expectedRevenuePerAction -
-    ingredientCostPerCraft * expectedCraftCountPerAction;
+    expectedRevenuePerAction - expectedIngredientCostPerAction;
+
+  const expectedNetProfitPerCraft =
+    expectedCraftCountPerAction > 0
+      ? expectedNetProfitPerAction / expectedCraftCountPerAction
+      : 0;
 
   const expectedNetProfitPerHour =
     expectedActionTimeSeconds > 0
@@ -718,6 +750,15 @@ export function calculateCooking(
     ),
     banquetPreparationProcChancePercent: round(
       banquetPreparationProcChancePercent,
+      2,
+    ),
+    expectedConsumedCraftCountPerAction: round(
+      expectedConsumedCraftCountPerAction,
+      4,
+    ),
+    expectedIngredientCostPerAction: round(expectedIngredientCostPerAction, 2),
+    expectedIngredientCostSavedPerAction: round(
+      expectedIngredientCostSavedPerAction,
       2,
     ),
     expectedActionTimeSeconds: round(expectedActionTimeSeconds, 2),
