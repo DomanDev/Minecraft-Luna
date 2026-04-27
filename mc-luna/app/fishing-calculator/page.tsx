@@ -1003,8 +1003,28 @@ export default function FishingCalculatorPage() {
   /** 시간당 낚시 횟수 */
   const cyclesPerHour = result.hourly?.castsPerHour ?? 0;
 
-  /** 시간당 커스텀 물고기 수 */
-  const customFishPerHour = result.hourly?.customFishPerHour ?? 0;
+  /** 떼낚시 적용 입질 시간 표시 여부 */
+  const shouldShowSchoolFishingBiteTime = useSchoolFishing && schoolFishing > 0;
+
+  /** 떼낚시 적용 시 표시 입질 시간(초) */
+  const schoolFishingDisplayBiteSeconds =
+    result.hourly?.schoolFishingDisplayBiteSeconds ??
+    result.catchTime.displayBiteSeconds;
+
+  /** 떼낚시 적용 시 표시 입질 시간(틱) */
+  const schoolFishingDisplayBiteTicks =
+    result.hourly?.schoolFishingDisplayBiteTicks ??
+    result.catchTime.displayBiteTicks;
+
+  /**
+   * 액티브 스킬을 모두 반영한 최종 시간당 커스텀 물고기 수
+   *
+   * 포함:
+   * - 떼낚시 활성/비활성 시간
+   * - 쌍걸이 활성/비활성 시간
+   * - 떼낚시 + 쌍걸이 동시 활성 구간
+   */
+  const finalCustomFishPerHour = result.hourly?.customFishPerHour ?? 0;
 
   /** 시간당 기대 수익 */
   const expectedValuePerHour = result.value.expectedValuePerHour ?? 0;
@@ -1516,12 +1536,21 @@ export default function FishingCalculatorPage() {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>표시 입질 시간</span>
+                <span>최종 입질 시간</span>
                 <span>
                   {formatDecimal(result.catchTime.displayBiteSeconds, 2)}초 (
                   {formatDecimal(result.catchTime.displayBiteTicks, 2)}틱)
                 </span>
               </div>
+              {shouldShowSchoolFishingBiteTime && (
+                <div className="flex justify-between">
+                  <span>떼낚시 적용 시 입질 시간</span>
+                  <span>
+                    {formatDecimal(schoolFishingDisplayBiteSeconds, 2)}초 (
+                    {formatDecimal(schoolFishingDisplayBiteTicks, 2)}틱)
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span>건져올리는 시간</span>
                 <span>{formatDecimal(result.catchTime.reelInSeconds, 2)}초</span>
@@ -1653,8 +1682,8 @@ export default function FishingCalculatorPage() {
               </div>
 
               <div className="flex justify-between">
-                <span>시간당 커스텀 물고기 수</span>
-                <span>{formatDecimal(customFishPerHour, 2)}마리</span>
+                <span>시간당 커스텀 물고기 수(액티브 반영)</span>
+                <span>{formatDecimal(finalCustomFishPerHour, 2)}마리</span>
               </div>
 
               <div className="border-t border-gray-800/20 my-2" />

@@ -94,6 +94,9 @@ const MIN_BITE_SECONDS = 0.35;
 /** 입질 시간의 최소 보정값(틱) - 20틱 = 1초이므로 0.35초는 7틱 */
 const MIN_BITE_TICKS = MIN_BITE_SECONDS * 20;
 
+/** 시간당 계산 기준 시간(초) */
+const ONE_HOUR_SECONDS = 3600;
+
 /**
  * 어장 상태에 따른 시간 보정값 반환 함수
  */
@@ -182,6 +185,72 @@ function calculateSkillUptime(durationSeconds: number, cooldownSeconds: number) 
     activeSecondsPerHour: round(activeSecondsPerHour, 4),
     activeRatio: round(activeSecondsPerHour / ONE_HOUR_SECONDS, 6),
   };
+}
+
+/** 액티브 스킬이 실제로 켜져 있는 시간 구간 */
+interface SkillActiveWindow {
+  /** 활성 시작 시각(초) */
+  start: number;
+
+  /** 활성 종료 시각(초) */
+  end: number;
+}
+
+/**
+ * 1시간 기준 액티브 스킬 활성 구간 목록을 만든다.
+ *
+ * 예:
+ * - 시작 즉시 1회 사용
+ * - 쿨타임마다 재사용
+ * - 1시간을 넘는 구간은 3600초에서 잘라낸다.
+ */
+function buildSkillActiveWindows(
+  durationSeconds: number,
+  cooldownSeconds: number,
+): SkillActiveWindow[] {
+  /** 비정상 값이면 활성 구간 없음 */
+  if (durationSeconds <= 0 || cooldownSeconds <= 0) {
+    return [];
+  }
+
+  /** 활성 구간 목록 */
+  const windows: SkillActiveWindow[] = [];
+
+  for (
+    let castStart = 0;
+    castStart < ONE_HOUR_SECONDS;
+    castStart += cooldownSeconds
+  ) {
+    /** 이번 스킬 활성 종료 시각 */
+    const activeEnd = Math.min(castStart + durationSeconds, ONE_HOUR_SECONDS);
+
+    if (activeEnd > castStart) {
+      windows.push({
+        start: castStart,
+        end: activeEnd,
+      });
+    }
+  }
+
+  return windows;
+}
+
+/** 특정 시각이 액티브 스킬 활성 구간 안에 있는지 확인한다. */
+function isTimeInSkillWindows(
+  timeSeconds: number,
+  windows: SkillActiveWindow[],
+): boolean {
+  return windows.some(
+    (window) => timeSeconds >= window.start && timeSeconds < window.end,
+  );
+}
+
+/** 활성 구간들의 총 지속시간을 계산한다. */
+function sumSkillWindowSeconds(windows: SkillActiveWindow[]): number {
+  return windows.reduce(
+    (sum, window) => sum + Math.max(0, window.end - window.start),
+    0,
+  );
 }
 
 /**
@@ -766,7 +835,15 @@ export function calculateValue(
 
 /**
  * 액티브 스킬 가동시간을 반영한 시간당 계산 함수
- * 결과표 추가 표시용 값과 실수익 계산값을 함께 만든다.
+ *
+ * 계산 방식:
+ * - 1시간을 떼낚시/쌍걸이 활성 구간 기준으로 잘게 나눈다.
+ * - 각 구간마다
+ *   1) 떼낚시 활성 여부에 따라 낚시 시간 선택
+ *   2) 쌍걸이 활성 여부에 따라 기대 획득량 선택
+ *   3) 구간별 커스텀 물고기 수/수익을 합산한다.
+ *
+ * 이렇게 해야 떼낚시와 쌍걸이가 동시에 켜지는 구간도 최종값에 정확히 반영된다.
  */
 function calculateHourlyFishingResult(
   input: FishingCalculationInput,
@@ -790,68 +867,151 @@ function calculateHourlyFishingResult(
     gradeRatio.probabilityAdvanced * input.prices.advanced +
     gradeRatio.probabilityRare * input.prices.rare;
 
-  /** 떼낚시 가동 정보 */
-  const schoolFishingUptime =
-    input.environment.useSchoolFishing && input.skills.schoolFishing > 0
-      ? calculateSkillUptime(
-          getSchoolFishingRow(input.skills.schoolFishing).durationSeconds,
-          getSchoolFishingRow(input.skills.schoolFishing).cooldownSeconds,
-        )
-      : { usesPerHour: 0, activeSecondsPerHour: 0, activeRatio: 0 };
+  /** 떼낚시 사용 가능 여부 */
+  const schoolFishingEnabled =
+    input.environment.useSchoolFishing && input.skills.schoolFishing > 0;
 
-  /** 쌍걸이 가동 정보 */
-  const doubleHookUptime =
-    input.environment.useDoubleHook && input.skills.doubleHook > 0
-      ? calculateSkillUptime(
-          getDoubleHookRow(input.skills.doubleHook).durationSeconds,
-          getDoubleHookRow(input.skills.doubleHook).cooldownSeconds,
-        )
-      : { usesPerHour: 0, activeSecondsPerHour: 0, activeRatio: 0 };
+  /** 쌍걸이 사용 가능 여부 */
+  const doubleHookEnabled =
+    input.environment.useDoubleHook && input.skills.doubleHook > 0;
+
+  /** 떼낚시 스킬 테이블 행 */
+  const schoolFishingRow = schoolFishingEnabled
+    ? getSchoolFishingRow(input.skills.schoolFishing)
+    : null;
+
+  /** 쌍걸이 스킬 테이블 행 */
+  const doubleHookRow = doubleHookEnabled
+    ? getDoubleHookRow(input.skills.doubleHook)
+    : null;
+
+  /** 떼낚시 활성 구간 목록 */
+  const schoolFishingWindows = schoolFishingRow
+    ? buildSkillActiveWindows(
+        schoolFishingRow.durationSeconds,
+        schoolFishingRow.cooldownSeconds,
+      )
+    : [];
+
+  /** 쌍걸이 활성 구간 목록 */
+  const doubleHookWindows = doubleHookRow
+    ? buildSkillActiveWindows(
+        doubleHookRow.durationSeconds,
+        doubleHookRow.cooldownSeconds,
+      )
+    : [];
 
   /** 떼낚시 활성 총 시간 */
-  const schoolActiveSeconds = schoolFishingUptime.activeSecondsPerHour;
+  const schoolFishingActiveSeconds = sumSkillWindowSeconds(
+    schoolFishingWindows,
+  );
 
-  /** 떼낚시 비활성 총 시간 */
-  const schoolInactiveSeconds = 3600 - schoolActiveSeconds;
+  /** 쌍걸이 활성 총 시간 */
+  const doubleHookActiveSeconds = sumSkillWindowSeconds(doubleHookWindows);
 
-  /** 떼낚시 켜진 동안의 낚시 횟수 */
-  const castsDuringSchoolActive =
-    schoolFishingCatchTime.totalCycleSeconds > 0
-      ? schoolActiveSeconds / schoolFishingCatchTime.totalCycleSeconds
-      : 0;
+  /** 떼낚시 가동 정보 */
+  const schoolFishingUptime = {
+    usesPerHour: schoolFishingWindows.length,
+    activeSecondsPerHour: round(schoolFishingActiveSeconds, 4),
+    activeRatio: round(schoolFishingActiveSeconds / ONE_HOUR_SECONDS, 6),
+  };
 
-  /** 떼낚시 꺼진 동안의 낚시 횟수 */
-  const castsDuringSchoolInactive =
-    baseCatchTime.totalCycleSeconds > 0
-      ? schoolInactiveSeconds / baseCatchTime.totalCycleSeconds
-      : 0;
+  /** 쌍걸이 가동 정보 */
+  const doubleHookUptime = {
+    usesPerHour: doubleHookWindows.length,
+    activeSecondsPerHour: round(doubleHookActiveSeconds, 4),
+    activeRatio: round(doubleHookActiveSeconds / ONE_HOUR_SECONDS, 6),
+  };
 
-  /** 총 시간당 낚시 횟수 */
-  const castsPerHour =
-    castsDuringSchoolActive + castsDuringSchoolInactive;
+  /**
+   * 계산 구간 분리 지점
+   *
+   * 예:
+   * - 0초
+   * - 떼낚시 시작/종료
+   * - 쌍걸이 시작/종료
+   * - 3600초
+   */
+  const splitPoints = new Set<number>([0, ONE_HOUR_SECONDS]);
 
-  /** 쌍걸이 활성 비율 */
-  const doubleHookActiveRatio = doubleHookUptime.activeRatio;
+  schoolFishingWindows.forEach((window) => {
+    splitPoints.add(window.start);
+    splitPoints.add(window.end);
+  });
 
-  /** 쌍걸이 비활성 비율 */
-  const doubleHookInactiveRatio = 1 - doubleHookActiveRatio;
+  doubleHookWindows.forEach((window) => {
+    splitPoints.add(window.start);
+    splitPoints.add(window.end);
+  });
 
-  /** 1사이클당 평균 커스텀 물고기 기대 획득량 */
-  const expectedCustomFishPerCycle =
-    baseExpectation.finalCustomFishPerCycle * doubleHookInactiveRatio +
-    doubleHookExpectation.finalCustomFishPerCycle * doubleHookActiveRatio;
+  /** 오름차순 정렬된 계산 구간 경계 */
+  const sortedSplitPoints = Array.from(splitPoints).sort((a, b) => a - b);
 
-  /** 시간당 커스텀 물고기 획득량 */
-  const customFishPerHour =
-    castsPerHour * expectedCustomFishPerCycle;
+  /** 시간당 낚시 횟수 */
+  let castsPerHour = 0;
 
-  /** 1회 낚시 기대 수익 */
-  const expectedValuePerCycle =
-    expectedValuePerFish * expectedCustomFishPerCycle;
+  /** 시간당 커스텀 물고기 수 */
+  let customFishPerHour = 0;
 
   /** 시간당 기대 수익 */
-  const expectedValuePerHour =
-    castsPerHour * expectedValuePerCycle;
+  let expectedValuePerHour = 0;
+
+  for (let i = 0; i < sortedSplitPoints.length - 1; i += 1) {
+    /** 구간 시작 시각 */
+    const segmentStart = sortedSplitPoints[i];
+
+    /** 구간 종료 시각 */
+    const segmentEnd = sortedSplitPoints[i + 1];
+
+    /** 구간 길이 */
+    const segmentSeconds = segmentEnd - segmentStart;
+
+    if (segmentSeconds <= 0) continue;
+
+    /** 구간 중간 시각으로 액티브 활성 여부를 판정한다. */
+    const segmentMiddle = (segmentStart + segmentEnd) / 2;
+
+    /** 현재 구간의 떼낚시 활성 여부 */
+    const isSchoolFishingActive = isTimeInSkillWindows(
+      segmentMiddle,
+      schoolFishingWindows,
+    );
+
+    /** 현재 구간의 쌍걸이 활성 여부 */
+    const isDoubleHookActive = isTimeInSkillWindows(
+      segmentMiddle,
+      doubleHookWindows,
+    );
+
+    /** 현재 구간에서 사용할 낚시 시간 */
+    const segmentCatchTime = isSchoolFishingActive
+      ? schoolFishingCatchTime
+      : baseCatchTime;
+
+    /** 현재 구간에서 사용할 기대 획득량 */
+    const segmentExpectation = isDoubleHookActive
+      ? doubleHookExpectation
+      : baseExpectation;
+
+    /** 현재 구간의 낚시 횟수 */
+    const segmentCasts =
+      segmentCatchTime.totalCycleSeconds > 0
+        ? segmentSeconds / segmentCatchTime.totalCycleSeconds
+        : 0;
+
+    /** 현재 구간의 커스텀 물고기 수 */
+    const segmentCustomFish =
+      segmentCasts * segmentExpectation.finalCustomFishPerCycle;
+
+    /** 현재 구간 결과 누적 */
+    castsPerHour += segmentCasts;
+    customFishPerHour += segmentCustomFish;
+    expectedValuePerHour += segmentCustomFish * expectedValuePerFish;
+  }
+
+  /** 액티브 반영 후 평균 1회 낚시 기대 수익 */
+  const expectedValuePerCycle =
+    castsPerHour > 0 ? expectedValuePerHour / castsPerHour : 0;
 
   return {
     castsPerHour: round(castsPerHour),
@@ -859,6 +1019,17 @@ function calculateHourlyFishingResult(
     expectedValuePerFish: round(expectedValuePerFish),
     expectedValuePerCycle: round(expectedValuePerCycle),
     expectedValuePerHour: round(expectedValuePerHour),
+
+    /** 떼낚시 적용 시 표시 입질 시간(초) */
+    schoolFishingDisplayBiteSeconds: round(
+      schoolFishingCatchTime.displayBiteSeconds,
+    ),
+
+    /** 떼낚시 적용 시 표시 입질 시간(틱) */
+    schoolFishingDisplayBiteTicks: round(
+      schoolFishingCatchTime.displayBiteTicks,
+    ),
+
     schoolFishingUsesPerHour: schoolFishingUptime.usesPerHour,
     schoolFishingActiveSecondsPerHour: round(
       schoolFishingUptime.activeSecondsPerHour,
@@ -906,13 +1077,27 @@ export function calculateFishing(input: FishingCalculationInput) {
     },
     hourly: {
       castsPerHour: hourly.castsPerHour,
+
+      /**
+       * 액티브 스킬 최종 반영 시간당 커스텀 물고기 수
+       *
+       * 포함:
+       * - 떼낚시 활성/비활성 구간별 낚시 횟수
+       * - 쌍걸이 활성/비활성 구간별 2회 낚시 확률
+       * - 떼낚시 + 쌍걸이 동시 활성 구간
+       */
       customFishPerHour: hourly.customFishPerHour,
+
+      /** 떼낚시 적용 시 표시 입질 시간(초) */
+      schoolFishingDisplayBiteSeconds: hourly.schoolFishingDisplayBiteSeconds,
+
+      /** 떼낚시 적용 시 표시 입질 시간(틱) */
+      schoolFishingDisplayBiteTicks: hourly.schoolFishingDisplayBiteTicks,
+
       schoolFishingUsesPerHour: hourly.schoolFishingUsesPerHour,
-      schoolFishingActiveSecondsPerHour:
-        hourly.schoolFishingActiveSecondsPerHour,
+      schoolFishingActiveSecondsPerHour: hourly.schoolFishingActiveSecondsPerHour,
       doubleHookUsesPerHour: hourly.doubleHookUsesPerHour,
-      doubleHookActiveSecondsPerHour:
-        hourly.doubleHookActiveSecondsPerHour,
+      doubleHookActiveSecondsPerHour: hourly.doubleHookActiveSecondsPerHour,
     },
   };
 }
