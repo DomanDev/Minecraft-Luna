@@ -2,6 +2,7 @@
 
 import { supabase } from "@/src/lib/supabase";
 import { BLESSING_OF_HARVEST_NORMAL_REDUCTION } from "@/src/lib/farming/skillTables";
+import { getLineTensionValue } from "@/src/lib/fishing/skillTables";
 import { parseLifeProfile } from "@/src/lib/parser";
 import {
   type JobKey,
@@ -9,7 +10,6 @@ import {
   type ParsedLifeProfile,
   normalizeManualLifeProfileInput,
 } from "@/src/types/life-profile";
-import { getLineTensionValue } from "@/src/lib/fishing/skillTables";
 
 /**
  * 프로필 입력 방식 구분
@@ -33,6 +33,7 @@ function toSafeNumber(value: number | undefined | null): number {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return 0;
   }
+
   return value;
 }
 
@@ -67,6 +68,7 @@ function getCodexNormalFishReduction(params: {
   lineTensionLevel: number;
   inputMethod: SaveLifeProfileInputMethod;
 }): number {
+  /** /생활 정보에서 파싱된 일반 물고기 감소비율 total */
   const parsedTotal = toSafeNumber(params.parsedNormalFishReductionTotal);
 
   if (params.inputMethod !== "imported") {
@@ -183,8 +185,13 @@ function buildFishingProfileRow(
  *   farming_profiles 테이블 row 형태로 변환
  */
 function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
+  /** 농사 직업 프로필 */
   const farmingJob = parsed.jobs.farming;
+
+  /** 농사 스탯 목록 */
   const farmingStats = farmingJob?.stats ?? {};
+
+  /** 농사 스킬 목록 */
   const farmingSkills = parsed.skills.farming ?? {};
 
   /**
@@ -201,9 +208,9 @@ function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
   const parsedNormalCropReductionTotal = toSafeNumber(
     farmingStats.normalCropReduction?.total,
   );
-  const blessingOfHarvestLevel = toSafeNumber(
-    farmingSkills.blessingOfHarvest,
-  );
+
+  /** 풍년의 축복 스킬 레벨 */
+  const blessingOfHarvestLevel = toSafeNumber(farmingSkills.blessingOfHarvest);
 
   /**
    * 풍년의 축복 레벨에 따른 일반 작물 감소비율
@@ -211,8 +218,6 @@ function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
    * 주의:
    * - 아래 함수(getBlessingOfHarvestReduction)는
    *   farming/skillTables.ts 기준과 동일해야 한다.
-   * - 가장 좋은 방법은 save-life-profile.ts 상단에서
-   *   BLESSING_OF_HARVEST_NORMAL_REDUCTION 을 import 해서 사용하는 것이다.
    */
   const blessingOfHarvestReduction =
     getBlessingOfHarvestReduction(blessingOfHarvestLevel);
@@ -281,7 +286,10 @@ function buildFarmingProfileRow(userId: string, parsed: ParsedLifeProfile) {
  *   값이 없으면 0으로 안전하게 처리한다.
  */
 function buildCookingProfileRow(userId: string, parsed: ParsedLifeProfile) {
+  /** 요리 직업 프로필 */
   const cookingJob = parsed.jobs.cooking;
+
+  /** 요리 스탯 목록 */
   const cookingStats = cookingJob?.stats ?? {};
 
   return {
