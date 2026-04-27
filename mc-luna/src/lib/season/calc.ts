@@ -91,7 +91,7 @@ const SEASON_MONTHS = [3, 6, 9, 12] as const;
 const REAL_SECONDS_PER_INGAME_MINUTE = 1200 / 1440;
 const INGAME_MINUTES_PER_REAL_SECOND = 1440 / 1200;
 
-const BASE_REAL_REFERENCE = new Date('2026-04-16T16:39:00+09:00');
+const BASE_REAL_REFERENCE = new Date('2026-04-27T15:55:17+09:00');
 
 function mod(value: number, base: number): number {
   return ((value % base) + base) % base;
@@ -149,10 +149,10 @@ export function toCycleMinutesFromCalendar(
 }
 
 /**
- * 기준 마을의 기준 인게임 시각: 봄 3월 2일 12:00
+ * 기준 마을의 기준 인게임 시각
  */
 const BASE_REFERENCE_INGAME_TOTAL_MINUTES =
-  toCycleMinutesFromCalendar(3, 2, 12, 0) ?? 0;
+  toCycleMinutesFromCalendar(9, 1, 17, 0) ?? 0;
 
 export function getBaseIngameTotalMinutesAt(now = new Date()): number {
   const elapsedRealSeconds = (now.getTime() - BASE_REAL_REFERENCE.getTime()) / 1000;
