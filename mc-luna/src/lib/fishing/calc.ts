@@ -32,7 +32,7 @@ export const DEFAULT_FISHING_CONFIG: FishingCalcConfig = {
   baseGradeNormal: 110,
   baseGradeAdvanced: 45,
   baseGradeRare: 25,
-  luckGradeCoeff: 1.6,
+  luckGradeCoeff: 1.8,
   vanillaBasePercent: 20,
   vanillaLuckCoeff: 0.15,
   nightNibbleReductionRate: 0.05,
@@ -87,6 +87,12 @@ function clamp(
 function ticksToSeconds(ticks: number): number {
   return ticks / 20;
 }
+
+/** 입질 시간의 최소 보정값(초) */
+const MIN_BITE_SECONDS = 0.35;
+
+/** 입질 시간의 최소 보정값(틱) - 20틱 = 1초이므로 0.35초는 7틱 */
+const MIN_BITE_TICKS = MIN_BITE_SECONDS * 20;
 
 /**
  * 어장 상태에 따른 시간 보정값 반환 함수
@@ -260,8 +266,8 @@ function calculateBaseCatchTime(
   /** 화면에 표시되는 기척 시간 틱 */
   const displayNibbleTicks = clamp(afterGroundbaitNibbleTicks, 20);
 
-  /** 화면에 표시되는 입질 시간 틱 */
-  const displayBiteTicks = clamp(afterGroundbaitBiteTicks, 1);
+/** 화면에 표시되는 입질 시간 틱 - 최소 0.35초(7틱) 보장 */
+const displayBiteTicks = clamp(afterGroundbaitBiteTicks, MIN_BITE_TICKS);
 
   /** 화면에 표시되는 기척 시간 초 */
   const displayNibbleSeconds = ticksToSeconds(displayNibbleTicks);
@@ -284,8 +290,8 @@ function calculateBaseCatchTime(
   /** 최종 실제 기척 시간 틱 */
   const finalNibbleTicks = clamp(afterLureEnchantNibbleTicks, 1);
 
-  /** 최종 실제 입질 시간 틱 */
-  const finalBiteTicks = clamp(afterLureEnchantBiteTicks, 1);
+  /** 최종 실제 입질 시간 틱 - 최소 0.35초(7틱) 보장 */
+  const finalBiteTicks = clamp(afterLureEnchantBiteTicks, MIN_BITE_TICKS);
 
   /** 최종 실제 기척 시간 초 */
   const finalNibbleSeconds = ticksToSeconds(finalNibbleTicks);
@@ -363,11 +369,10 @@ function calculateSchoolFishingCatchTime(
     20,
   );
 
-  /** 떼낚시 적용 후 입질 시간 틱 */
+  /** 떼낚시 적용 후 입질 시간 틱 - 최소 0.35초(7틱) 보장 */
   const afterSchoolFishingBiteTicks = clamp(
-    baseCatchTime.afterGroundbaitBiteTicks -
-      schoolFishingRow.biteReductionTicks,
-    1,
+    baseCatchTime.afterGroundbaitBiteTicks - schoolFishingRow.biteReductionTicks,
+    MIN_BITE_TICKS,
   );
 
   /** Lure 인챈트 감소량 */
@@ -381,8 +386,8 @@ function calculateSchoolFishingCatchTime(
     1,
   );
 
-  /** 떼낚시 적용 후 실제 입질 시간 틱 */
-  const finalBiteTicks = clamp(afterSchoolFishingBiteTicks, 1);
+  /** 떼낚시 적용 후 실제 입질 시간 틱 - 최소 0.35초(7틱) 보장 */
+  const finalBiteTicks = clamp(afterSchoolFishingBiteTicks, MIN_BITE_TICKS);
 
   /** 떼낚시 적용 후 실제 기척 시간 초 */
   const finalNibbleSeconds = ticksToSeconds(finalNibbleTicks);
