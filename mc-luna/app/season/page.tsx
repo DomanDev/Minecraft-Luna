@@ -1,4 +1,25 @@
-"use client";
+'use client';
+
+/**
+ * [계절 계산기 페이지]
+ *
+ * 이번 수정 목표
+ * 1) 프로필에 저장된 월드-마을을 페이지 로드시 자동 선택
+ * 2) 프로필 위치 조회가 끝나기 전에 기본값(양자리-없음)으로 고정되는 버그 수정
+ * 3) UI를 단순화:
+ *    - 제거: 프로필 기본 위치 / 현재 계산 기준 / 요약 / 관측 메모
+ *    - 유지: 월드 선택 / 마을 선택 / 현재 위치 / 현재 계절 / 현재 인게임 시각 / 계절 남은 시간
+ *
+ * 핵심 버그 원인
+ * - 기존 코드에서는 profileLocation 이 아직 null 인 상태에서도
+ *   "초기 선택값 결정" effect 가 먼저 실행될 수 있었다.
+ * - 그 순간 initializedSelectionRef.current 가 true 로 바뀌면
+ *   나중에 profileLocation 이 실제로 로드되어도 다시 반영되지 않았다.
+ *
+ * 해결 방식
+ * - profileLocationLoading state 를 추가
+ * - 프로필 위치 조회가 끝난 뒤에만 초기 선택 effect 실행
+ */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import CalculatorLayout from '@/src/components/calculator/CalculatorLayout';
@@ -7,14 +28,15 @@ import Field from '@/src/components/calculator/Field';
 import SelectInput from '@/src/components/calculator/SelectInput';
 import ResultCard from '@/src/components/calculator/ResultCard';
 import { useAuth } from '@/src/hooks/useAuth';
+
 import {
   fetchActiveVillages,
   fetchLatestVillageTimeReferences,
   fetchLatestWorldTimeReferences,
   fetchMyProfileSeasonLocation,
 } from '@/src/lib/season/repository';
+
 import {
-  BASE_VILLAGE_NAME,
   BASE_VILLAGE_WORLD_KEY,
   WORLD_OPTIONS,
   filterVillagesByWorld,
@@ -25,14 +47,16 @@ import {
   type WorldKey,
   type WorldTimeReferenceRow,
 } from '@/src/lib/season/types';
+
 import {
   formatIngameDate,
-  formatOffsetMinutes,
   formatRemainingTime,
-  getOffsetSourceLabel,
   getSeasonState,
 } from '@/src/lib/season/calc';
 
+/**
+ * 계절 카드 색상/아이콘
+ */
 function getSeasonVisual(season: string, isCurrent: boolean) {
   switch (season) {
     case '봄':
@@ -44,6 +68,7 @@ function getSeasonVisual(season: string, isCurrent: boolean) {
         titleClass: isCurrent ? 'text-pink-700' : 'text-pink-600',
         valueClass: isCurrent ? 'text-pink-900' : 'text-zinc-900',
       };
+
     case '여름':
       return {
         icon: '☀️',
@@ -53,15 +78,17 @@ function getSeasonVisual(season: string, isCurrent: boolean) {
         titleClass: isCurrent ? 'text-amber-700' : 'text-amber-600',
         valueClass: isCurrent ? 'text-amber-900' : 'text-zinc-900',
       };
+
     case '가을':
       return {
-        icon: '🍂',
+        icon: '🍁',
         cardClass: isCurrent
           ? 'border-orange-300 bg-orange-50 shadow-sm'
           : 'border-orange-200 bg-orange-50/60',
         titleClass: isCurrent ? 'text-orange-700' : 'text-orange-600',
         valueClass: isCurrent ? 'text-orange-900' : 'text-zinc-900',
       };
+
     case '겨울':
       return {
         icon: '❄️',
@@ -71,6 +98,7 @@ function getSeasonVisual(season: string, isCurrent: boolean) {
         titleClass: isCurrent ? 'text-sky-700' : 'text-sky-600',
         valueClass: isCurrent ? 'text-sky-900' : 'text-zinc-900',
       };
+
     default:
       return {
         icon: '🕒',
@@ -83,6 +111,9 @@ function getSeasonVisual(season: string, isCurrent: boolean) {
   }
 }
 
+/**
+ * 계절 남은 시간 카드
+ */
 function SeasonStatusCard({
   season,
   isCurrent,
@@ -95,89 +126,84 @@ function SeasonStatusCard({
   const visual = getSeasonVisual(season, isCurrent);
 
   return (
-    <div
-      className={`min-h-[92px] rounded-2xl border p-4 transition-all ${visual.cardClass} ${
-        isCurrent ? 'ring-2 ring-white/70 ring-offset-1' : ''
-      }`}
-    >
-      <div className={`flex items-center gap-2 text-sm font-semibold ${visual.titleClass}`}>
-        <span className="text-base leading-none">{visual.icon}</span>
-        <span>{season}</span>
+    <div className={`rounded-2xl border p-4 transition ${visual.cardClass}`}>
+      <div className={`text-base font-semibold ${visual.titleClass}`}>
+        {visual.icon} {season}
       </div>
 
-      <div
-        className={`mt-3 whitespace-nowrap text-sm font-bold leading-snug sm:text-base ${visual.valueClass}`}
-      >
+      <div className={`mt-2 text-sm font-medium ${visual.valueClass}`}>
         {isCurrent ? '현재 계절' : `${formatRemainingTime(remainingMinutes)} 후`}
       </div>
     </div>
   );
 }
 
-function formatObservedAt(value: string | null): string {
-  if (!value) {
-    return '없음';
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'Asia/Seoul',
-  }).format(date);
-}
-
-function formatProfileLocationLabel(
-  profileLocation: ProfileSeasonLocation | null,
-  villages: VillageRow[],
+/**
+ * 현재 위치 문자열
+ * - 마을 있으면 "양자리 - 노동의숲"
+ * - 없으면 "양자리 - 없음"
+ */
+function formatCurrentLocationLabel(
+  selectedWorldKey: WorldKey,
+  selectedVillage: VillageRow | null,
 ): string {
-  if (!profileLocation) {
-    return '없음';
+  if (selectedVillage) {
+    return `${getWorldLabel(selectedVillage.world_key)} - ${selectedVillage.village_name}`;
   }
 
-  const village =
-    villages.find((item) => item.id === profileLocation.current_village_id) ?? null;
-
-  if (village) {
-    return `${getWorldLabel(village.world_key)} - ${village.village_name}`;
-  }
-
-  if (profileLocation.current_world_key) {
-    return `${getWorldLabel(profileLocation.current_world_key)} - 없음`;
-  }
-
-  return '없음';
+  return `${getWorldLabel(selectedWorldKey)} - 없음`;
 }
 
 export default function SeasonPage() {
   const { user, loading: authLoading } = useAuth();
 
+  /**
+   * DB에서 읽는 공통 데이터
+   */
   const [villages, setVillages] = useState<VillageRow[]>([]);
   const [referencesByVillageId, setReferencesByVillageId] = useState<
     Record<string, VillageTimeReferenceRow>
   >({});
   const [referencesByWorldKey, setReferencesByWorldKey] = useState<
-    Record<string, WorldTimeReferenceRow>
-  >({});
+    Record<WorldKey, WorldTimeReferenceRow>
+  >({} as Record<WorldKey, WorldTimeReferenceRow>);
+
+  /**
+   * 카탈로그 로딩/에러
+   */
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState('');
 
+  /**
+   * 프로필 저장 위치
+   */
   const [profileLocation, setProfileLocation] =
     useState<ProfileSeasonLocation | null>(null);
+
+  /**
+   * 중요:
+   * - profileLocation 자체가 null 일 수도 있음(정상)
+   * - 그래서 "조회가 끝났는지" 여부를 별도 state 로 관리해야 함
+   * - 이 값이 없으면 초기 선택 effect 가 너무 빨리 실행될 수 있다
+   */
+  const [profileLocationLoading, setProfileLocationLoading] = useState(true);
+
+  /**
+   * 화면 선택값
+   * - selectedVillageId === '' 이면 마을 없음
+   */
   const [selectedWorldKey, setSelectedWorldKey] =
     useState<WorldKey>(BASE_VILLAGE_WORLD_KEY);
   const [selectedVillageId, setSelectedVillageId] = useState('');
+
+  /**
+   * 초기 자동 선택은 1회만 수행
+   */
   const initializedSelectionRef = useRef(false);
 
+  /**
+   * 현재 시각 갱신용
+   */
   const [tick, setTick] = useState(() => Date.now());
 
   useEffect(() => {
@@ -191,7 +217,7 @@ export default function SeasonPage() {
   }, []);
 
   /**
-   * 마을 목록 / 최신 관측값 로드
+   * 계절용 공통 카탈로그 로드
    */
   useEffect(() => {
     let mounted = true;
@@ -201,34 +227,32 @@ export default function SeasonPage() {
         setCatalogLoading(true);
         setCatalogError('');
 
-        const [nextVillages, nextVillageReferences, nextWorldReferences] = await Promise.all([
-          fetchActiveVillages(),
-          fetchLatestVillageTimeReferences(),
-          fetchLatestWorldTimeReferences(),
-        ]);
+        const [nextVillages, nextVillageReferences, nextWorldReferences] =
+          await Promise.all([
+            fetchActiveVillages(),
+            fetchLatestVillageTimeReferences(),
+            fetchLatestWorldTimeReferences(),
+          ]);
 
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
 
         setVillages(nextVillages);
         setReferencesByVillageId(nextVillageReferences);
         setReferencesByWorldKey(nextWorldReferences);
       } catch (error) {
-        console.error('계절용 마을 데이터 로드 실패:', error);
+        console.error('계절 데이터 로드 실패:', error);
 
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
 
         setCatalogError(
           error instanceof Error
             ? error.message
             : '계절 데이터를 불러오는 중 오류가 발생했습니다.',
         );
+
         setVillages([]);
         setReferencesByVillageId({});
-        setReferencesByWorldKey({});
+        setReferencesByWorldKey({} as Record<WorldKey, WorldTimeReferenceRow>);
       } finally {
         if (mounted) {
           setCatalogLoading(false);
@@ -244,8 +268,7 @@ export default function SeasonPage() {
   }, []);
 
   /**
-   * 로그인 사용자라면 profiles.current_world_key / current_village_id 를 읽어와
-   * season page 기본 선택값으로 사용한다.
+   * 로그인 사용자의 프로필 위치 조회
    */
   useEffect(() => {
     let mounted = true;
@@ -255,27 +278,28 @@ export default function SeasonPage() {
         return;
       }
 
-      if (!user) {
-        setProfileLocation(null);
-        return;
-      }
-
       try {
-        const nextLocation = await fetchMyProfileSeasonLocation(user.id);
+        setProfileLocationLoading(true);
 
-        if (!mounted) {
+        if (!user) {
+          if (!mounted) return;
+          setProfileLocation(null);
           return;
         }
 
+        const nextLocation = await fetchMyProfileSeasonLocation(user.id);
+
+        if (!mounted) return;
         setProfileLocation(nextLocation);
       } catch (error) {
         console.error('프로필 저장 위치 조회 실패:', error);
 
-        if (!mounted) {
-          return;
-        }
-
+        if (!mounted) return;
         setProfileLocation(null);
+      } finally {
+        if (mounted) {
+          setProfileLocationLoading(false);
+        }
       }
     };
 
@@ -287,20 +311,30 @@ export default function SeasonPage() {
   }, [authLoading, user]);
 
   /**
-   * 최초 기본 선택값 결정
+   * 최초 기본 선택값 적용
    *
-   * 우선순위:
-   * 1) profiles.current_village_id
-   * 2) profiles.current_world_key + 마을 없음
-   * 3) 기준 월드(양자리) + 마을 없음
+   * 우선순위
+   * 1) current_village_id 가 있으면 해당 마을 자동 선택
+   * 2) current_world_key 만 있으면 해당 월드 + 마을 없음
+   * 3) 둘 다 없으면 양자리 + 마을 없음
+   *
+   * 핵심:
+   * - profileLocationLoading 이 false 가 되기 전에는 실행하지 않는다.
+   * - 그래야 profileLocation 이 null 초기값일 때 잘못 고정되지 않는다.
    */
   useEffect(() => {
-    if (catalogLoading || authLoading || initializedSelectionRef.current) {
+    if (
+      catalogLoading ||
+      authLoading ||
+      profileLocationLoading ||
+      initializedSelectionRef.current
+    ) {
       return;
     }
 
     const profileVillage =
-      villages.find((item) => item.id === profileLocation?.current_village_id) ?? null;
+      villages.find((item) => item.id === profileLocation?.current_village_id) ??
+      null;
 
     initializedSelectionRef.current = true;
 
@@ -310,26 +344,53 @@ export default function SeasonPage() {
       return;
     }
 
-    setSelectedWorldKey(profileLocation?.current_world_key ?? BASE_VILLAGE_WORLD_KEY);
+    setSelectedWorldKey(
+      profileLocation?.current_world_key ?? BASE_VILLAGE_WORLD_KEY,
+    );
     setSelectedVillageId('');
-  }, [authLoading, catalogLoading, profileLocation, villages]);
+  }, [
+    authLoading,
+    catalogLoading,
+    profileLocation,
+    profileLocationLoading,
+    villages,
+  ]);
 
+  /**
+   * 선택 월드에 해당하는 마을만 드롭다운에 표시
+   */
   const filteredVillages = useMemo(() => {
     return filterVillagesByWorld(villages, selectedWorldKey);
   }, [villages, selectedWorldKey]);
 
+  /**
+   * 현재 선택된 마을 row
+   */
   const selectedVillage = useMemo(() => {
     return villages.find((item) => item.id === selectedVillageId) ?? null;
   }, [villages, selectedVillageId]);
 
+  /**
+   * 선택 기준 reference
+   * - 마을이 있으면 village reference
+   * - 없으면 world reference
+   */
   const selectedReference = useMemo(() => {
     if (selectedVillage) {
       return referencesByVillageId[selectedVillage.id] ?? null;
     }
 
     return referencesByWorldKey[selectedWorldKey] ?? null;
-  }, [referencesByVillageId, referencesByWorldKey, selectedVillage, selectedWorldKey]);
+  }, [
+    referencesByVillageId,
+    referencesByWorldKey,
+    selectedVillage,
+    selectedWorldKey,
+  ]);
 
+  /**
+   * 실제 계절 계산 결과
+   */
   const seasonState = useMemo(() => {
     return getSeasonState({
       worldKey: selectedWorldKey,
@@ -339,6 +400,9 @@ export default function SeasonPage() {
     });
   }, [selectedReference, selectedVillage, selectedWorldKey, tick]);
 
+  /**
+   * 현재 인게임 시각 문자열
+   */
   const currentTimeText = useMemo(() => {
     return formatIngameDate(
       seasonState.ingameMonth,
@@ -348,56 +412,59 @@ export default function SeasonPage() {
     );
   }, [seasonState]);
 
+  /**
+   * 현재 위치 문자열
+   */
+  const currentLocationLabel = useMemo(() => {
+    return formatCurrentLocationLabel(selectedWorldKey, selectedVillage);
+  }, [selectedVillage, selectedWorldKey]);
+
+  /**
+   * 현재 계절 강조 스타일
+   */
   const currentSeasonVisual = useMemo(() => {
     return getSeasonVisual(seasonState.currentSeason, true);
   }, [seasonState.currentSeason]);
 
-  const summaryRows = useMemo(() => {
-    return [
-      ['선택한 월드', seasonState.worldLabel],
-      ['선택한 마을', seasonState.villageName],
-      ['현재 계절', seasonState.currentSeason],
-      ['현재 인게임 시각', currentTimeText],
-      ['보정 기준', getOffsetSourceLabel(seasonState.offsetSource)],
-      ['기준 마을 대비 오프셋', formatOffsetMinutes(seasonState.effectiveOffsetMinutes)],
-      ['최근 관측 시각', formatObservedAt(seasonState.observedAt)],
-    ] as [string, string][];
-  }, [currentTimeText, seasonState]);
-
+  /**
+   * 월드 변경 시
+   * - 마을은 항상 '없음'으로 초기화
+   */
   const handleWorldChange = (value: WorldKey) => {
     setSelectedWorldKey(value);
-
-    /**
-     * 변경 요청 반영:
-     * - 월드를 바꿔도 마을은 자동으로 첫 번째를 고르지 않는다.
-     * - 기본값은 항상 '없음' 상태를 유지한다.
-     * - 이렇게 해야 월드별 기준 시각을 따로 지정해 둔 값을 바로 사용할 수 있다.
-     */
     setSelectedVillageId('');
   };
 
-  const profileLocationLabel = useMemo(() => {
-    return formatProfileLocationLabel(profileLocation, villages);
-  }, [profileLocation, villages]);
-
-  if (catalogLoading) {
-    return <div className="p-6">계절 데이터를 불러오는 중...</div>;
+  /**
+   * 최초 로딩 화면
+   * - 카탈로그 + 프로필 위치가 둘 다 준비될 때까지 대기
+   */
+  if (catalogLoading || authLoading || profileLocationLoading) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-zinc-500">
+        계절 데이터를 불러오는 중...
+      </div>
+    );
   }
 
   if (catalogError) {
-    return <div className="p-6 text-rose-600">{catalogError}</div>;
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-10">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {catalogError}
+        </div>
+      </div>
+    );
   }
 
   return (
     <CalculatorLayout
       title="계절 계산기"
+      description="월드와 마을을 선택해 현재 계절과 인게임 시간을 확인합니다."
       left={
         <CalculatorPanel title="설정">
-          <div className="space-y-4">
-            <Field
-              label="현재 위치한 월드"
-              hint="프로필에 저장된 월드가 있으면 그 월드를 기본값으로 불러옵니다."
-            >
+          <div className="space-y-6">
+            <Field label="현재 위치한 월드">
               <SelectInput
                 value={selectedWorldKey}
                 onChange={(value) => handleWorldChange(value as WorldKey)}
@@ -405,10 +472,7 @@ export default function SeasonPage() {
               />
             </Field>
 
-            <Field
-              label="현재 위치한 마을"
-              hint="프로필에 저장된 마을이 없으면 기본값은 '없음'이며, 이 경우 월드 기준 시각을 사용합니다."
-            >
+            <Field label="현재 위치한 마을">
               <SelectInput
                 value={selectedVillageId}
                 onChange={(value) => setSelectedVillageId(value as string)}
@@ -421,52 +485,44 @@ export default function SeasonPage() {
                 ]}
               />
             </Field>
-
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
-              <div className="font-semibold text-zinc-900">프로필 기본 위치</div>
-              <div className="mt-1">{profileLocationLabel}</div>
-            </div>
-
-            <div
-              className={`rounded-2xl border p-4 transition-all ${currentSeasonVisual.cardClass}`}
-            >
-              <div className="text-sm text-zinc-600">현재 위치</div>
-              <div className={`mt-1 text-lg font-bold ${currentSeasonVisual.titleClass}`}>
-                {seasonState.villageLabel}
-              </div>
-
-              <div className="mt-4 text-sm text-zinc-600">현재 계절</div>
-              <div
-                className={`mt-1 flex items-center gap-2 text-2xl font-bold ${currentSeasonVisual.valueClass}`}
-              >
-                <span className="text-2xl leading-none">{currentSeasonVisual.icon}</span>
-                <span>{seasonState.currentSeason}</span>
-              </div>
-
-              <div className="mt-4 text-sm text-zinc-600">현재 인게임 시각</div>
-              <div className={`mt-1 text-base font-semibold ${currentSeasonVisual.valueClass}`}>
-                {currentTimeText}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
-              <div className="font-semibold">현재 계산 기준</div>
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                <li>기준 마을: {getWorldLabel(BASE_VILLAGE_WORLD_KEY)} / {BASE_VILLAGE_NAME}</li>
-                <li>기준 시각: 현실 2026-04-16 16:39:00 = 인게임 봄 3월 2일 12:00</li>
-                <li>시간 규칙: 현실 20분 = 인게임 24시간</li>
-                <li>마을을 선택하면 마을 기준 관측값을 우선 사용합니다.</li>
-                <li>마을이 '없음'이면 선택한 월드의 기준 관측값을 사용합니다.</li>
-                <li>보정 방식: 최신 관측값 우선, 없으면 저장된 offset_from_base_minutes 사용</li>
-              </ul>
-            </div>
           </div>
         </CalculatorPanel>
       }
       right={
-        <div className="space-y-6">
+        <div className="space-y-4">
+          <ResultCard title="현재 정보">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                <div className="text-xs font-medium text-zinc-500">현재 위치</div>
+                <div className="mt-1 text-base font-semibold text-zinc-900">
+                  {currentLocationLabel}
+                </div>
+              </div>
+
+              <div
+                className={`rounded-2xl border p-4 ${currentSeasonVisual.cardClass}`}
+              >
+                <div className="text-xs font-medium text-zinc-500">현재 계절</div>
+                <div
+                  className={`mt-1 text-base font-semibold ${currentSeasonVisual.valueClass}`}
+                >
+                  {currentSeasonVisual.icon} {seasonState.currentSeason}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                <div className="text-xs font-medium text-zinc-500">
+                  현재 인게임 시각
+                </div>
+                <div className="mt-1 text-base font-semibold text-zinc-900">
+                  {currentTimeText}
+                </div>
+              </div>
+            </div>
+          </ResultCard>
+
           <ResultCard title="계절 남은 시간">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {seasonState.items.map((item) => (
                 <SeasonStatusCard
                   key={item.season}
@@ -475,28 +531,6 @@ export default function SeasonPage() {
                   remainingMinutes={item.remainingMinutes}
                 />
               ))}
-            </div>
-          </ResultCard>
-
-          <ResultCard title="요약">
-            <div className="space-y-2 text-sm text-zinc-700">
-              {summaryRows.map(([label, value]) => (
-                <div
-                  key={label}
-                  className="flex items-start justify-between gap-4 rounded-xl border border-zinc-200 bg-white px-4 py-3"
-                >
-                  <span className="text-zinc-500">{label}</span>
-                  <span className="text-right font-medium text-zinc-900">{value}</span>
-                </div>
-              ))}
-            </div>
-          </ResultCard>
-
-          <ResultCard title="관측 메모">
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
-              {seasonState.referenceMemo?.trim()
-                ? seasonState.referenceMemo
-                : '최신 관측 메모가 없습니다.'}
             </div>
           </ResultCard>
         </div>
