@@ -3,22 +3,15 @@
 /**
  * [계절 계산기 페이지]
  *
- * 이번 수정 목표
- * 1) 프로필에 저장된 월드-마을을 페이지 로드시 자동 선택
- * 2) 프로필 위치 조회가 끝나기 전에 기본값(양자리-없음)으로 고정되는 버그 수정
- * 3) UI를 단순화:
- *    - 제거: 프로필 기본 위치 / 현재 계산 기준 / 요약 / 관측 메모
- *    - 유지: 월드 선택 / 마을 선택 / 현재 위치 / 현재 계절 / 현재 인게임 시각 / 계절 남은 시간
- *
- * 핵심 버그 원인
- * - 기존 코드에서는 profileLocation 이 아직 null 인 상태에서도
- *   "초기 선택값 결정" effect 가 먼저 실행될 수 있었다.
- * - 그 순간 initializedSelectionRef.current 가 true 로 바뀌면
- *   나중에 profileLocation 이 실제로 로드되어도 다시 반영되지 않았다.
- *
- * 해결 방식
- * - profileLocationLoading state 를 추가
- * - 프로필 위치 조회가 끝난 뒤에만 초기 선택 effect 실행
+ * 수정 목적
+ * 1) CalculatorLayout의 실제 props 구조(title, left, right)에 맞게 수정
+ * 2) 새로고침 시 프로필 저장 위치(current_world_key, current_village_id)를
+ *    드롭다운 / 현재 위치 / 계절 카드 계산에 바로 반영
+ * 3) 불필요한 UI 제거
+ *    - 프로필 기본 위치
+ *    - 현재 계산 기준
+ *    - 요약
+ *    - 관측 메모
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -55,7 +48,23 @@ import {
 } from '@/src/lib/season/calc';
 
 /**
- * 계절 카드 색상/아이콘
+ * 현재 위치 텍스트 생성
+ * - 마을 선택 시: "양자리 - 노동의숲"
+ * - 마을 미선택 시: "양자리 - 없음"
+ */
+function formatCurrentLocationLabel(
+  selectedWorldKey: WorldKey,
+  selectedVillage: VillageRow | null,
+): string {
+  if (selectedVillage) {
+    return `${getWorldLabel(selectedVillage.world_key)} - ${selectedVillage.village_name}`;
+  }
+
+  return `${getWorldLabel(selectedWorldKey)} - 없음`;
+}
+
+/**
+ * 계절별 카드 스타일
  */
 function getSeasonVisual(season: string, isCurrent: boolean) {
   switch (season) {
@@ -138,38 +147,22 @@ function SeasonStatusCard({
   );
 }
 
-/**
- * 현재 위치 문자열
- * - 마을 있으면 "양자리 - 노동의숲"
- * - 없으면 "양자리 - 없음"
- */
-function formatCurrentLocationLabel(
-  selectedWorldKey: WorldKey,
-  selectedVillage: VillageRow | null,
-): string {
-  if (selectedVillage) {
-    return `${getWorldLabel(selectedVillage.world_key)} - ${selectedVillage.village_name}`;
-  }
-
-  return `${getWorldLabel(selectedWorldKey)} - 없음`;
-}
-
 export default function SeasonPage() {
   const { user, loading: authLoading } = useAuth();
 
   /**
-   * DB에서 읽는 공통 데이터
+   * 공통 카탈로그 데이터
    */
   const [villages, setVillages] = useState<VillageRow[]>([]);
   const [referencesByVillageId, setReferencesByVillageId] = useState<
     Record<string, VillageTimeReferenceRow>
   >({});
   const [referencesByWorldKey, setReferencesByWorldKey] = useState<
-    Record<WorldKey, WorldTimeReferenceRow>
-  >({} as Record<WorldKey, WorldTimeReferenceRow>);
+    Record<string, WorldTimeReferenceRow>
+  >({});
 
   /**
-   * 카탈로그 로딩/에러
+   * 로딩 / 에러
    */
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState('');
@@ -182,9 +175,9 @@ export default function SeasonPage() {
 
   /**
    * 중요:
-   * - profileLocation 자체가 null 일 수도 있음(정상)
-   * - 그래서 "조회가 끝났는지" 여부를 별도 state 로 관리해야 함
-   * - 이 값이 없으면 초기 선택 effect 가 너무 빨리 실행될 수 있다
+   * profileLocation 값이 null인 것과
+   * "아직 조회 중이라 null인 것"은 구분해야 한다.
+   * 이 상태를 따로 두지 않으면 새로고침 시 기본값이 먼저 고정될 수 있다.
    */
   const [profileLocationLoading, setProfileLocationLoading] = useState(true);
 
@@ -197,12 +190,12 @@ export default function SeasonPage() {
   const [selectedVillageId, setSelectedVillageId] = useState('');
 
   /**
-   * 초기 자동 선택은 1회만 수행
+   * 프로필 기본값 자동 적용은 최초 1회만 수행
    */
   const initializedSelectionRef = useRef(false);
 
   /**
-   * 현재 시각 갱신용
+   * 1초마다 현재 시각 갱신
    */
   const [tick, setTick] = useState(() => Date.now());
 
@@ -217,7 +210,7 @@ export default function SeasonPage() {
   }, []);
 
   /**
-   * 계절용 공통 카탈로그 로드
+   * villages / reference 데이터 로드
    */
   useEffect(() => {
     let mounted = true;
@@ -252,7 +245,7 @@ export default function SeasonPage() {
 
         setVillages([]);
         setReferencesByVillageId({});
-        setReferencesByWorldKey({} as Record<WorldKey, WorldTimeReferenceRow>);
+        setReferencesByWorldKey({});
       } finally {
         if (mounted) {
           setCatalogLoading(false);
@@ -268,15 +261,13 @@ export default function SeasonPage() {
   }, []);
 
   /**
-   * 로그인 사용자의 프로필 위치 조회
+   * 프로필 위치 로드
    */
   useEffect(() => {
     let mounted = true;
 
     const loadProfileLocation = async () => {
-      if (authLoading) {
-        return;
-      }
+      if (authLoading) return;
 
       try {
         setProfileLocationLoading(true);
@@ -315,12 +306,12 @@ export default function SeasonPage() {
    *
    * 우선순위
    * 1) current_village_id 가 있으면 해당 마을 자동 선택
-   * 2) current_world_key 만 있으면 해당 월드 + 마을 없음
-   * 3) 둘 다 없으면 양자리 + 마을 없음
+   * 2) current_world_key 만 있으면 해당 월드 + 없음
+   * 3) 둘 다 없으면 양자리 + 없음
    *
    * 핵심:
-   * - profileLocationLoading 이 false 가 되기 전에는 실행하지 않는다.
-   * - 그래야 profileLocation 이 null 초기값일 때 잘못 고정되지 않는다.
+   * - profileLocationLoading 이 false 되기 전에는 실행하지 않는다.
+   * - 그래야 새로고침 시 프로필 값이 오기 전에 기본값으로 고정되는 문제를 막을 수 있다.
    */
   useEffect(() => {
     if (
@@ -357,23 +348,23 @@ export default function SeasonPage() {
   ]);
 
   /**
-   * 선택 월드에 해당하는 마을만 드롭다운에 표시
+   * 선택 월드 기준 마을 목록
    */
   const filteredVillages = useMemo(() => {
     return filterVillagesByWorld(villages, selectedWorldKey);
   }, [villages, selectedWorldKey]);
 
   /**
-   * 현재 선택된 마을 row
+   * 선택된 마을 row
    */
   const selectedVillage = useMemo(() => {
     return villages.find((item) => item.id === selectedVillageId) ?? null;
   }, [villages, selectedVillageId]);
 
   /**
-   * 선택 기준 reference
-   * - 마을이 있으면 village reference
-   * - 없으면 world reference
+   * 선택 기준의 reference
+   * - 마을 선택 시 village reference
+   * - 마을 없음이면 world reference
    */
   const selectedReference = useMemo(() => {
     if (selectedVillage) {
@@ -389,7 +380,7 @@ export default function SeasonPage() {
   ]);
 
   /**
-   * 실제 계절 계산 결과
+   * 현재 계절 계산
    */
   const seasonState = useMemo(() => {
     return getSeasonState({
@@ -401,7 +392,7 @@ export default function SeasonPage() {
   }, [selectedReference, selectedVillage, selectedWorldKey, tick]);
 
   /**
-   * 현재 인게임 시각 문자열
+   * 현재 인게임 시각 텍스트
    */
   const currentTimeText = useMemo(() => {
     return formatIngameDate(
@@ -413,22 +404,21 @@ export default function SeasonPage() {
   }, [seasonState]);
 
   /**
-   * 현재 위치 문자열
+   * 현재 위치 표시 문자열
    */
   const currentLocationLabel = useMemo(() => {
     return formatCurrentLocationLabel(selectedWorldKey, selectedVillage);
   }, [selectedVillage, selectedWorldKey]);
 
   /**
-   * 현재 계절 강조 스타일
+   * 현재 계절 카드 스타일
    */
   const currentSeasonVisual = useMemo(() => {
     return getSeasonVisual(seasonState.currentSeason, true);
   }, [seasonState.currentSeason]);
 
   /**
-   * 월드 변경 시
-   * - 마을은 항상 '없음'으로 초기화
+   * 월드 변경 시 마을은 항상 "없음"으로 초기화
    */
   const handleWorldChange = (value: WorldKey) => {
     setSelectedWorldKey(value);
@@ -436,8 +426,8 @@ export default function SeasonPage() {
   };
 
   /**
-   * 최초 로딩 화면
-   * - 카탈로그 + 프로필 위치가 둘 다 준비될 때까지 대기
+   * 최초 로딩
+   * - 카탈로그와 프로필 위치가 모두 준비될 때까지 대기
    */
   if (catalogLoading || authLoading || profileLocationLoading) {
     return (
@@ -460,7 +450,6 @@ export default function SeasonPage() {
   return (
     <CalculatorLayout
       title="계절 계산기"
-      description="월드와 마을을 선택해 현재 계절과 인게임 시간을 확인합니다."
       left={
         <CalculatorPanel title="설정">
           <div className="space-y-6">
