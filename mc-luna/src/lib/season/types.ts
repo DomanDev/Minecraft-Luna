@@ -6,6 +6,7 @@
  * 이번 구조의 핵심:
  * - world는 고정 enum 성격의 상수로 관리
  * - village는 DB(public.villages)에서 관리
+ * - world 기준 시각도 별도 DB(public.world_time_references)에서 관리
  * - profile / season page 모두 이 파일의 타입과 옵션을 재사용
  */
 
@@ -71,6 +72,25 @@ export type VillageTimeReferenceRow = {
   updated_at: string | null;
 };
 
+export type WorldTimeReferenceRow = {
+  id: string;
+  world_key: WorldKey;
+  real_observed_at: string;
+  ingame_month: number;
+  ingame_day: number;
+  ingame_hour: number;
+  ingame_minute: number;
+  offset_from_base_minutes: number | null;
+  memo: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type ProfileSeasonLocation = {
+  current_world_key: WorldKey | null;
+  current_village_id: string | null;
+};
+
 /**
  * 기준 마을은 계산 로직의 절대 기준이므로
  * 상수로 명확하게 분리해 둔다.
@@ -88,6 +108,10 @@ export function getWorldLabel(worldKey: WorldKey): string {
 
 export function getVillageFullLabel(village: Pick<VillageRow, 'world_key' | 'village_name'>): string {
   return `${getWorldLabel(village.world_key)} - ${village.village_name}`;
+}
+
+export function getWorldOnlyLabel(worldKey: WorldKey): string {
+  return `${getWorldLabel(worldKey)} - 없음`;
 }
 
 /**

@@ -10,18 +10,20 @@ import { useAuth } from '@/src/hooks/useAuth';
 import {
   fetchActiveVillages,
   fetchLatestVillageTimeReferences,
-  fetchMyProfileVillageId,
+  fetchLatestWorldTimeReferences,
+  fetchMyProfileSeasonLocation,
 } from '@/src/lib/season/repository';
 import {
   BASE_VILLAGE_NAME,
   BASE_VILLAGE_WORLD_KEY,
   WORLD_OPTIONS,
   filterVillagesByWorld,
-  findBaseVillage,
   getWorldLabel,
+  type ProfileSeasonLocation,
   type VillageRow,
   type VillageTimeReferenceRow,
   type WorldKey,
+  type WorldTimeReferenceRow,
 } from '@/src/lib/season/types';
 import {
   formatIngameDate,
@@ -134,6 +136,28 @@ function formatObservedAt(value: string | null): string {
   }).format(date);
 }
 
+function formatProfileLocationLabel(
+  profileLocation: ProfileSeasonLocation | null,
+  villages: VillageRow[],
+): string {
+  if (!profileLocation) {
+    return '없음';
+  }
+
+  const village =
+    villages.find((item) => item.id === profileLocation.current_village_id) ?? null;
+
+  if (village) {
+    return `${getWorldLabel(village.world_key)} - ${village.village_name}`;
+  }
+
+  if (profileLocation.current_world_key) {
+    return `${getWorldLabel(profileLocation.current_world_key)} - 없음`;
+  }
+
+  return '없음';
+}
+
 export default function SeasonPage() {
   const { user, loading: authLoading } = useAuth();
 
@@ -141,11 +165,16 @@ export default function SeasonPage() {
   const [referencesByVillageId, setReferencesByVillageId] = useState<
     Record<string, VillageTimeReferenceRow>
   >({});
+  const [referencesByWorldKey, setReferencesByWorldKey] = useState<
+    Record<string, WorldTimeReferenceRow>
+  >({});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState('');
 
-  const [profileVillageId, setProfileVillageId] = useState<string | null>(null);
-  const [selectedWorldKey, setSelectedWorldKey] = useState<WorldKey>('aries');
+  const [profileLocation, setProfileLocation] =
+    useState<ProfileSeasonLocation | null>(null);
+  const [selectedWorldKey, setSelectedWorldKey] =
+    useState<WorldKey>(BASE_VILLAGE_WORLD_KEY);
   const [selectedVillageId, setSelectedVillageId] = useState('');
   const initializedSelectionRef = useRef(false);
 
@@ -172,9 +201,10 @@ export default function SeasonPage() {
         setCatalogLoading(true);
         setCatalogError('');
 
-        const [nextVillages, nextReferences] = await Promise.all([
+        const [nextVillages, nextVillageReferences, nextWorldReferences] = await Promise.all([
           fetchActiveVillages(),
           fetchLatestVillageTimeReferences(),
+          fetchLatestWorldTimeReferences(),
         ]);
 
         if (!mounted) {
@@ -182,7 +212,8 @@ export default function SeasonPage() {
         }
 
         setVillages(nextVillages);
-        setReferencesByVillageId(nextReferences);
+        setReferencesByVillageId(nextVillageReferences);
+        setReferencesByWorldKey(nextWorldReferences);
       } catch (error) {
         console.error('계절용 마을 데이터 로드 실패:', error);
 
@@ -197,6 +228,7 @@ export default function SeasonPage() {
         );
         setVillages([]);
         setReferencesByVillageId({});
+        setReferencesByWorldKey({});
       } finally {
         if (mounted) {
           setCatalogLoading(false);
@@ -212,30 +244,30 @@ export default function SeasonPage() {
   }, []);
 
   /**
-   * 로그인 사용자라면 profiles.current_village_id 를 읽어와
+   * 로그인 사용자라면 profiles.current_world_key / current_village_id 를 읽어와
    * season page 기본 선택값으로 사용한다.
    */
   useEffect(() => {
     let mounted = true;
 
-    const loadProfileVillage = async () => {
+    const loadProfileLocation = async () => {
       if (authLoading) {
         return;
       }
 
       if (!user) {
-        setProfileVillageId(null);
+        setProfileLocation(null);
         return;
       }
 
       try {
-        const nextVillageId = await fetchMyProfileVillageId(user.id);
+        const nextLocation = await fetchMyProfileSeasonLocation(user.id);
 
         if (!mounted) {
           return;
         }
 
-        setProfileVillageId(nextVillageId);
+        setProfileLocation(nextLocation);
       } catch (error) {
         console.error('프로필 저장 위치 조회 실패:', error);
 
@@ -243,11 +275,11 @@ export default function SeasonPage() {
           return;
         }
 
-        setProfileVillageId(null);
+        setProfileLocation(null);
       }
     };
 
-    void loadProfileVillage();
+    void loadProfileLocation();
 
     return () => {
       mounted = false;
@@ -259,32 +291,28 @@ export default function SeasonPage() {
    *
    * 우선순위:
    * 1) profiles.current_village_id
-   * 2) 기준 마을(양자리 - 노동의숲)
-   * 3) villages 첫 번째 항목
+   * 2) profiles.current_world_key + 마을 없음
+   * 3) 기준 월드(양자리) + 마을 없음
    */
   useEffect(() => {
     if (catalogLoading || authLoading || initializedSelectionRef.current) {
       return;
     }
 
-    const baseVillage = findBaseVillage(villages);
-    const preferredVillage =
-      villages.find((item) => item.id === profileVillageId) ??
-      baseVillage ??
-      villages[0] ??
-      null;
+    const profileVillage =
+      villages.find((item) => item.id === profileLocation?.current_village_id) ?? null;
 
-    if (!preferredVillage) {
-      initializedSelectionRef.current = true;
-      setSelectedWorldKey(BASE_VILLAGE_WORLD_KEY);
-      setSelectedVillageId('');
+    initializedSelectionRef.current = true;
+
+    if (profileVillage) {
+      setSelectedWorldKey(profileVillage.world_key);
+      setSelectedVillageId(profileVillage.id);
       return;
     }
 
-    initializedSelectionRef.current = true;
-    setSelectedWorldKey(preferredVillage.world_key);
-    setSelectedVillageId(preferredVillage.id);
-  }, [authLoading, catalogLoading, profileVillageId, villages]);
+    setSelectedWorldKey(profileLocation?.current_world_key ?? BASE_VILLAGE_WORLD_KEY);
+    setSelectedVillageId('');
+  }, [authLoading, catalogLoading, profileLocation, villages]);
 
   const filteredVillages = useMemo(() => {
     return filterVillagesByWorld(villages, selectedWorldKey);
@@ -295,22 +323,23 @@ export default function SeasonPage() {
   }, [villages, selectedVillageId]);
 
   const selectedReference = useMemo(() => {
-    return selectedVillage ? referencesByVillageId[selectedVillage.id] ?? null : null;
-  }, [referencesByVillageId, selectedVillage]);
+    if (selectedVillage) {
+      return referencesByVillageId[selectedVillage.id] ?? null;
+    }
+
+    return referencesByWorldKey[selectedWorldKey] ?? null;
+  }, [referencesByVillageId, referencesByWorldKey, selectedVillage, selectedWorldKey]);
 
   const seasonState = useMemo(() => {
-    if (!selectedVillage) {
-      return null;
-    }
-
-    return getSeasonState(selectedVillage, selectedReference, new Date(tick));
-  }, [selectedReference, selectedVillage, tick]);
+    return getSeasonState({
+      worldKey: selectedWorldKey,
+      village: selectedVillage,
+      reference: selectedReference,
+      now: new Date(tick),
+    });
+  }, [selectedReference, selectedVillage, selectedWorldKey, tick]);
 
   const currentTimeText = useMemo(() => {
-    if (!seasonState) {
-      return '-';
-    }
-
     return formatIngameDate(
       seasonState.ingameMonth,
       seasonState.ingameDay,
@@ -320,14 +349,10 @@ export default function SeasonPage() {
   }, [seasonState]);
 
   const currentSeasonVisual = useMemo(() => {
-    return getSeasonVisual(seasonState?.currentSeason ?? '봄', true);
-  }, [seasonState?.currentSeason]);
+    return getSeasonVisual(seasonState.currentSeason, true);
+  }, [seasonState.currentSeason]);
 
   const summaryRows = useMemo(() => {
-    if (!seasonState) {
-      return [] as [string, string][];
-    }
-
     return [
       ['선택한 월드', seasonState.worldLabel],
       ['선택한 마을', seasonState.villageName],
@@ -336,25 +361,24 @@ export default function SeasonPage() {
       ['보정 기준', getOffsetSourceLabel(seasonState.offsetSource)],
       ['기준 마을 대비 오프셋', formatOffsetMinutes(seasonState.effectiveOffsetMinutes)],
       ['최근 관측 시각', formatObservedAt(seasonState.observedAt)],
-    ];
+    ] as [string, string][];
   }, [currentTimeText, seasonState]);
 
   const handleWorldChange = (value: WorldKey) => {
     setSelectedWorldKey(value);
 
-    const firstVillage = villages.find((item) => item.world_key === value) ?? null;
-    setSelectedVillageId(firstVillage?.id ?? '');
+    /**
+     * 변경 요청 반영:
+     * - 월드를 바꿔도 마을은 자동으로 첫 번째를 고르지 않는다.
+     * - 기본값은 항상 '없음' 상태를 유지한다.
+     * - 이렇게 해야 월드별 기준 시각을 따로 지정해 둔 값을 바로 사용할 수 있다.
+     */
+    setSelectedVillageId('');
   };
 
-  const profileVillageLabel = useMemo(() => {
-    const village = villages.find((item) => item.id === profileVillageId) ?? null;
-
-    if (!village) {
-      return '없음';
-    }
-
-    return `${village.village_name} (${WORLD_OPTIONS.find((item) => item.value === village.world_key)?.label ?? village.world_key})`;
-  }, [profileVillageId, villages]);
+  const profileLocationLabel = useMemo(() => {
+    return formatProfileLocationLabel(profileLocation, villages);
+  }, [profileLocation, villages]);
 
   if (catalogLoading) {
     return <div className="p-6">계절 데이터를 불러오는 중...</div>;
@@ -362,14 +386,6 @@ export default function SeasonPage() {
 
   if (catalogError) {
     return <div className="p-6 text-rose-600">{catalogError}</div>;
-  }
-
-  if (!seasonState) {
-    return (
-      <div className="p-6 text-zinc-700">
-        등록된 마을이 없습니다. 먼저 <code>villages</code> 테이블에 마을을 추가해주세요.
-      </div>
-    );
   }
 
   return (
@@ -380,7 +396,7 @@ export default function SeasonPage() {
           <div className="space-y-4">
             <Field
               label="현재 위치한 월드"
-              hint="월드를 바꾸면 아래 마을 드롭다운에는 해당 월드의 마을만 표시됩니다."
+              hint="프로필에 저장된 월드가 있으면 그 월드를 기본값으로 불러옵니다."
             >
               <SelectInput
                 value={selectedWorldKey}
@@ -391,13 +407,13 @@ export default function SeasonPage() {
 
             <Field
               label="현재 위치한 마을"
-              hint="프로필에 저장된 위치가 있으면 그 마을을 기본값으로 불러옵니다."
+              hint="프로필에 저장된 마을이 없으면 기본값은 '없음'이며, 이 경우 월드 기준 시각을 사용합니다."
             >
               <SelectInput
                 value={selectedVillageId}
                 onChange={(value) => setSelectedVillageId(value as string)}
                 options={[
-                  { value: '', label: filteredVillages.length > 0 ? '마을 선택' : '등록된 마을 없음' },
+                  { value: '', label: '없음' },
                   ...filteredVillages.map((village) => ({
                     value: village.id,
                     label: village.village_name,
@@ -408,13 +424,13 @@ export default function SeasonPage() {
 
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
               <div className="font-semibold text-zinc-900">프로필 기본 위치</div>
-              <div className="mt-1">{profileVillageLabel}</div>
+              <div className="mt-1">{profileLocationLabel}</div>
             </div>
 
             <div
               className={`rounded-2xl border p-4 transition-all ${currentSeasonVisual.cardClass}`}
             >
-              <div className="text-sm text-zinc-600">현재 마을</div>
+              <div className="text-sm text-zinc-600">현재 위치</div>
               <div className={`mt-1 text-lg font-bold ${currentSeasonVisual.titleClass}`}>
                 {seasonState.villageLabel}
               </div>
@@ -439,9 +455,9 @@ export default function SeasonPage() {
                 <li>기준 마을: {getWorldLabel(BASE_VILLAGE_WORLD_KEY)} / {BASE_VILLAGE_NAME}</li>
                 <li>기준 시각: 현실 2026-04-16 16:39:00 = 인게임 봄 3월 2일 12:00</li>
                 <li>시간 규칙: 현실 20분 = 인게임 24시간</li>
-                <li>
-                  보정 방식: 최신 관측값 우선, 없으면 저장된 offset_from_base_minutes 사용
-                </li>
+                <li>마을을 선택하면 마을 기준 관측값을 우선 사용합니다.</li>
+                <li>마을이 '없음'이면 선택한 월드의 기준 관측값을 사용합니다.</li>
+                <li>보정 방식: 최신 관측값 우선, 없으면 저장된 offset_from_base_minutes 사용</li>
               </ul>
             </div>
           </div>

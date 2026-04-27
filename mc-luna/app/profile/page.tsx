@@ -69,6 +69,7 @@ type Profile = {
   minecraft_link_status: MinecraftLinkStatus;
   minecraft_linked_at: string | null;
   minecraft_verified_at: string | null;
+  current_world_key: WorldKey | null;
   current_village_id: string | null;
 };
 
@@ -903,9 +904,10 @@ export default function ProfilePage() {
    * 위치 선택용 마을 목록 / 폼 state
    *
    * 저장 정책:
-   * - DB에는 current_village_id만 저장
-   * - current world는 village.world_key로부터 파생
-   *   -> world / village 불일치 저장을 방지할 수 있다.
+   * - DB에는 current_world_key + current_village_id 를 함께 저장
+   * - 마을이 없을 때도 월드 기준 시각을 사용할 수 있어야 하므로
+   *   current_world_key 는 별도로 유지한다.
+   * - 마을을 선택하면 village.world_key 와 current_world_key 를 동일하게 저장한다.
    */
   const [villages, setVillages] = useState<VillageRow[]>([]);
   const [villagesLoading, setVillagesLoading] = useState(true);
@@ -1007,7 +1009,7 @@ export default function ProfilePage() {
       let { data, error } = await supabase
         .from('profiles')
         .select(
-          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at, current_village_id',
+          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at, current_world_key, current_village_id',
         )
         .eq('id', user.id)
         .maybeSingle();
@@ -1033,6 +1035,7 @@ export default function ProfilePage() {
           minecraft_link_status: 'needs_lookup' as const,
           minecraft_linked_at: null,
           minecraft_verified_at: null,
+          current_world_key: null,
           current_village_id: null,
         };
 
@@ -1051,7 +1054,7 @@ export default function ProfilePage() {
         const retry = await supabase
           .from('profiles')
           .select(
-            'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at, current_village_id',
+            'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at, current_world_key, current_village_id',
           )
           .eq('id', user.id)
           .single();
@@ -1121,7 +1124,12 @@ export default function ProfilePage() {
   }, []);
 
   /**
-   * profiles.current_village_id -> 위치 폼 state 동기화
+   * profiles.current_world_key / current_village_id -> 위치 폼 state 동기화
+   *
+   * 우선순위:
+   * 1) 저장된 current_village_id
+   * 2) 저장된 current_world_key + 마을 없음
+   * 3) 기본 월드(양자리) + 마을 없음
    */
   useEffect(() => {
     const savedVillage =
@@ -1133,9 +1141,9 @@ export default function ProfilePage() {
       return;
     }
 
-    setSelectedWorldKey('aries');
+    setSelectedWorldKey(profile?.current_world_key ?? 'aries');
     setSelectedVillageId('');
-  }, [profile?.current_village_id, villages]);
+  }, [profile?.current_village_id, profile?.current_world_key, villages]);
 
   useEffect(() => {
     const loadCooldownInfo = async () => {
@@ -1328,6 +1336,14 @@ export default function ProfilePage() {
     return villages.find((item) => item.id === profile?.current_village_id) ?? null;
   }, [villages, profile?.current_village_id]);
 
+  const currentSavedWorldKey = useMemo(() => {
+    if (currentVillage) {
+      return currentVillage.world_key;
+    }
+
+    return profile?.current_world_key ?? null;
+  }, [currentVillage, profile?.current_world_key]);
+
   /**
    * 현재 선택한 월드에 속한 마을 목록
    */
@@ -1379,8 +1395,12 @@ export default function ProfilePage() {
       const normalizedSelectedVillageId = selectedVillageId === '' ? null : selectedVillageId;
       const isDisplayNameChanged =
         trimmedDisplayName !== (profile.display_name ?? '');
+      const normalizedSelectedWorldKey = selectedWorldKey;
+      const isWorldChanged =
+        normalizedSelectedWorldKey !== (profile.current_world_key ?? null);
       const isLocationChanged =
-        normalizedSelectedVillageId !== (profile.current_village_id ?? null);
+        normalizedSelectedVillageId !== (profile.current_village_id ?? null) ||
+        isWorldChanged;
 
       if (!isDisplayNameChanged && !isLocationChanged) {
         setProfileSaveMessage('변경된 내용이 없습니다.');
@@ -1401,6 +1421,7 @@ export default function ProfilePage() {
 
       const updatePayload: {
         display_name?: string | null;
+        current_world_key?: WorldKey | null;
         current_village_id?: string | null;
       } = {};
 
@@ -1431,6 +1452,7 @@ export default function ProfilePage() {
       }
 
       if (isLocationChanged) {
+        updatePayload.current_world_key = normalizedSelectedWorldKey;
         updatePayload.current_village_id = normalizedSelectedVillageId;
       }
 
@@ -1456,6 +1478,10 @@ export default function ProfilePage() {
           updatePayload.display_name !== undefined
             ? updatePayload.display_name
             : profile.display_name,
+        current_world_key:
+          updatePayload.current_world_key !== undefined
+            ? updatePayload.current_world_key
+            : profile.current_world_key,
         current_village_id:
           updatePayload.current_village_id !== undefined
             ? updatePayload.current_village_id
@@ -1495,7 +1521,7 @@ export default function ProfilePage() {
 
     setEditDisplayName(profile?.display_name ?? '');
     setEditUsername(profile?.username ?? '');
-    setSelectedWorldKey(savedVillage?.world_key ?? 'aries');
+    setSelectedWorldKey(savedVillage?.world_key ?? profile?.current_world_key ?? 'aries');
     setSelectedVillageId(savedVillage?.id ?? '');
     setProfileSaveMessage('');
   };
@@ -1624,7 +1650,7 @@ export default function ProfilePage() {
         .from('profiles')
         .upsert(updatePayload, { onConflict: 'id' })
         .select(
-          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at, current_village_id',
+          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at, current_world_key, current_village_id',
         )
         .single();
 
@@ -1962,7 +1988,7 @@ export default function ProfilePage() {
           <div className="rounded-lg border p-4">
             <div className="text-sm text-gray-500">위치한 월드</div>
             <div className="font-medium">
-              {currentVillage ? getWorldLabel(currentVillage.world_key) : '없음'}
+              {currentSavedWorldKey ? getWorldLabel(currentSavedWorldKey) : '없음'}
             </div>
           </div>
 
@@ -2032,10 +2058,10 @@ export default function ProfilePage() {
             <div>
               <h3 className="text-base font-semibold">현재 위치 설정</h3>
               <p className="mt-1 text-sm text-gray-600">
-                계절 계산기 기본값으로 사용할 현재 위치를 저장합니다. 내부 저장은
-                <code className="mx-1 rounded bg-zinc-100 px-1 py-0.5 text-xs">village_id</code>
-                기준으로 처리됩니다.
-              </p>
+                계절 계산기 기본값으로 사용할 현재 위치를 저장합니다. 마을을 선택하지 않으면
+                <span className="mx-1 font-medium text-zinc-900">없음</span>
+                상태로 저장되고, season 페이지에서는 해당 월드의 기준 시각을 사용합니다.
+                            </p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -2073,14 +2099,14 @@ export default function ProfilePage() {
                   {villagesLoading
                     ? '마을 목록을 불러오는 중입니다.'
                     : filteredVillages.length > 0
-                      ? '선택한 월드에 속한 마을만 표시됩니다.'
+                      ? '선택한 월드에 속한 마을만 표시되며, 필요 없으면 없음으로 두면 됩니다.'
                       : '선택한 월드에 등록된 마을이 아직 없습니다.'}
                 </div>
               </label>
             </div>
 
             <div className="rounded-lg border bg-gray-50 p-3 text-sm text-gray-700">
-              현재 저장된 위치: {currentVillage ? `${getWorldLabel(currentVillage.world_key)} - ${currentVillage.village_name}` : '없음'}
+              현재 저장된 위치: {currentVillage ? `${getWorldLabel(currentVillage.world_key)} - ${currentVillage.village_name}` : currentSavedWorldKey ? `${getWorldLabel(currentSavedWorldKey)} - 없음` : '없음'}
             </div>
           </div>
 

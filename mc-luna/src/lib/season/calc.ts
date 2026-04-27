@@ -1,8 +1,11 @@
 import {
   getVillageFullLabel,
   getWorldLabel,
+  getWorldOnlyLabel,
   type VillageRow,
   type VillageTimeReferenceRow,
+  type WorldKey,
+  type WorldTimeReferenceRow,
 } from '@/src/lib/season/types';
 
 export type SeasonName = '봄' | '여름' | '가을' | '겨울';
@@ -18,7 +21,7 @@ export interface SeasonCountdownItem {
   remainingMinutes: number;
 }
 
-export interface ResolvedVillageOffset {
+export interface ResolvedSeasonOffset {
   offsetMinutes: number;
   source: SeasonOffsetSource;
   storedOffsetMinutes: number | null;
@@ -26,11 +29,12 @@ export interface ResolvedVillageOffset {
 }
 
 export interface SeasonState {
-  villageId: string;
+  worldKey: WorldKey;
+  worldLabel: string;
+  villageId: string | null;
   villageName: string;
   villageLabel: string;
-  worldKey: VillageRow['world_key'];
-  worldLabel: string;
+  selectionMode: 'world' | 'village';
   ingameMonth: number;
   ingameDay: number;
   ingameHour: number;
@@ -42,6 +46,17 @@ export interface SeasonState {
   observedAt: string | null;
   referenceMemo: string | null;
 }
+
+type SeasonReferenceLike = Pick<
+  VillageTimeReferenceRow,
+  | 'real_observed_at'
+  | 'ingame_month'
+  | 'ingame_day'
+  | 'ingame_hour'
+  | 'ingame_minute'
+  | 'offset_from_base_minutes'
+  | 'memo'
+> | null;
 
 /**
  * =========================
@@ -88,11 +103,6 @@ function normalizeCycleMinutes(totalMinutes: number): number {
 
 /**
  * 두 시점 차이를 1년 주기 안에서 "가장 짧은 signed offset" 으로 정규화한다.
- *
- * 예:
- * - +5분 차이는 그대로 5
- * - -3분 차이는 그대로 -3
- * - 거의 1년 차이(예: +161279)는 사실상 -1분으로 간주
  */
 function normalizeSignedCycleDifference(value: number): number {
   const normalized = normalizeCycleMinutes(value);
@@ -200,7 +210,7 @@ function getRemainingRealMinutesToSeasonStart(
  * 기준 마을과의 offset을 관측값으로부터 역산한다.
  */
 export function deriveObservedOffsetFromBase(
-  reference: VillageTimeReferenceRow | null,
+  reference: SeasonReferenceLike,
 ): number | null {
   if (!reference) {
     return null;
@@ -238,9 +248,9 @@ export function deriveObservedOffsetFromBase(
  * 2) DB에 직접 저장한 offset_from_base_minutes
  * 3) 아무 값도 없으면 0(=기준 마을과 동일)
  */
-export function resolveVillageOffset(
-  reference: VillageTimeReferenceRow | null,
-): ResolvedVillageOffset {
+export function resolveSeasonOffset(
+  reference: SeasonReferenceLike,
+): ResolvedSeasonOffset {
   const observedOffsetMinutes = deriveObservedOffsetFromBase(reference);
 
   if (observedOffsetMinutes != null) {
@@ -311,14 +321,15 @@ export function getOffsetSourceLabel(source: SeasonOffsetSource): string {
   }
 }
 
-export function getSeasonState(
-  village: VillageRow,
-  reference: VillageTimeReferenceRow | null,
-  now = new Date(),
-): SeasonState {
-  const resolvedOffset = resolveVillageOffset(reference);
-  const currentTotal =
-    getBaseIngameTotalMinutesAt(now) + resolvedOffset.offsetMinutes;
+export function getSeasonState(params: {
+  worldKey: WorldKey;
+  village?: VillageRow | null;
+  reference?: SeasonReferenceLike;
+  now?: Date;
+}): SeasonState {
+  const { worldKey, village = null, reference = null, now = new Date() } = params;
+  const resolvedOffset = resolveSeasonOffset(reference);
+  const currentTotal = getBaseIngameTotalMinutesAt(now) + resolvedOffset.offsetMinutes;
   const calendar = toCalendar(currentTotal);
   const currentSeasonIndex = calendar.seasonIndex;
   const currentSeason = SEASONS[currentSeasonIndex];
@@ -330,11 +341,12 @@ export function getSeasonState(
   }));
 
   return {
-    villageId: village.id,
-    villageName: village.village_name,
-    villageLabel: getVillageFullLabel(village),
-    worldKey: village.world_key,
-    worldLabel: getWorldLabel(village.world_key),
+    worldKey,
+    worldLabel: getWorldLabel(worldKey),
+    villageId: village?.id ?? null,
+    villageName: village?.village_name ?? '없음',
+    villageLabel: village ? getVillageFullLabel(village) : getWorldOnlyLabel(worldKey),
+    selectionMode: village ? 'village' : 'world',
     ingameMonth: calendar.month,
     ingameDay: calendar.day,
     ingameHour: calendar.hour,
