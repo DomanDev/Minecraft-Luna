@@ -9,6 +9,7 @@ import {
   type ParsedLifeProfile,
   normalizeManualLifeProfileInput,
 } from "@/src/types/life-profile";
+import { getLineTensionValue } from "@/src/lib/fishing/skillTables";
 
 /**
  * 프로필 입력 방식 구분
@@ -52,19 +53,73 @@ function getBlessingOfHarvestReduction(level: number): number {
 }
 
 /**
+ * 낚시 도감 일반 물고기 감소비율만 분리하는 함수
+ *
+ * imported:
+ * - /생활 정보 원문 total 값에는 낚싯줄 장력 스킬 효과가 포함될 수 있음
+ * - 계산기에서는 낚싯줄 장력을 스킬 레벨로 따로 계산하므로 여기서 제외해야 함
+ *
+ * manual:
+ * - 프로필 페이지 직접 입력값은 이미 "도감 효과"로 입력하는 값이므로 차감하지 않음
+ */
+function getCodexNormalFishReduction(params: {
+  parsedNormalFishReductionTotal: number;
+  lineTensionLevel: number;
+  inputMethod: SaveLifeProfileInputMethod;
+}): number {
+  const parsedTotal = toSafeNumber(params.parsedNormalFishReductionTotal);
+
+  if (params.inputMethod !== "imported") {
+    return Math.max(0, parsedTotal);
+  }
+
+  /** 낚싯줄 장력 레벨에 따른 일반 물고기 감소비율 */
+  const lineTensionReduction = getLineTensionValue(params.lineTensionLevel);
+
+  /** 생활 정보 total 값에서 낚싯줄 장력 효과를 제거한 도감/기타 감소분 */
+  return Math.max(0, parsedTotal - lineTensionReduction);
+}
+
+/**
  * 낚시 프로필 row 생성
  *
  * 역할:
  * - ParsedLifeProfile 내부의 jobs.fishing 데이터를
  *   fishing_profiles 테이블 row 형태로 변환
  *
- * 주의:
- * - 이 함수는 "DB 컬럼 구조"에 맞춰서 값을 펴서(flatten) 만드는 함수
- * - DB 컬럼명이 바뀌면 이 함수도 같이 수정해야 함
+ * 중요:
+ * - imported 방식의 /생활 정보 total 값에는 낚싯줄 장력 효과가 포함될 수 있음
+ * - 계산기에서는 낚싯줄 장력을 스킬 레벨로 별도 계산하므로
+ *   normal_fish_reduction_total에는 도감/기타 감소분만 저장해야 함
  */
-function buildFishingProfileRow(userId: string, parsed: ParsedLifeProfile) {
+function buildFishingProfileRow(
+  userId: string,
+  parsed: ParsedLifeProfile,
+  inputMethod: SaveLifeProfileInputMethod,
+) {
+  /** 낚시 직업 프로필 */
   const fishingJob = parsed.jobs.fishing;
+
+  /** 낚시 스탯 목록 */
   const fishingStats = fishingJob?.stats ?? {};
+
+  /** 낚시 스킬 목록 */
+  const fishingSkills = parsed.skills.fishing ?? {};
+
+  /** /생활 정보 또는 직접 입력에서 넘어온 일반 물고기 감소비율 total */
+  const parsedNormalFishReductionTotal = toSafeNumber(
+    fishingStats.normalFishReduction?.total,
+  );
+
+  /** 낚싯줄 장력 스킬 레벨 */
+  const lineTensionLevel = toSafeNumber(fishingSkills.lineTension);
+
+  /** DB에 저장할 도감/기타 일반 물고기 감소비율 */
+  const codexNormalFishReductionTotal = getCodexNormalFishReduction({
+    parsedNormalFishReductionTotal,
+    lineTensionLevel,
+    inputMethod,
+  });
 
   return {
     user_id: userId,
@@ -85,10 +140,31 @@ function buildFishingProfileRow(userId: string, parsed: ParsedLifeProfile) {
     fishing_yield_bonus_equip: toSafeNumber(fishingStats.fishingYieldBonus?.equip),
     fishing_yield_bonus_total: toSafeNumber(fishingStats.fishingYieldBonus?.total),
 
-    normal_fish_reduction_base: toSafeNumber(fishingStats.normalFishReduction?.base),
-    normal_fish_reduction_temp: toSafeNumber(fishingStats.normalFishReduction?.temp),
-    normal_fish_reduction_equip: toSafeNumber(fishingStats.normalFishReduction?.equip),
-    normal_fish_reduction_total: toSafeNumber(fishingStats.normalFishReduction?.total),
+    /**
+     * 낚시 도감 효과
+     * - 일반 물고기 감소비율
+     *
+     * 저장 정책:
+     * - imported: 생활 정보 total - 낚싯줄 장력 스킬 감소값
+     * - manual: 직접 입력값을 이미 도감 효과로 보고 그대로 저장
+     *
+     * 참고:
+     * - imported에서는 base/temp/equip를 정확히 다시 분리하기 어려우므로
+     *   농사 프로필 저장 방식처럼 equip/total에 최종 도감값을 둔다.
+     */
+    normal_fish_reduction_base:
+      inputMethod === "imported"
+        ? 0
+        : toSafeNumber(fishingStats.normalFishReduction?.base),
+    normal_fish_reduction_temp:
+      inputMethod === "imported"
+        ? 0
+        : toSafeNumber(fishingStats.normalFishReduction?.temp),
+    normal_fish_reduction_equip:
+      inputMethod === "imported"
+        ? codexNormalFishReductionTotal
+        : toSafeNumber(fishingStats.normalFishReduction?.equip),
+    normal_fish_reduction_total: codexNormalFishReductionTotal,
 
     nibble_time_reduction_base: toSafeNumber(fishingStats.nibbleTimeReduction?.base),
     nibble_time_reduction_temp: toSafeNumber(fishingStats.nibbleTimeReduction?.temp),
@@ -528,7 +604,7 @@ export async function saveParsedLifeProfile(params: {
    * 2) 직업별 프로필 테이블 저장
    */
   if (parsed.jobs.fishing) {
-    const fishingRow = buildFishingProfileRow(userId, parsed);
+    const fishingRow = buildFishingProfileRow(userId, parsed, inputMethod);
 
     const { error: fishingError } = await supabase
       .from("fishing_profiles")
