@@ -286,6 +286,8 @@ const PREMIUM_RECIPE_ADVANCED_CROP_PENALTY_PERCENT = 6;
 
 const RARE_FISH_SPECIAL_CHANCE_BONUS_PERCENT = 6;
 const RARE_CROP_SPECIAL_CHANCE_BONUS_PERCENT = 3;
+/** 최종 1회 요리 제작 시간의 최소 보정값(초) */
+const MIN_COOKING_CRAFT_TIME_SECONDS = 1.5;
 
 interface IngredientGradeSpecialChanceAdjustment {
   advancedFishIngredientTypeCount: number;
@@ -511,8 +513,9 @@ export function calculateCooking(
   const preparationMasterReductionPercent =
     PREPARATION_MASTER_REDUCTION_PERCENT[preparationMaster] ?? 0;
 
+  /** 손재주/조리 단축/손질 달인 적용 후 최종 1회 요리 시간 */
   const finalCraftTimeSeconds = Math.max(
-    0.1,
+    MIN_COOKING_CRAFT_TIME_SECONDS,
     afterDexterityCraftTime * (1 - preparationMasterReductionPercent / 100),
   );
 
