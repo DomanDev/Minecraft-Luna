@@ -39,6 +39,13 @@ import {
   type MinecraftLinkStatus,
   type MinecraftLookupResult,
 } from '../../src/lib/minecraft-profile';
+import {
+  WORLD_OPTIONS,
+  getWorldLabel,
+  type VillageRow,
+  type WorldKey,
+} from '../../src/lib/season/types';
+import { fetchActiveVillages } from '../../src/lib/season/repository';
 
 /**
  * profiles 테이블에서 가져오는 기본 프로필 타입
@@ -62,6 +69,7 @@ type Profile = {
   minecraft_link_status: MinecraftLinkStatus;
   minecraft_linked_at: string | null;
   minecraft_verified_at: string | null;
+  current_village_id: string | null;
 };
 
 type InputMode = 'import' | 'manual';
@@ -892,6 +900,19 @@ export default function ProfilePage() {
   const [profileSaveMessage, setProfileSaveMessage] = useState('');
 
   /**
+   * 위치 선택용 마을 목록 / 폼 state
+   *
+   * 저장 정책:
+   * - DB에는 current_village_id만 저장
+   * - current world는 village.world_key로부터 파생
+   *   -> world / village 불일치 저장을 방지할 수 있다.
+   */
+  const [villages, setVillages] = useState<VillageRow[]>([]);
+  const [villagesLoading, setVillagesLoading] = useState(true);
+  const [selectedWorldKey, setSelectedWorldKey] = useState<WorldKey>('aries');
+  const [selectedVillageId, setSelectedVillageId] = useState('');
+
+  /**
    * 직접 입력을 왼쪽/기본값으로 유지
    */
   const [inputMode, setInputMode] = useState<InputMode>('manual');
@@ -986,7 +1007,7 @@ export default function ProfilePage() {
       let { data, error } = await supabase
         .from('profiles')
         .select(
-          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at, current_village_id',
         )
         .eq('id', user.id)
         .maybeSingle();
@@ -1012,6 +1033,7 @@ export default function ProfilePage() {
           minecraft_link_status: 'needs_lookup' as const,
           minecraft_linked_at: null,
           minecraft_verified_at: null,
+          current_village_id: null,
         };
 
         const { error: insertError } = await supabase
@@ -1029,7 +1051,7 @@ export default function ProfilePage() {
         const retry = await supabase
           .from('profiles')
           .select(
-            'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+            'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at, current_village_id',
           )
           .eq('id', user.id)
           .single();
@@ -1054,6 +1076,66 @@ export default function ProfilePage() {
 
     void fetchProfile();
   }, [user]);
+
+  /**
+   * 위치 선택용 마을 목록 조회
+   *
+   * 정책:
+   * - villages 테이블의 활성 마을만 로드
+   * - world 드롭다운은 고정 상수(WORLD_OPTIONS)를 사용하고
+   *   실제 마을 드롭다운 옵션은 DB 목록으로 구성한다.
+   */
+  useEffect(() => {
+    let mounted = true;
+
+    const loadVillages = async () => {
+      try {
+        setVillagesLoading(true);
+        const nextVillages = await fetchActiveVillages();
+
+        if (!mounted) {
+          return;
+        }
+
+        setVillages(nextVillages);
+      } catch (error) {
+        console.error('마을 목록 조회 실패:', error);
+
+        if (!mounted) {
+          return;
+        }
+
+        setVillages([]);
+      } finally {
+        if (mounted) {
+          setVillagesLoading(false);
+        }
+      }
+    };
+
+    void loadVillages();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  /**
+   * profiles.current_village_id -> 위치 폼 state 동기화
+   */
+  useEffect(() => {
+    const savedVillage =
+      villages.find((item) => item.id === profile?.current_village_id) ?? null;
+
+    if (savedVillage) {
+      setSelectedWorldKey(savedVillage.world_key);
+      setSelectedVillageId(savedVillage.id);
+      return;
+    }
+
+    setSelectedWorldKey('aries');
+    setSelectedVillageId('');
+  }, [profile?.current_village_id, villages]);
 
   useEffect(() => {
     const loadCooldownInfo = async () => {
@@ -1240,6 +1322,38 @@ export default function ProfilePage() {
   });
 
   /**
+   * 현재 profiles에 저장된 위치 정보
+   */
+  const currentVillage = useMemo(() => {
+    return villages.find((item) => item.id === profile?.current_village_id) ?? null;
+  }, [villages, profile?.current_village_id]);
+
+  /**
+   * 현재 선택한 월드에 속한 마을 목록
+   */
+  const filteredVillages = useMemo(() => {
+    return villages.filter((item) => item.world_key === selectedWorldKey);
+  }, [villages, selectedWorldKey]);
+
+  /**
+   * 현재 폼에서 선택된 마을
+   */
+  const selectedVillage = useMemo(() => {
+    return villages.find((item) => item.id === selectedVillageId) ?? null;
+  }, [villages, selectedVillageId]);
+
+  const handleWorldChange = (value: WorldKey) => {
+    setSelectedWorldKey(value);
+    setSelectedVillageId('');
+    setProfileSaveMessage('');
+  };
+
+  const handleVillageChange = (value: string) => {
+    setSelectedVillageId(value);
+    setProfileSaveMessage('');
+  };
+
+  /**
    * 기본 프로필 저장
    *
    * 정책(최종):
@@ -1262,39 +1376,68 @@ export default function ProfilePage() {
 
       const trimmedDisplayName = editDisplayName.trim();
       const canEditDisplayName = profile.plan_type === 'pro';
+      const normalizedSelectedVillageId = selectedVillageId === '' ? null : selectedVillageId;
       const isDisplayNameChanged =
         trimmedDisplayName !== (profile.display_name ?? '');
+      const isLocationChanged =
+        normalizedSelectedVillageId !== (profile.current_village_id ?? null);
 
-      if (!isDisplayNameChanged) {
+      if (!isDisplayNameChanged && !isLocationChanged) {
         setProfileSaveMessage('변경된 내용이 없습니다.');
         return;
       }
 
-      if (!canEditDisplayName) {
-        setProfileSaveMessage('표시명 변경은 Pro 유저만 가능합니다.');
-        return;
-      }
+      if (normalizedSelectedVillageId) {
+        if (!selectedVillage) {
+          setProfileSaveMessage('선택한 마을 정보를 다시 확인해주세요.');
+          return;
+        }
 
-      /**
-       * 표시명은 한글 별칭을 주로 상정하지만,
-       * 기존 정책과 호환되도록 비교적 넓은 문자셋을 허용한다.
-       */
-      if (trimmedDisplayName !== '') {
-        const displayNameRegex = /^[가-힣a-zA-Z0-9 ._]{2,30}$/;
-
-        if (!displayNameRegex.test(trimmedDisplayName)) {
-          setProfileSaveMessage(
-            '표시명은 2~30자의 한글, 영문, 숫자, 공백, 밑줄(_), 마침표(.)만 사용할 수 있습니다.',
-          );
+        if (selectedVillage.world_key !== selectedWorldKey) {
+          setProfileSaveMessage('선택한 월드에 맞는 마을을 다시 선택해주세요.');
           return;
         }
       }
 
       const updatePayload: {
-        display_name: string | null;
-      } = {
-        display_name: trimmedDisplayName === '' ? null : trimmedDisplayName,
-      };
+        display_name?: string | null;
+        current_village_id?: string | null;
+      } = {};
+
+      let skippedDisplayNameSave = false;
+
+      if (isDisplayNameChanged) {
+        if (!canEditDisplayName) {
+          skippedDisplayNameSave = true;
+        } else {
+          /**
+           * 표시명은 한글 별칭을 주로 상정하지만,
+           * 기존 정책과 호환되도록 비교적 넓은 문자셋을 허용한다.
+           */
+          if (trimmedDisplayName !== '') {
+            const displayNameRegex = /^[가-힣a-zA-Z0-9 ._]{2,30}$/;
+
+            if (!displayNameRegex.test(trimmedDisplayName)) {
+              setProfileSaveMessage(
+                '표시명은 2~30자의 한글, 영문, 숫자, 공백, 밑줄(_), 마침표(.)만 사용할 수 있습니다.',
+              );
+              return;
+            }
+          }
+
+          updatePayload.display_name =
+            trimmedDisplayName === '' ? null : trimmedDisplayName;
+        }
+      }
+
+      if (isLocationChanged) {
+        updatePayload.current_village_id = normalizedSelectedVillageId;
+      }
+
+      if (Object.keys(updatePayload).length === 0) {
+        setProfileSaveMessage('표시명 변경은 Pro 유저만 가능합니다. 위치 변경만 저장하려면 표시명을 원래대로 되돌려주세요.');
+        return;
+      }
 
       const { error: updateError } = await supabase
         .from('profiles')
@@ -1309,13 +1452,35 @@ export default function ProfilePage() {
 
       const nextProfile: Profile = {
         ...profile,
-        display_name: updatePayload.display_name,
+        display_name:
+          updatePayload.display_name !== undefined
+            ? updatePayload.display_name
+            : profile.display_name,
+        current_village_id:
+          updatePayload.current_village_id !== undefined
+            ? updatePayload.current_village_id
+            : profile.current_village_id,
       };
 
       setProfile(nextProfile);
       setEditDisplayName(nextProfile.display_name ?? '');
       setEditUsername(nextProfile.username ?? '');
-      setProfileSaveMessage('기본 프로필이 저장되었습니다.');
+
+      const successMessages: string[] = [];
+
+      if (updatePayload.display_name !== undefined) {
+        successMessages.push('표시명이 저장되었습니다.');
+      }
+
+      if (updatePayload.current_village_id !== undefined) {
+        successMessages.push('위치 정보가 저장되었습니다.');
+      }
+
+      if (skippedDisplayNameSave) {
+        successMessages.push('표시명 변경은 Pro 유저만 가능하여 위치 정보만 저장했습니다.');
+      }
+
+      setProfileSaveMessage(successMessages.join(' '));
     } catch (error) {
       console.error('기본 프로필 저장 중 예외:', error);
       setProfileSaveMessage('기본 프로필 저장 중 오류가 발생했습니다.');
@@ -1325,8 +1490,13 @@ export default function ProfilePage() {
   };
 
   const resetBasicProfileForm = () => {
+    const savedVillage =
+      villages.find((item) => item.id === profile?.current_village_id) ?? null;
+
     setEditDisplayName(profile?.display_name ?? '');
     setEditUsername(profile?.username ?? '');
+    setSelectedWorldKey(savedVillage?.world_key ?? 'aries');
+    setSelectedVillageId(savedVillage?.id ?? '');
     setProfileSaveMessage('');
   };
 
@@ -1454,7 +1624,7 @@ export default function ProfilePage() {
         .from('profiles')
         .upsert(updatePayload, { onConflict: 'id' })
         .select(
-          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at',
+          'id, username, display_name, plan_type, role, minecraft_uuid, minecraft_link_status, minecraft_linked_at, minecraft_verified_at, current_village_id',
         )
         .single();
 
@@ -1788,6 +1958,18 @@ export default function ProfilePage() {
             <div className="text-sm text-gray-500">플랜</div>
             <div className="font-medium uppercase">{profile?.plan_type ?? '-'}</div>
           </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="text-sm text-gray-500">위치한 월드</div>
+            <div className="font-medium">
+              {currentVillage ? getWorldLabel(currentVillage.world_key) : '없음'}
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="text-sm text-gray-500">위치한 마을</div>
+            <div className="font-medium">{currentVillage?.village_name ?? '없음'}</div>
+          </div>
         </div>
 
         <div className="space-y-4 rounded-xl border p-4">
@@ -1844,6 +2026,62 @@ export default function ProfilePage() {
                 유저명은 아래 마인크래프트 프로필 연동에서 조회/확인 후 저장됩니다.
               </div>
             </label>
+          </div>
+
+          <div className="space-y-4 rounded-xl border p-4">
+            <div>
+              <h3 className="text-base font-semibold">현재 위치 설정</h3>
+              <p className="mt-1 text-sm text-gray-600">
+                계절 계산기 기본값으로 사용할 현재 위치를 저장합니다. 내부 저장은
+                <code className="mx-1 rounded bg-zinc-100 px-1 py-0.5 text-xs">village_id</code>
+                기준으로 처리됩니다.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1">
+                <div className="text-sm font-medium">위치한 월드</div>
+                <select
+                  value={selectedWorldKey}
+                  onChange={(e) => handleWorldChange(e.target.value as WorldKey)}
+                  className="w-full rounded-lg border p-2"
+                >
+                  {WORLD_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1">
+                <div className="text-sm font-medium">위치한 마을</div>
+                <select
+                  value={selectedVillageId}
+                  onChange={(e) => handleVillageChange(e.target.value)}
+                  disabled={villagesLoading}
+                  className="w-full rounded-lg border p-2 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+                >
+                  <option value="">없음</option>
+                  {filteredVillages.map((village) => (
+                    <option key={village.id} value={village.id}>
+                      {village.village_name}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-gray-500">
+                  {villagesLoading
+                    ? '마을 목록을 불러오는 중입니다.'
+                    : filteredVillages.length > 0
+                      ? '선택한 월드에 속한 마을만 표시됩니다.'
+                      : '선택한 월드에 등록된 마을이 아직 없습니다.'}
+                </div>
+              </label>
+            </div>
+
+            <div className="rounded-lg border bg-gray-50 p-3 text-sm text-gray-700">
+              현재 저장된 위치: {currentVillage ? `${getWorldLabel(currentVillage.world_key)} - ${currentVillage.village_name}` : '없음'}
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
