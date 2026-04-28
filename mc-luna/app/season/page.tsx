@@ -63,6 +63,7 @@ function formatCurrentLocationLabel(
   return `${getWorldLabel(selectedWorldKey)} - 없음`;
 }
 
+
 /**
  * 계절별 카드 스타일
  */
@@ -410,6 +411,26 @@ export default function SeasonPage() {
     return formatCurrentLocationLabel(selectedWorldKey, selectedVillage);
   }, [selectedVillage, selectedWorldKey]);
 
+    /**
+   * 프로필에 저장된 기본 위치 표시 문자열
+   * - current_village_id 가 있으면 "월드 - 마을"
+   * - current_world_key 만 있으면 "월드 - 없음"
+   * - 둘 다 없으면 "양자리 - 없음"
+   */
+  const profileLocationLabel = useMemo(() => {
+    const profileVillage =
+      villages.find((item) => item.id === profileLocation?.current_village_id) ??
+      null;
+
+    if (profileVillage) {
+      return `${getWorldLabel(profileVillage.world_key)} - ${profileVillage.village_name}`;
+    }
+
+    return `${getWorldLabel(
+      profileLocation?.current_world_key ?? BASE_VILLAGE_WORLD_KEY,
+    )} - 없음`;
+  }, [profileLocation, villages]);
+
   /**
    * 현재 계절 카드 스타일
    */
@@ -475,6 +496,14 @@ export default function SeasonPage() {
               />
             </Field>
           </div>
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+              <div className="text-xs font-medium text-zinc-500">
+                프로필 기본 위치
+              </div>
+              <div className="mt-1 text-sm sm:text-base font-semibold text-zinc-900">
+                {profileLocationLabel}
+              </div>
+            </div>
         </CalculatorPanel>
       }
       right={
