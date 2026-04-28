@@ -148,57 +148,6 @@ function SeasonStatusCard({
   );
 }
 
-function CurrentStatusCard({
-  currentLocationLabel,
-  currentSeason,
-  currentTimeText,
-}: {
-  currentLocationLabel: string;
-  currentSeason: string;
-  currentTimeText: string;
-}) {
-  const visual = getSeasonVisual(currentSeason, true);
-
-  return (
-    <div className={`rounded-2xl border p-5 sm:p-6 ${visual.cardClass}`}>
-      <div className="space-y-5">
-        <div>
-          <div className="text-xs sm:text-sm font-medium text-zinc-500">
-            현재 위치
-          </div>
-          <div
-            className={`mt-2 break-keep text-xl sm:text-2xl font-extrabold ${visual.titleClass}`}
-          >
-            {currentLocationLabel}
-          </div>
-        </div>
-
-        <div>
-          <div className="text-xs sm:text-sm font-medium text-zinc-500">
-            현재 계절
-          </div>
-          <div
-            className={`mt-2 break-keep text-3xl sm:text-4xl font-extrabold ${visual.valueClass}`}
-          >
-            {visual.icon} {currentSeason}
-          </div>
-        </div>
-
-        <div>
-          <div className="text-xs sm:text-sm font-medium text-zinc-500">
-            현재 인게임 시각
-          </div>
-          <div
-            className={`mt-2 break-keep text-xl sm:text-2xl font-bold ${visual.titleClass}`}
-          >
-            {currentTimeText}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function SeasonPage() {
   const { user, loading: authLoading } = useAuth();
 
@@ -463,6 +412,14 @@ export default function SeasonPage() {
   }, [selectedVillage, selectedWorldKey]);
 
     /**
+   * 현재 계절 카드 스타일
+   * - 오른쪽 '현재 정보' 3칸 모두 동일한 계절 색상 테마를 적용할 때 사용
+   */
+  const currentSeasonVisual = useMemo(() => {
+    return getSeasonVisual(seasonState.currentSeason, true);
+  }, [seasonState.currentSeason]);
+  
+    /**
    * 프로필에 저장된 기본 위치 표시 문자열
    * - current_village_id 가 있으면 "월드 - 마을"
    * - current_world_key 만 있으면 "월드 - 없음"
@@ -541,7 +498,6 @@ export default function SeasonPage() {
             </Field>
           </div>
           <br/>
-          <br/>
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
               <div className="text-xs font-medium text-zinc-500">
                 프로필 기본 위치
@@ -555,11 +511,34 @@ export default function SeasonPage() {
       right={
         <div className="space-y-4">
           <ResultCard title="현재 정보">
-            <CurrentStatusCard
-              currentLocationLabel={currentLocationLabel}
-              currentSeason={seasonState.currentSeason}
-              currentTimeText={currentTimeText}
-            />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className={`rounded-2xl border p-4 ${currentSeasonVisual.cardClass}`}>
+                <div className="text-xs font-medium text-zinc-500">현재 위치</div>
+                <div
+                  className={`mt-1 break-keep text-base sm:text-lg font-semibold ${currentSeasonVisual.titleClass}`}
+                >
+                  {currentLocationLabel}
+                </div>
+              </div>
+
+              <div className={`rounded-2xl border p-4 ${currentSeasonVisual.cardClass}`}>
+                <div className="text-xs font-medium text-zinc-500">현재 계절</div>
+                <div
+                  className={`mt-1 break-keep text-base sm:text-lg font-semibold ${currentSeasonVisual.valueClass}`}
+                >
+                  {currentSeasonVisual.icon} {seasonState.currentSeason}
+                </div>
+              </div>
+
+              <div className={`rounded-2xl border p-4 ${currentSeasonVisual.cardClass}`}>
+                <div className="text-xs font-medium text-zinc-500">현재 인게임 시각</div>
+                <div
+                  className={`mt-1 break-keep text-base sm:text-lg font-semibold ${currentSeasonVisual.titleClass}`}
+                >
+                  {currentTimeText}
+                </div>
+              </div>
+            </div>
           </ResultCard>
 
           <ResultCard title="계절 남은 시간">
