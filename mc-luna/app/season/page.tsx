@@ -3,20 +3,13 @@
 /**
  * [계절 계산기 페이지]
  *
- * UI 목표
- * - 예전 계절 계산기 스타일처럼 단순한 구성으로 복구
- * - 왼쪽: 월드 / 마을 선택 + 현재 상태 카드
- * - 오른쪽: 계절 남은 시간 카드 4개
- *
- * 기능 목표
- * - 새로고침 시 프로필 저장 위치를 자동으로 반영
- *   1) current_village_id 있으면 해당 마을 선택
- *   2) 없고 current_world_key만 있으면 해당 월드 + 없음
- *   3) 둘 다 없으면 양자리 + 없음
- *
- * 주의
- * - 월드를 바꾸면 마을은 자동으로 첫 번째를 고르지 않고 항상 '없음'으로 초기화
- * - season 계산 로직(getSeasonState)은 기존 공통 유틸을 그대로 사용
+ * 목적
+ * 1) 예전 UI 스타일 유지
+ * 2) 모바일에서도 잘 보이도록 반응형 대응
+ * 3) 프로필에 저장된 월드-마을 자동 적용
+ *    - current_village_id 있으면 해당 마을 선택
+ *    - 없고 current_world_key만 있으면 해당 월드 + 없음
+ *    - 둘 다 없으면 양자리 + 없음
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -110,8 +103,25 @@ function getSeasonVisual(season: string, isCurrent: boolean) {
 }
 
 /**
- * 왼쪽 큰 현재 상태 카드
- * - 예전 UI처럼 한 장에 현재 위치 / 계절 / 인게임 시각을 모아 보여준다.
+ * 현재 위치 텍스트 생성
+ * - 마을 선택 시: "양자리 - 노동의숲"
+ * - 마을 없음 시: "양자리 - 없음"
+ */
+function formatCurrentLocationLabel(
+  selectedWorldKey: WorldKey,
+  selectedVillage: VillageRow | null,
+): string {
+  if (selectedVillage) {
+    return `${getWorldLabel(selectedVillage.world_key)} - ${selectedVillage.village_name}`;
+  }
+
+  return `${getWorldLabel(selectedWorldKey)} - 없음`;
+}
+
+/**
+ * 왼쪽 큰 상태 카드
+ * - 모바일에서는 글자를 한 단계 줄이고
+ * - 화면이 커지면 조금 키워서 예전 스타일 느낌 유지
  */
 function CurrentStatusCard({
   currentLocationLabel,
@@ -125,27 +135,37 @@ function CurrentStatusCard({
   const visual = getSeasonVisual(currentSeason, true);
 
   return (
-    <div className={`rounded-3xl border p-6 ${visual.cardClass}`}>
-      <div className="space-y-6">
+    <div className={`rounded-2xl sm:rounded-3xl border p-5 sm:p-6 ${visual.cardClass}`}>
+      <div className="space-y-5 sm:space-y-6">
         <div>
-          <div className="text-sm font-medium text-zinc-500">현재 위치</div>
-          <div className={`mt-2 text-3xl font-extrabold ${visual.titleClass}`}>
+          <div className="text-xs sm:text-sm font-medium text-zinc-500">
+            현재 위치
+          </div>
+          <div
+            className={`mt-2 break-keep leading-tight text-xl sm:text-2xl lg:text-3xl font-extrabold ${visual.titleClass}`}
+          >
             {currentLocationLabel}
           </div>
         </div>
 
         <div>
-          <div className="text-sm font-medium text-zinc-500">현재 계절</div>
-          <div className={`mt-2 text-5xl font-extrabold ${visual.valueClass}`}>
+          <div className="text-xs sm:text-sm font-medium text-zinc-500">
+            현재 계절
+          </div>
+          <div
+            className={`mt-2 break-keep leading-tight text-3xl sm:text-4xl lg:text-5xl font-extrabold ${visual.valueClass}`}
+          >
             {visual.icon} {currentSeason}
           </div>
         </div>
 
         <div>
-          <div className="text-sm font-medium text-zinc-500">
+          <div className="text-xs sm:text-sm font-medium text-zinc-500">
             현재 인게임 시각
           </div>
-          <div className={`mt-2 text-3xl font-bold ${visual.titleClass}`}>
+          <div
+            className={`mt-2 break-keep leading-tight text-xl sm:text-2xl lg:text-3xl font-bold ${visual.titleClass}`}
+          >
             {currentTimeText}
           </div>
         </div>
@@ -156,6 +176,8 @@ function CurrentStatusCard({
 
 /**
  * 오른쪽 계절 남은 시간 카드
+ * - 모바일에서는 너무 커 보이지 않게 축소
+ * - 데스크톱에서는 기존 느낌 유지
  */
 function SeasonStatusCard({
   season,
@@ -169,36 +191,24 @@ function SeasonStatusCard({
   const visual = getSeasonVisual(season, isCurrent);
 
   return (
-    <div className={`rounded-3xl border p-6 transition ${visual.cardClass}`}>
-      <div className={`text-2xl font-extrabold ${visual.titleClass}`}>
+    <div className={`rounded-2xl sm:rounded-3xl border p-5 sm:p-6 transition ${visual.cardClass}`}>
+      <div className={`text-lg sm:text-xl lg:text-2xl font-extrabold ${visual.titleClass}`}>
         {visual.icon} {season}
       </div>
 
-      <div className={`mt-4 text-4xl font-extrabold ${visual.valueClass}`}>
+      <div
+        className={`mt-3 sm:mt-4 break-keep leading-tight text-2xl sm:text-3xl lg:text-4xl font-extrabold ${visual.valueClass}`}
+      >
         {isCurrent ? '현재 계절' : formatRemainingTime(remainingMinutes)}
       </div>
 
       {!isCurrent ? (
-        <div className="mt-2 text-sm font-medium text-zinc-500">후</div>
+        <div className="mt-1 sm:mt-2 text-xs sm:text-sm font-medium text-zinc-500">
+          후
+        </div>
       ) : null}
     </div>
   );
-}
-
-/**
- * 현재 위치 표시 문자열
- * - 마을 있으면 "양자리 - 노동의숲"
- * - 없으면 "양자리 - 없음"
- */
-function formatCurrentLocationLabel(
-  selectedWorldKey: WorldKey,
-  selectedVillage: VillageRow | null,
-): string {
-  if (selectedVillage) {
-    return `${getWorldLabel(selectedVillage.world_key)} - ${selectedVillage.village_name}`;
-  }
-
-  return `${getWorldLabel(selectedWorldKey)} - 없음`;
 }
 
 export default function SeasonPage() {
@@ -216,7 +226,7 @@ export default function SeasonPage() {
   >({});
 
   /**
-   * 로딩 / 에러 상태
+   * 로딩 / 에러
    */
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState('');
@@ -228,10 +238,8 @@ export default function SeasonPage() {
     useState<ProfileSeasonLocation | null>(null);
 
   /**
-   * 중요:
-   * - profileLocation이 null이라는 사실과
-   * - 아직 조회 전이라 null인 상태를 구분하기 위해 별도 loading 사용
-   * - 이 값이 없으면 새로고침 시 기본값이 먼저 박혀버릴 수 있음
+   * 프로필 위치 조회 완료 여부
+   * - null 자체는 "값 없음"일 수 있으므로 loading 여부를 별도 보관
    */
   const [profileLocationLoading, setProfileLocationLoading] = useState(true);
 
@@ -244,12 +252,12 @@ export default function SeasonPage() {
   const [selectedVillageId, setSelectedVillageId] = useState('');
 
   /**
-   * 프로필 자동 선택은 최초 1회만 수행
+   * 프로필 기반 자동 선택은 최초 1회만 수행
    */
   const initializedSelectionRef = useRef(false);
 
   /**
-   * 실시간 시각 갱신용 tick
+   * 실시간 갱신용 tick
    */
   const [tick, setTick] = useState(() => Date.now());
 
@@ -315,7 +323,7 @@ export default function SeasonPage() {
   }, []);
 
   /**
-   * 프로필 저장 위치 조회
+   * 프로필 위치 로드
    */
   useEffect(() => {
     let mounted = true;
@@ -358,7 +366,7 @@ export default function SeasonPage() {
   /**
    * 최초 기본 선택값 적용
    *
-   * 우선순위:
+   * 우선순위
    * 1) current_village_id 있으면 해당 마을 선택
    * 2) current_world_key만 있으면 해당 월드 + 없음
    * 3) 둘 다 없으면 양자리 + 없음
@@ -398,23 +406,23 @@ export default function SeasonPage() {
   ]);
 
   /**
-   * 선택 월드에 속한 마을 목록만 드롭다운에 노출
+   * 선택 월드에 해당하는 마을 목록
    */
   const filteredVillages = useMemo(() => {
     return filterVillagesByWorld(villages, selectedWorldKey);
   }, [villages, selectedWorldKey]);
 
   /**
-   * 현재 선택된 마을 row
+   * 선택된 마을 row
    */
   const selectedVillage = useMemo(() => {
     return villages.find((item) => item.id === selectedVillageId) ?? null;
   }, [villages, selectedVillageId]);
 
   /**
-   * 현재 선택 기준의 reference
-   * - 마을 선택 시 village_time_references
-   * - 마을 미선택 시 world_time_references
+   * 선택 기준 reference
+   * - 마을 선택 시: village reference
+   * - 마을 없음 시: world reference
    */
   const selectedReference = useMemo(() => {
     if (selectedVillage) {
@@ -454,7 +462,7 @@ export default function SeasonPage() {
   }, [seasonState]);
 
   /**
-   * 현재 위치 표시용 문자열
+   * 현재 위치 표시 문자열
    */
   const currentLocationLabel = useMemo(() => {
     return formatCurrentLocationLabel(selectedWorldKey, selectedVillage);
@@ -462,16 +470,13 @@ export default function SeasonPage() {
 
   /**
    * 월드 변경 시
-   * - 마을은 자동으로 선택하지 않고 '없음'으로 초기화
+   * - 마을은 항상 '없음'으로 초기화
    */
   const handleWorldChange = (value: WorldKey) => {
     setSelectedWorldKey(value);
     setSelectedVillageId('');
   };
 
-  /**
-   * 최초 로딩 대기
-   */
   if (catalogLoading || authLoading || profileLocationLoading) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-zinc-500">
@@ -532,7 +537,7 @@ export default function SeasonPage() {
       }
       right={
         <ResultCard title="계절 남은 시간">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {seasonState.items.map((item) => (
               <SeasonStatusCard
                 key={item.season}
