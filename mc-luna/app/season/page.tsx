@@ -148,6 +148,57 @@ function SeasonStatusCard({
   );
 }
 
+function CurrentStatusCard({
+  currentLocationLabel,
+  currentSeason,
+  currentTimeText,
+}: {
+  currentLocationLabel: string;
+  currentSeason: string;
+  currentTimeText: string;
+}) {
+  const visual = getSeasonVisual(currentSeason, true);
+
+  return (
+    <div className={`rounded-2xl border p-5 sm:p-6 ${visual.cardClass}`}>
+      <div className="space-y-5">
+        <div>
+          <div className="text-xs sm:text-sm font-medium text-zinc-500">
+            현재 위치
+          </div>
+          <div
+            className={`mt-2 break-keep text-xl sm:text-2xl font-extrabold ${visual.titleClass}`}
+          >
+            {currentLocationLabel}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs sm:text-sm font-medium text-zinc-500">
+            현재 계절
+          </div>
+          <div
+            className={`mt-2 break-keep text-3xl sm:text-4xl font-extrabold ${visual.valueClass}`}
+          >
+            {visual.icon} {currentSeason}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs sm:text-sm font-medium text-zinc-500">
+            현재 인게임 시각
+          </div>
+          <div
+            className={`mt-2 break-keep text-xl sm:text-2xl font-bold ${visual.titleClass}`}
+          >
+            {currentTimeText}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SeasonPage() {
   const { user, loading: authLoading } = useAuth();
 
@@ -432,13 +483,6 @@ export default function SeasonPage() {
   }, [profileLocation, villages]);
 
   /**
-   * 현재 계절 카드 스타일
-   */
-  const currentSeasonVisual = useMemo(() => {
-    return getSeasonVisual(seasonState.currentSeason, true);
-  }, [seasonState.currentSeason]);
-
-  /**
    * 월드 변경 시 마을은 항상 "없음"으로 초기화
    */
   const handleWorldChange = (value: WorldKey) => {
@@ -496,6 +540,8 @@ export default function SeasonPage() {
               />
             </Field>
           </div>
+          <br/>
+          <br/>
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
               <div className="text-xs font-medium text-zinc-500">
                 프로필 기본 위치
@@ -509,34 +555,11 @@ export default function SeasonPage() {
       right={
         <div className="space-y-4">
           <ResultCard title="현재 정보">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-                <div className="text-xs font-medium text-zinc-500">현재 위치</div>
-                <div className="mt-1 text-base font-semibold text-zinc-900">
-                  {currentLocationLabel}
-                </div>
-              </div>
-
-              <div
-                className={`rounded-2xl border p-4 ${currentSeasonVisual.cardClass}`}
-              >
-                <div className="text-xs font-medium text-zinc-500">현재 계절</div>
-                <div
-                  className={`mt-1 text-base font-semibold ${currentSeasonVisual.valueClass}`}
-                >
-                  {currentSeasonVisual.icon} {seasonState.currentSeason}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-                <div className="text-xs font-medium text-zinc-500">
-                  현재 인게임 시각
-                </div>
-                <div className="mt-1 text-base font-semibold text-zinc-900">
-                  {currentTimeText}
-                </div>
-              </div>
-            </div>
+            <CurrentStatusCard
+              currentLocationLabel={currentLocationLabel}
+              currentSeason={seasonState.currentSeason}
+              currentTimeText={currentTimeText}
+            />
           </ResultCard>
 
           <ResultCard title="계절 남은 시간">
