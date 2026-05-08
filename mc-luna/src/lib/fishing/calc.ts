@@ -29,10 +29,14 @@ export const DEFAULT_FISHING_CONFIG: FishingCalcConfig = {
   baseBiteTicks: 90,
   senseNibbleCoeff: 0.9,
   senseBiteCoeff: 0.3,
+
+  // 가중치
   baseGradeNormal: 110,
   baseGradeAdvanced: 45,
   baseGradeRare: 25,
+  // 가중치 계산에 사용되는 행운 계수
   luckGradeCoeff: 1.8,
+
   vanillaBasePercent: 20,
   vanillaLuckCoeff: 0.15,
   nightNibbleReductionRate: 0.05,

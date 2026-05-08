@@ -66,10 +66,6 @@ type SeasonReferenceLike = Pick<
  * - 표시 월: 3 -> 6 -> 9 -> 12
  * - 한 계절 = 28일
  * - 현실 20분 = 인게임 24시간
- *
- * 기준 시각(기준 마을: 양자리 - 노동의숲)
- * - 현실: 2026-04-16 16:39:00 +09:00
- * - 인게임: 봄 3월 2일 12:00
  */
 const DAYS_PER_SEASON = 28;
 const HOURS_PER_DAY = 24;
@@ -91,7 +87,7 @@ const SEASON_MONTHS = [3, 6, 9, 12] as const;
 const REAL_SECONDS_PER_INGAME_MINUTE = 1200 / 1440;
 const INGAME_MINUTES_PER_REAL_SECOND = 1440 / 1200;
 
-const BASE_REAL_REFERENCE = new Date('2026-04-27T15:55:17+09:00');
+const BASE_REAL_REFERENCE = new Date('2026-05-08T10:03:26+09:00');
 
 function mod(value: number, base: number): number {
   return ((value % base) + base) % base;
@@ -152,7 +148,7 @@ export function toCycleMinutesFromCalendar(
  * 기준 마을의 기준 인게임 시각
  */
 const BASE_REFERENCE_INGAME_TOTAL_MINUTES =
-  toCycleMinutesFromCalendar(9, 1, 17, 0) ?? 0;
+  toCycleMinutesFromCalendar(12, 3, 7, 31) ?? 0;
 
 export function getBaseIngameTotalMinutesAt(now = new Date()): number {
   const elapsedRealSeconds = (now.getTime() - BASE_REAL_REFERENCE.getTime()) / 1000;
