@@ -67,6 +67,24 @@ export interface FarmingStats {
    * - 일반 등급 가중치(150)에서 추가로 차감
    */
   normalCropReduction: number;
+
+    /**
+   * 펫 효과: 고급 작물 수치
+   *
+   * 계산 반영:
+   * - 기존 고급 가중치에 그대로 더한다.
+   * - 예: 펫 효과 15 → 고급 가중치 +15
+   */
+  petAdvancedCropWeight: number;
+
+  /**
+   * 펫 효과: 작물 추가 확률
+   *
+   * 계산 반영:
+   * - 비옥한 토양으로 증가하는 "재배 2회 발생률"에 합산한다.
+   * - 작물 2개 드롭률이 아니라, 재배 횟수 증가 확률에 들어간다.
+   */
+  petExtraHarvestChance: number;
 }
 
 /**
@@ -165,9 +183,25 @@ export interface FarmingIntermediateResult {
   effectiveThirstValue: number;
 
   // 기타 확률
+  // 씨앗 드롭 확률
   seedDropRatePercent: number;
+  // 비옥한 토양 스킬만으로 계산된 재배 2회 발생률
+  fertileSoilSkillRatePercent: number;
+  // 펫 효과: 작물 추가 확률
+  petExtraHarvestChance: number;
+  /**
+   * 최종 재배 2회 발생률
+   * = 비옥한 토양 스킬 확률 + 펫 효과 작물 추가 확률
+   */
   fertileSoilRatePercent: number;
+
   doubleDropRatePercent: number;
+
+  /**
+   * 펫 효과: 고급 작물 수치
+   * - 고급 가중치에 더해진 값
+   */
+  petAdvancedCropWeight: number;
 
   // 최대 화분통
   maxPotCountBySkill: number;

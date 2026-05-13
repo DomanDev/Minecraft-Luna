@@ -66,7 +66,19 @@ function getEffectiveThirstMultiplier(thirstMin: FarmingThirstMin): number {
 export function calculateFarming(
   input: FarmingCalculationInput,
 ): FarmingCalculationResult {
-  const { luck, sense, normalCropReduction } = input.stats;
+  const {
+    luck,
+    sense,
+    normalCropReduction,
+
+    /**
+     * 펫 효과
+     * - petAdvancedCropWeight: 고급 가중치에 더해지는 값
+     * - petExtraHarvestChance: 재배 2회 발생률에 더해지는 값
+     */
+    petAdvancedCropWeight,
+    petExtraHarvestChance,
+  } = input.stats;
   const { blessingOfHarvest, fertileSoil, oathOfCultivation } = input.skills;
   const { potCount, thirstMin } = input.environment;
   const { normal, advanced, rare } = input.prices;
@@ -75,18 +87,41 @@ export function calculateFarming(
   const skillNormalReduction =
     BLESSING_OF_HARVEST_NORMAL_REDUCTION[blessingOfHarvest] ?? 0;
 
-  const fertileSoilRatePercent =
-    FERTILE_SOIL_EXTRA_DROP[fertileSoil] ?? 0;
+  // 비옥한 토양 스킬만으로 증가하는 재배 2회 발생률
+  const fertileSoilSkillRatePercent = FERTILE_SOIL_EXTRA_DROP[fertileSoil] ?? 0;
 
   const maxPotCountBySkill =
     OATH_OF_CULTIVATION_MAX_POTS[oathOfCultivation] ?? 96;
 
   /**
-   * 도감 효과 감소값
-   *
-   * 음수는 의미가 없으므로 0 미만은 잘라낸다.
+   * 도감 효과 감소값(음수는 의미가 없으므로 0 미만은 잘라낸다.)
    */
   const codexNormalReduction = Math.max(0, normalCropReduction);
+  /**
+   * 펫 효과 보정
+   *
+   * UI에서 NumberInput으로 정수만 입력받지만,
+   * 계산 함수 단에서도 한 번 더 방어적으로 보정한다.
+   */
+  const safePetAdvancedCropWeight = Math.max(
+    0,
+    Math.trunc(petAdvancedCropWeight ?? 0),
+  );
+
+  const safePetExtraHarvestChance = Math.max(
+    0,
+    Math.trunc(petExtraHarvestChance ?? 0),
+  );
+
+  /**
+   * 최종 재배 2회 발생률
+   * = 비옥한 토양 스킬 확률 + 펫 효과 작물 추가 확률
+   *
+   * 확률값이므로 100%를 넘지 않도록 clampPercent 적용
+   */
+  const fertileSoilRatePercent = clampPercent(
+    fertileSoilSkillRatePercent + safePetExtraHarvestChance,
+  );
 
   /**
    * 최종 일반 작물 감소비율
@@ -96,10 +131,10 @@ export function calculateFarming(
 
   // 2) 등급 가중치 계산
   // 일반 : 150 - 일반 작물 감소비율(스킬 + 도감)
-  // 고급 : 30 + (1.5 * 행운)
+  // 고급 : 30 + (1.5 * 행운)  + 펫 효과 고급 작물 수치
   // 희귀 : 15 + (1.5 * 행운)
   const normalWeight = Math.max(0, 150 - totalNormalReduction);
-  const advancedWeight = Math.max(0, 30 + 1.5 * luck);
+  const advancedWeight = Math.max(0, 30 + 1.5 * luck + safePetAdvancedCropWeight);
   const rareWeight = Math.max(0, 15 + 1.5 * luck);
   const totalWeight = normalWeight + advancedWeight + rareWeight;
 
@@ -166,18 +201,28 @@ export function calculateFarming(
       codexNormalReduction: round(codexNormalReduction),
       totalNormalReduction: round(totalNormalReduction),
 
+      /**
+       * 펫 효과: 고급 작물 수치
+       */
+      petAdvancedCropWeight: round(safePetAdvancedCropWeight),
+
       effectiveThirstMultiplier: round(effectiveThirstMultiplier),
       effectiveThirstValue: round(effectiveThirstValue),
 
       seedDropRatePercent: round(seedDropRatePercent),
-      fertileSoilRatePercent: round(fertileSoilRatePercent),
-      doubleDropRatePercent: round(doubleDropRatePercent),
 
+      /**
+       * 재배 2회 발생률 분리 표시용
+       */
+      fertileSoilSkillRatePercent: round(fertileSoilSkillRatePercent),
+      petExtraHarvestChance: round(safePetExtraHarvestChance),
+      fertileSoilRatePercent: round(fertileSoilRatePercent),
+
+      doubleDropRatePercent: round(doubleDropRatePercent),
       maxPotCountBySkill: maxPotCountBySkill,
 
       expectedHarvestAttemptsPerPot: round(expectedHarvestAttemptsPerPot),
       expectedHarvestAttemptsPerCycle: round(expectedHarvestAttemptsPerCycle),
-
       expectedCropsPerHarvestAttempt: round(expectedCropsPerHarvestAttempt),
       expectedTotalCropsPerCycle: round(expectedTotalCropsPerCycle),
     },

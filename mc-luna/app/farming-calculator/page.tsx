@@ -64,6 +64,17 @@ const INITIAL_FORM = {
    * 프로필에서 자동 불러오며 계산에 반영
    */
   normalCropReduction: 0,
+  /**
+     * 펫 효과
+     *
+     * - petAdvancedCropWeight:
+     *   고급 작물 수치. 고급 가중치에 그대로 더해진다.
+     *
+     * - petExtraHarvestChance:
+     *   작물 추가 확률. 비옥한 토양의 재배 2회 발생률에 합산된다.
+     */
+  petAdvancedCropWeight: 0,
+  petExtraHarvestChance: 0,
 
   blessingOfHarvest: 0,
   fertileSoil: 0,
@@ -86,6 +97,12 @@ function createInitialCalculationInput(): FarmingCalculationInput {
       luck: INITIAL_FORM.luck,
       sense: INITIAL_FORM.sense,
       normalCropReduction: INITIAL_FORM.normalCropReduction,
+      /**
+       * 펫 효과 초기값
+      * - 최초 계산 결과에도 0으로 포함시켜 타입 오류를 방지한다.
+      */
+      petAdvancedCropWeight: INITIAL_FORM.petAdvancedCropWeight,
+      petExtraHarvestChance: INITIAL_FORM.petExtraHarvestChance,
     },
     skills: {
       blessingOfHarvest: INITIAL_FORM.blessingOfHarvest,
@@ -174,6 +191,24 @@ export default function FarmingCalculatorPage() {
     INITIAL_FORM.normalCropReduction,
   );
 
+  /**
+   * 펫 효과 입력값
+   *
+   * 도감 효과와 달리 프로필 DB에서 자동 로드하지 않고,
+   * 계산기 화면에서 사용자가 직접 입력하는 값이다.
+   *
+   * NumberInput을 사용하므로:
+   * - 음수 입력 불가
+   * - 소수점 입력 불가
+   * - 정수만 반영
+   */
+  const [petAdvancedCropWeight, setPetAdvancedCropWeight] = useState(
+    INITIAL_FORM.petAdvancedCropWeight,
+  );
+  const [petExtraHarvestChance, setPetExtraHarvestChance] = useState(
+    INITIAL_FORM.petExtraHarvestChance,
+  );
+
   const [blessingOfHarvest, setBlessingOfHarvest] = useState(
     INITIAL_FORM.blessingOfHarvest,
   );
@@ -220,6 +255,14 @@ export default function FarmingCalculatorPage() {
         luck,
         sense,
         normalCropReduction,
+
+        /**
+         * 펫 효과
+         * - 고급 작물 수치: 고급 가중치에 합산
+         * - 작물 추가 확률: 비옥한 토양 재배 2회 발생률에 합산
+         */
+        petAdvancedCropWeight,
+        petExtraHarvestChance,
       },
       skills: {
         blessingOfHarvest,
@@ -544,10 +587,17 @@ export default function FarmingCalculatorPage() {
         OATH_OF_CULTIVATION_MAX_POTS[nextOathOfCultivation] ?? 96;
 
       const nextResult = calculateFarming({
-        stats: {
+        stats: {  
           luck: nextLuck,
           sense: nextSense,
           normalCropReduction: nextNormalCropReduction,
+
+          /**
+           * 펫 효과는 프로필에서 자동 로드하지 않는 수동 입력값이다.
+           * 프로필 자동 계산 시점에도 현재 화면 state 값을 함께 넘겨준다.
+           */
+          petAdvancedCropWeight,
+          petExtraHarvestChance,
         },
         skills: {
           blessingOfHarvest: nextBlessingOfHarvest,
@@ -579,7 +629,15 @@ export default function FarmingCalculatorPage() {
     } finally {
       loadingProfileRef.current = false;
     }
-  }, [cropType, normalPrice, advancedPrice, rarePrice, thirstMin]);
+  }, [
+    cropType,
+    normalPrice,
+    advancedPrice,
+    rarePrice,
+    thirstMin,
+    petAdvancedCropWeight,
+    petExtraHarvestChance,
+  ]);
 
   /**
    * 공통 가드를 통과한 뒤에만
@@ -669,6 +727,8 @@ export default function FarmingCalculatorPage() {
     normalPrice,
     advancedPrice,
     rarePrice,
+    petAdvancedCropWeight,
+    petExtraHarvestChance,
   ]);
 
   const handleReset = () => {
@@ -677,6 +737,12 @@ export default function FarmingCalculatorPage() {
     setLuck(INITIAL_FORM.luck);
     setSense(INITIAL_FORM.sense);
     setNormalCropReduction(INITIAL_FORM.normalCropReduction);
+
+    /**
+     * 펫 효과 입력값 초기화
+     */
+    setPetAdvancedCropWeight(INITIAL_FORM.petAdvancedCropWeight);
+    setPetExtraHarvestChance(INITIAL_FORM.petExtraHarvestChance);
 
     setBlessingOfHarvest(INITIAL_FORM.blessingOfHarvest);
     setFertileSoil(INITIAL_FORM.fertileSoil);
@@ -813,6 +879,51 @@ export default function FarmingCalculatorPage() {
                     setIsDirty(true);
                   }}
                   disabled={disableProfileFields}
+                />
+              </Field>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h3 className="mb-3 text-lg font-semibold">펫 효과</h3>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Field label="고급 작물 수치">
+                <NumberInput
+                  value={petAdvancedCropWeight}
+                  min={0}
+                  max={999}
+                  onChange={(value) => {
+                    /**
+                     * 펫 효과: 고급 작물 수치
+                     *
+                     * NumberInput 사용 이유:
+                     * - 정수만 입력 가능
+                     * - 음수 입력 불가
+                     * - 고급 가중치에 그대로 더해짐
+                     */
+                    setPetAdvancedCropWeight(value);
+                    setIsDirty(true);
+                  }}
+                />
+              </Field>
+
+              <Field label="작물 추가 드롭률">
+                <NumberInput
+                  value={petExtraHarvestChance}
+                  min={0}
+                  max={100}
+                  onChange={(value) => {
+                    /**
+                     * 펫 효과: 작물 추가 확률
+                     *
+                     * 계산 반영 위치:
+                     * - 작물 2개 드롭률이 아님
+                     * - 비옥한 토양의 재배 2회 발생률에 합산됨
+                     */
+                    setPetExtraHarvestChance(value);
+                    setIsDirty(true);
+                  }}
                 />
               </Field>
             </div>
@@ -993,6 +1104,10 @@ export default function FarmingCalculatorPage() {
                 <span>총 일반 작물 감소비율</span>
                 <span>{formatDecimal(result.intermediate.totalNormalReduction, 2)}</span>
               </div>
+              <div className="flex justify-between">
+                <span>[펫]고급 작물 수치</span>
+                <span>{formatInteger(result.intermediate.petAdvancedCropWeight)}</span>
+              </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
                 <span>일반 가중치</span>
@@ -1051,12 +1166,16 @@ export default function FarmingCalculatorPage() {
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">
-                <span>비옥한 토양 발동률</span>
+                <span>[비옥한 토양]작물 추가 드롭률</span>
                 <span>{formatPercent(result.intermediate.fertileSoilRatePercent, 2)}</span>
               </div>
               <div className="flex justify-between">
+                <span>[펫]작물 추가 드롭률</span>
+                <span>{formatPercent(result.intermediate.petExtraHarvestChance, 2)}</span>
+              </div>
+              <div className="flex justify-between">
                 <span>화분통 1개당 재배 횟수</span>
-                <span>{formatDecimal(result.intermediate.expectedHarvestAttemptsPerPot, 2)}회</span>
+                <span>{formatPercent(result.intermediate.fertileSoilRatePercent, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>1사이클당 총 재배 횟수</span>
