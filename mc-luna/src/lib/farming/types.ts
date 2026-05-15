@@ -72,10 +72,9 @@ export interface FarmingStats {
    * 펫 효과: 고급 작물 수치
    *
    * 계산 반영:
-   * - 기존 고급 가중치에 그대로 더한다.
-   * - 예: 펫 효과 15 → 고급 가중치 +15
+   * - 기존 도감 효과 '일반 작물 감소'에 더해진다.
    */
-  petAdvancedCropWeight: number;
+  petAdvancedCropValue: number;
 
   /**
    * 펫 효과: 작물 추가 확률
@@ -176,6 +175,7 @@ export interface FarmingIntermediateResult {
   // 일반 작물 감소 근거
   skillNormalReduction: number;
   codexNormalReduction: number;
+  petAdvancedCropValue: number; // 펫 효과: 고급 작물 수치
   totalNormalReduction: number;
 
   // 갈증 관련 근거
@@ -196,12 +196,6 @@ export interface FarmingIntermediateResult {
   fertileSoilRatePercent: number;
 
   doubleDropRatePercent: number;
-
-  /**
-   * 펫 효과: 고급 작물 수치
-   * - 고급 가중치에 더해진 값
-   */
-  petAdvancedCropWeight: number;
 
   // 최대 화분통
   maxPotCountBySkill: number;

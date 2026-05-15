@@ -73,7 +73,7 @@ const INITIAL_FORM = {
      * - petExtraHarvestChance:
      *   작물 추가 확률. 비옥한 토양의 재배 2회 발생률에 합산된다.
      */
-  petAdvancedCropWeight: 0,
+  petAdvancedCropValue: 0,
   petExtraHarvestChance: 0,
 
   blessingOfHarvest: 0,
@@ -97,11 +97,7 @@ function createInitialCalculationInput(): FarmingCalculationInput {
       luck: INITIAL_FORM.luck,
       sense: INITIAL_FORM.sense,
       normalCropReduction: INITIAL_FORM.normalCropReduction,
-      /**
-       * 펫 효과 초기값
-      * - 최초 계산 결과에도 0으로 포함시켜 타입 오류를 방지한다.
-      */
-      petAdvancedCropWeight: INITIAL_FORM.petAdvancedCropWeight,
+      petAdvancedCropValue: INITIAL_FORM.petAdvancedCropValue,
       petExtraHarvestChance: INITIAL_FORM.petExtraHarvestChance,
     },
     skills: {
@@ -192,18 +188,13 @@ export default function FarmingCalculatorPage() {
   );
 
   /**
-   * 펫 효과 입력값
+   * 펫 효과: 고급 작물 수치
    *
-   * 도감 효과와 달리 프로필 DB에서 자동 로드하지 않고,
-   * 계산기 화면에서 사용자가 직접 입력하는 값이다.
-   *
-   * NumberInput을 사용하므로:
-   * - 음수 입력 불가
-   * - 소수점 입력 불가
-   * - 정수만 반영
+   * 인게임 옵션명은 "고급 작물 수치"지만,
+   * 실제 계산은 도감 효과의 "일반 작물 감소비율"과 같은 방식으로 처리한다.
    */
-  const [petAdvancedCropWeight, setPetAdvancedCropWeight] = useState(
-    INITIAL_FORM.petAdvancedCropWeight,
+  const [petAdvancedCropValue, setPetAdvancedCropValue] = useState(
+    INITIAL_FORM.petAdvancedCropValue,
   );
   const [petExtraHarvestChance, setPetExtraHarvestChance] = useState(
     INITIAL_FORM.petExtraHarvestChance,
@@ -261,7 +252,7 @@ export default function FarmingCalculatorPage() {
          * - 고급 작물 수치: 고급 가중치에 합산
          * - 작물 추가 확률: 비옥한 토양 재배 2회 발생률에 합산
          */
-        petAdvancedCropWeight,
+        petAdvancedCropValue,
         petExtraHarvestChance,
       },
       skills: {
@@ -596,7 +587,7 @@ export default function FarmingCalculatorPage() {
            * 펫 효과는 프로필에서 자동 로드하지 않는 수동 입력값이다.
            * 프로필 자동 계산 시점에도 현재 화면 state 값을 함께 넘겨준다.
            */
-          petAdvancedCropWeight,
+          petAdvancedCropValue,
           petExtraHarvestChance,
         },
         skills: {
@@ -635,7 +626,7 @@ export default function FarmingCalculatorPage() {
     advancedPrice,
     rarePrice,
     thirstMin,
-    petAdvancedCropWeight,
+    petAdvancedCropValue,
     petExtraHarvestChance,
   ]);
 
@@ -727,7 +718,7 @@ export default function FarmingCalculatorPage() {
     normalPrice,
     advancedPrice,
     rarePrice,
-    petAdvancedCropWeight,
+    petAdvancedCropValue, 
     petExtraHarvestChance,
   ]);
 
@@ -741,7 +732,7 @@ export default function FarmingCalculatorPage() {
     /**
      * 펫 효과 입력값 초기화
      */
-    setPetAdvancedCropWeight(INITIAL_FORM.petAdvancedCropWeight);
+    setPetAdvancedCropValue(INITIAL_FORM.petAdvancedCropValue);
     setPetExtraHarvestChance(INITIAL_FORM.petExtraHarvestChance);
 
     setBlessingOfHarvest(INITIAL_FORM.blessingOfHarvest);
@@ -868,7 +859,7 @@ export default function FarmingCalculatorPage() {
           <div className="mt-6">
             <h3 className="mb-3 text-lg font-semibold">도감 효과</h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field label="일반 작물 감소비율">
+              <Field label="고급 작물 수치">
                 <StatNumberInput
                   step="0.01"
                   min={0}
@@ -890,7 +881,7 @@ export default function FarmingCalculatorPage() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="고급 작물 수치">
                 <NumberInput
-                  value={petAdvancedCropWeight}
+                  value={petAdvancedCropValue}
                   min={0}
                   max={999}
                   onChange={(value) => {
@@ -902,7 +893,7 @@ export default function FarmingCalculatorPage() {
                      * - 음수 입력 불가
                      * - 고급 가중치에 그대로 더해짐
                      */
-                    setPetAdvancedCropWeight(value);
+                    setPetAdvancedCropValue(value);
                     setIsDirty(true);
                   }}
                 />
@@ -1093,20 +1084,20 @@ export default function FarmingCalculatorPage() {
           <ResultCard title="등급 가중치 / 확률">
             <div className="space-y-2">
               <div className="flex justify-between">
-                <span>[풍년의 축복]일반 작물 감소비율</span>
+                <span>[풍년의 축복]고급 작물 수치</span>
                 <span>{formatDecimal(result.intermediate.skillNormalReduction, 2)}</span>
               </div>
               <div className="flex justify-between">
-                <span>[도감]일반 작물 감소비율</span>
+                <span>[도감]고급 작물 수치</span>
                 <span>{formatDecimal(result.intermediate.codexNormalReduction, 2)}</span>
               </div>
               <div className="flex justify-between">
-                <span>총 일반 작물 감소비율</span>
+                <span>총 고급 작물 수치</span>
                 <span>{formatDecimal(result.intermediate.totalNormalReduction, 2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>[펫]고급 작물 수치</span>
-                <span>{formatInteger(result.intermediate.petAdvancedCropWeight)}</span>
+                <span>{formatInteger(result.intermediate.petAdvancedCropValue)}</span>
               </div>
               <div className="border-t border-gray-800/20 my-2" />
               <div className="flex justify-between">

@@ -73,10 +73,10 @@ export function calculateFarming(
 
     /**
      * 펫 효과
-     * - petAdvancedCropWeight: 고급 가중치에 더해지는 값
+     * - petAdvancedCropValue: 도감 효과(일반 작물 감소 비율)에 더해지는 값
      * - petExtraHarvestChance: 재배 2회 발생률에 더해지는 값
      */
-    petAdvancedCropWeight,
+    petAdvancedCropValue,
     petExtraHarvestChance,
   } = input.stats;
   const { blessingOfHarvest, fertileSoil, oathOfCultivation } = input.skills;
@@ -98,14 +98,15 @@ export function calculateFarming(
    */
   const codexNormalReduction = Math.max(0, normalCropReduction);
   /**
-   * 펫 효과 보정
+   * 펫 효과: 고급 작물 수치
    *
-   * UI에서 NumberInput으로 정수만 입력받지만,
-   * 계산 함수 단에서도 한 번 더 방어적으로 보정한다.
+   * 계산 방식:
+   * - 도감 효과의 "일반 작물 감소비율"과 동일하게 처리한다.
+   * - 즉, 일반 작물 가중치 150에서 차감되는 값에 합산된다.
    */
-  const safePetAdvancedCropWeight = Math.max(
+  const petAdvancedCropReduction = Math.max(
     0,
-    Math.trunc(petAdvancedCropWeight ?? 0),
+    Math.trunc(petAdvancedCropValue ?? 0),
   );
 
   const safePetExtraHarvestChance = Math.max(
@@ -125,16 +126,24 @@ export function calculateFarming(
 
   /**
    * 최종 일반 작물 감소비율
-   * = 풍년의 축복 감소 + 도감 감소
+   *
+   * 풍년의 축복 감소
+   * + 도감 일반 작물 감소비율
+   * + 펫 효과 고급 작물 수치
+   *
+   * 주의:
+   * - 펫 효과 이름은 "고급 작물 수치"지만,
+   * - 실제 계산은 고급 가중치 증가가 아니라 일반 작물 가중치 감소다.
    */
-  const totalNormalReduction = skillNormalReduction + codexNormalReduction;
+  const totalNormalReduction =
+    skillNormalReduction + codexNormalReduction + petAdvancedCropReduction;
 
   // 2) 등급 가중치 계산
-  // 일반 : 150 - 일반 작물 감소비율(스킬 + 도감)
-  // 고급 : 30 + (1.5 * 행운)  + 펫 효과 고급 작물 수치
+  // 일반 : 150 - 일반 작물 감소비율(스킬 + 도감 + 펫효과)
+  // 고급 : 30 + (1.5 * 행운) 
   // 희귀 : 15 + (1.5 * 행운)
   const normalWeight = Math.max(0, 150 - totalNormalReduction);
-  const advancedWeight = Math.max(0, 30 + 1.5 * luck + safePetAdvancedCropWeight);
+  const advancedWeight = Math.max(0, 30 + 1.5 * luck);
   const rareWeight = Math.max(0, 15 + 1.5 * luck);
   const totalWeight = normalWeight + advancedWeight + rareWeight;
 
@@ -199,12 +208,8 @@ export function calculateFarming(
 
       skillNormalReduction: round(skillNormalReduction),
       codexNormalReduction: round(codexNormalReduction),
+      petAdvancedCropValue: round(petAdvancedCropReduction),
       totalNormalReduction: round(totalNormalReduction),
-
-      /**
-       * 펫 효과: 고급 작물 수치
-       */
-      petAdvancedCropWeight: round(safePetAdvancedCropWeight),
 
       effectiveThirstMultiplier: round(effectiveThirstMultiplier),
       effectiveThirstValue: round(effectiveThirstValue),

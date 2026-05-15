@@ -14,7 +14,7 @@ const navItems = [
   { href: "/", label: "홈" },
   { href: "/fishing-calculator", label: "낚시" },
   { href: "/farming-calculator", label: "농사" },
-  { href: "/season", label: "계절" },
+  // { href: "/season", label: "계절" },
   { href: "/mining-calculator", label: "채광" },
   { href: "/cooking-calculator", label: "요리" },
   { href: "/enhancement-calculator", label: "강화" },
