@@ -279,10 +279,10 @@ const BANQUET_PREPARATION_EXTRA_CRAFT_COUNT: Record<number, number> = {
 };
 
 
-const GENERAL_RECIPE_ADVANCED_FISH_PENALTY_PERCENT = 20;
-const GENERAL_RECIPE_ADVANCED_CROP_PENALTY_PERCENT = 15;
-const PREMIUM_RECIPE_ADVANCED_FISH_PENALTY_PERCENT = 12;
-const PREMIUM_RECIPE_ADVANCED_CROP_PENALTY_PERCENT = 6;
+const GENERAL_RECIPE_ADVANCED_FISH_PENALTY_PERCENT = 26;
+const GENERAL_RECIPE_ADVANCED_CROP_PENALTY_PERCENT = 20;
+const PREMIUM_RECIPE_ADVANCED_FISH_PENALTY_PERCENT = 16;
+const PREMIUM_RECIPE_ADVANCED_CROP_PENALTY_PERCENT = 8;
 
 const RARE_FISH_SPECIAL_CHANCE_BONUS_PERCENT = 6;
 const RARE_CROP_SPECIAL_CHANCE_BONUS_PERCENT = 3;
@@ -400,13 +400,13 @@ function getBanquetPreparationExtraCraftCount(level: number): number {
  * 갈증 최소치 드롭다운에 따른 일품 확률 추가 보정
  *
  * 현재 정책:
- * - 15 이상 유지: +10%
+ * - 15 이상 유지: +5%
  * - 아직 다른 구간 데이터는 없으므로 나머지는 0 처리
  */
 function getThirstSpecialChanceBonusPercent(thirstMin: number): number {
   switch (thirstMin) {
     case 15:
-      return 10;
+      return 5;
     default:
       return 0;
   }
@@ -453,7 +453,7 @@ export function calculateCooking(
    * 2) 등급 / 성공 확률
    * -------------------------------------------------------
    */
-  const dexterityGradeUpChancePercent = dexterity * 0.1;
+  const dexterityGradeUpChancePercent = dexterity * 0.2;
   const gourmetGradeUpChancePercent =
     GOURMET_GRADE_UP_BONUS_PERCENT[gourmet] ?? 0;
 
